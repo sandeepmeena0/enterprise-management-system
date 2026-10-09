@@ -341,19 +341,25 @@ export const DashboardPage = () => {
           </div>
 
           {/* Time Calculation Subtitle (Matching Screenshot 4: Gross Hours - Break Time = Net Hours) */}
-          <div style={{
-            padding: '10px 14px',
-            backgroundColor: '#f8fafc',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0',
-            fontSize: '12px',
-            color: '#475569',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '8px'
-          }}>
+          <div
+            onClick={() => navigate('/attendance')}
+            style={{
+              padding: '10px 14px',
+              backgroundColor: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              fontSize: '12px',
+              color: '#475569',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title="Click to view detailed Daily Attendance & Shift Logs"
+          >
             <span>Gross Hours: <strong>{grossDurationText || '7h 38m'}</strong></span>
             <span>-</span>
             <span>Break Time: <strong>{breakDurationText || '56m'}</strong></span>
@@ -384,9 +390,21 @@ export const DashboardPage = () => {
           boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
         }}>
           <div>
-            <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 6px 0' }}>
-              My Active Timer
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3
+                onClick={() => navigate('/timesheet')}
+                style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 6px 0', cursor: 'pointer' }}
+                title="Click to open Timesheet"
+              >
+                My Active Timer ⏱️
+              </h3>
+              <span
+                onClick={() => navigate('/timesheet')}
+                style={{ fontSize: '12px', fontWeight: '600', color: '#0284c7', cursor: 'pointer' }}
+              >
+                View Timesheet →
+              </span>
+            </div>
             <div style={{ fontSize: '13px', color: '#64748b' }}>
               Sep 25, 2026 - 16:24
             </div>

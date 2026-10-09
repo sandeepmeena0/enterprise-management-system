@@ -80,20 +80,36 @@ export function App() {
                       <Route path="lead-contact" element={<LeadsPage />} />
 
                       {/* ── Work Module Routes ──────────────────────────────── */}
-                      <Route path="projects"    element={<ProjectsPage />} />
-                      <Route path="tasks"       element={<TasksPage />} />
-                      <Route path="timesheet"   element={<TimesheetPage />} />
-                      <Route path="work"        element={<Navigate to="/projects" replace />} />
+                      <Route path="projects"      element={<ProjectsPage />} />
+                      <Route path="tasks"         element={<TasksPage />} />
+                      <Route path="timesheet"     element={<TimesheetPage />} />
+                      <Route path="timesheets"    element={<TimesheetPage />} />
+                      <Route path="timer"         element={<TimesheetPage />} />
+                      <Route path="work-timer"    element={<TimesheetPage />} />
+                      <Route path="timelog"       element={<TimesheetPage />} />
+                      <Route path="timelogs"      element={<TimesheetPage />} />
+                      <Route path="time-tracker"  element={<TimesheetPage />} />
+                      <Route path="time-tracking" element={<TimesheetPage />} />
+                      <Route path="active-timer"  element={<TimesheetPage />} />
+                      <Route path="time"          element={<TimesheetPage />} />
+                      <Route path="work"          element={<Navigate to="/projects" replace />} />
 
                       {/* ── HR Module Routes ────────────────────────────────── */}
-                      <Route path="employees"     element={<EmployeesPage />} />
-                      <Route path="team"          element={<EmployeesPage />} />
-                      <Route path="leaves"        element={<LeavesPage />} />
-                      <Route path="attendance"    element={<AttendancePage />} />
-                      <Route path="holiday"       element={<HolidayPage />} />
-                      <Route path="appreciation"  element={<AppreciationPage />} />
-                      <Route path="documents"     element={<DocumentationPage />} />
-                      <Route path="documentation" element={<DocumentationPage />} />
+                      <Route path="employees"        element={<EmployeesPage />} />
+                      <Route path="team"             element={<EmployeesPage />} />
+                      <Route path="leaves"           element={<LeavesPage />} />
+                      <Route path="attendance"       element={<AttendancePage />} />
+                      <Route path="attendance-clock" element={<AttendancePage />} />
+                      <Route path="clock"            element={<AttendancePage />} />
+                      <Route path="clock-in"         element={<AttendancePage />} />
+                      <Route path="break"            element={<AttendancePage />} />
+                      <Route path="breaks"           element={<AttendancePage />} />
+                      <Route path="holiday"          element={<HolidayPage />} />
+                      <Route path="holidays"         element={<HolidayPage />} />
+                      <Route path="appreciation"     element={<AppreciationPage />} />
+                      <Route path="appreciations"    element={<AppreciationPage />} />
+                      <Route path="documents"        element={<DocumentationPage />} />
+                      <Route path="documentation"    element={<DocumentationPage />} />
 
                       {/* ── Finance & Payroll Module ────────────────────────── */}
                       <Route path="finance"          element={<ExpensesPage />} />

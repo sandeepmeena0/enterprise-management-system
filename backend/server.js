@@ -62,6 +62,10 @@ app.use('/api/appreciations', require('./src/modules/hr/routes/appreciationRoute
 app.use('/api/projects',     require('./src/modules/work/routes/projectRoutes'));
 app.use('/api/tasks',        require('./src/modules/work/routes/taskRoutes'));
 app.use('/api/timesheet',    require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timesheets',   require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timer',        require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timelogs',     require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timelog',      require('./src/modules/work/routes/timesheetRoutes'));
 
 // CRM Module (Leads, etc.)
 app.use('/api/leads',        require('./src/modules/crm/routes/leadRoutes'));

@@ -47,7 +47,7 @@ import { DashboardOverviewModal } from '../modals/DashboardOverviewModal';
 export const TopNavbar = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, currentBreakTimeString, togglePauseResume, handleClockOut, handleClockIn } = useTimer();
+  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, currentBreakTimeString, loginTime, togglePauseResume, handleClockOut, handleClockIn } = useTimer();
   const { currentUser, leaves, employees, updateLeaveStatus } = useHR();
   const { darkMode, toggleDarkMode, tickets, events, leads, notices, computedBirthdays } = useCRM();
   const { tasks, projects } = useWork();
@@ -521,15 +521,23 @@ export const TopNavbar = () => {
           )}
 
           {/* Daily Work Timer Pill */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: isClockedIn ? '#f0fdf4' : '#fef2f2',
-            border: isClockedIn ? '1px solid #bbf7d0' : '1px solid #fecaca',
-            borderRadius: '10px',
-            padding: '5px 12px'
-          }}>
+          <div
+            onClick={() => navigate('/timesheet')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: isClockedIn ? '#f0fdf4' : '#fef2f2',
+              border: isClockedIn ? '1px solid #bbf7d0' : '1px solid #fecaca',
+              borderRadius: '10px',
+              padding: '5px 12px',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title={isClockedIn ? `Clocked in at ${loginTime}. Total productive time: ${timeString}. Click to view Timesheet & Time Logs.` : 'Clocked out. Click to open Timesheet.'}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+          >
             {/* Status Dot */}
             <span style={{
               width: '8px',
@@ -550,7 +558,6 @@ export const TopNavbar = () => {
                 letterSpacing: '0.04em',
                 minWidth: '58px'
               }}
-              title={isClockedIn ? `Clocked in at ${loginTime}. Total productive time.` : 'Clocked out'}
             >
               {timeString}
             </span>
@@ -559,7 +566,10 @@ export const TopNavbar = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               {isClockedIn && (
                 <button
-                  onClick={togglePauseResume}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePauseResume();
+                  }}
                   title={isRunning ? 'Pause Work Timer' : 'Resume Work Timer'}
                   style={{
                     width: '26px',
@@ -587,7 +597,10 @@ export const TopNavbar = () => {
 
               {/* Clock In / Out */}
               <button
-                onClick={handleClockOut}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClockOut();
+                }}
                 title={isClockedIn ? 'Clock Out for Today' : 'Clock In for Today'}
                 style={{
                   width: '26px',

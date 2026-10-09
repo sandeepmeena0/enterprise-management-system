@@ -37,9 +37,9 @@ export const Sidebar = () => {
   // Helper to determine active section from route
   const getSectionForPath = (pathname) => {
     if (['/leads', '/lead-contact'].some(path => pathname.startsWith(path))) return 'leads';
-    if (['/projects', '/tasks', '/timesheet', '/work'].some(path => pathname.startsWith(path))) return 'work';
-    if (['/leaves', '/attendance', '/holiday', '/documents', '/appreciation'].some(path => pathname.startsWith(path))) return 'hr';
-    if (['/payroll', '/finance', '/expenses'].some(path => pathname.startsWith(path))) return 'finance';
+    if (['/projects', '/tasks', '/timesheet', '/timesheets', '/timer', '/timelog', '/timelogs', '/work-timer', '/time-tracker', '/time', '/work'].some(path => pathname.startsWith(path))) return 'work';
+    if (['/leaves', '/attendance', '/attendance-clock', '/clock', '/break', '/breaks', '/holiday', '/holidays', '/documents', '/documentation', '/appreciation', '/appreciations'].some(path => pathname.startsWith(path))) return 'hr';
+    if (['/payroll', '/payslips', '/finance', '/expenses'].some(path => pathname.startsWith(path))) return 'finance';
     return null;
   };
 
@@ -67,15 +67,15 @@ export const Sidebar = () => {
     location.pathname.startsWith(path)
   );
 
-  const isHrActive = ['/leaves', '/attendance', '/holiday', '/documents', '/appreciation'].some(path =>
+  const isHrActive = ['/leaves', '/attendance', '/attendance-clock', '/clock', '/break', '/breaks', '/holiday', '/holidays', '/documents', '/documentation', '/appreciation', '/appreciations'].some(path =>
     location.pathname.startsWith(path)
   );
 
-  const isWorkActive = ['/projects', '/tasks', '/timesheet', '/work'].some(path =>
+  const isWorkActive = ['/projects', '/tasks', '/timesheet', '/timesheets', '/timer', '/timelog', '/timelogs', '/work-timer', '/time-tracker', '/time', '/work'].some(path =>
     location.pathname.startsWith(path)
   );
 
-  const isFinanceActive = ['/payroll', '/finance', '/expenses'].some(path =>
+  const isFinanceActive = ['/payroll', '/payslips', '/finance', '/expenses'].some(path =>
     location.pathname.startsWith(path)
   );
 
