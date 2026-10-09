@@ -30,6 +30,7 @@ import { NoticeBoardPage } from './modules/crm/pages/NoticeBoardPage';
 import { LeadsPage } from './modules/crm/pages/LeadsPage';
 import { MessagesPage } from './modules/crm/pages/MessagesPage';
 import { ExpensesPage } from './modules/finance/pages/ExpensesPage';
+import { SettingsPage } from './modules/settings/pages/SettingsPage';
 
 /**
  * ModulePlaceholder — Shown for future modules
@@ -100,7 +101,10 @@ export function App() {
                     <Route path="notices"      element={<NoticeBoardPage />} />
 
                     {/* ── Settings ────────────────────────────────────────── */}
-                    <Route path="settings"     element={<ModulePlaceholder title="System Settings" />} />
+                    <Route path="settings"                 element={<SettingsPage />} />
+                    <Route path="profile-settings"         element={<SettingsPage />} />
+                    <Route path="security-settings"        element={<SettingsPage />} />
+                    <Route path="account/settings/*"       element={<SettingsPage />} />
 
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Route>

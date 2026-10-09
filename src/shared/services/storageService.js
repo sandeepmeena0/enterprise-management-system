@@ -28,7 +28,9 @@ import {
   INITIAL_WEEKLY_TIMELOGS,
   INITIAL_LEADS,
   INITIAL_EXPENSES,
-  INITIAL_CONVERSATIONS
+  INITIAL_CONVERSATIONS,
+  INITIAL_EMERGENCY_CONTACTS,
+  INITIAL_STICKY_NOTES
 } from '../mock/initialData';
 
 const KEYS = {
@@ -49,6 +51,9 @@ const KEYS = {
   LEADS: 'ems_leads',
   EXPENSES: 'ems_expenses',
   CONVERSATIONS: 'ems_conversations',
+  EMERGENCY_CONTACTS: 'ems_emergency_contacts',
+  STICKY_NOTES: 'ems_sticky_notes',
+  USER_SETTINGS: 'ems_user_settings',
   WORK_TIMER: 'hrms_work_timer',
   SETTINGS: 'hrms_settings'
 };
@@ -125,6 +130,12 @@ export const initStorage = () => {
   }
   if (!localStorage.getItem(KEYS.CONVERSATIONS)) {
     localStorage.setItem(KEYS.CONVERSATIONS, JSON.stringify(INITIAL_CONVERSATIONS));
+  }
+  if (!localStorage.getItem(KEYS.EMERGENCY_CONTACTS)) {
+    localStorage.setItem(KEYS.EMERGENCY_CONTACTS, JSON.stringify(INITIAL_EMERGENCY_CONTACTS));
+  }
+  if (!localStorage.getItem(KEYS.STICKY_NOTES)) {
+    localStorage.setItem(KEYS.STICKY_NOTES, JSON.stringify(INITIAL_STICKY_NOTES));
   }
 };
 

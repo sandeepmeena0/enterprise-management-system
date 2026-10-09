@@ -49,6 +49,7 @@ import { useHR } from '../context/HRContext';
 import { useWork } from '../../work/context/WorkContext';
 import { useTimer } from '../../../shared/context/TimerContext';
 import { useCRM } from '../../../shared/context/CRMContext';
+import { useToast } from '../../../shared/context/ToastContext';
 
 // Modals
 import { BreakModal } from '../../../shared/components/modals/BreakModal';
@@ -60,9 +61,12 @@ import { TaskDetailModal } from '../../work/components/tasks/TaskDetailModal';
 import { ProjectDetailModal } from '../../work/components/projects/ProjectDetailModal';
 import { AddTaskModal } from '../../work/components/tasks/AddTaskModal';
 import { NewLeaveModal } from '../components/leaves/NewLeaveModal';
+import { TicketDetailModal } from '../../crm/components/tickets/TicketDetailModal';
+import { EmployeeDirectoryModal } from '../components/employees/EmployeeDirectoryModal';
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const { employees, leaves, attendance, holidays, appreciations, currentUser } = useHR();
   const { projects, tasks, startTaskTimer, pauseTaskTimer, stopTaskTimer, activeRunningTask, changeTaskStatus } = useWork();
   const { tickets, notices, events, birthdays, wfhEmployees, weeklyTimeLogs } = useCRM();
@@ -92,10 +96,12 @@ export const DashboardPage = () => {
   const [isRaiseTicketOpen, setIsRaiseTicketOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isApplyLeaveOpen, setIsApplyLeaveOpen] = useState(false);
+  const [isEmpDirectoryOpen, setIsEmpDirectoryOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState(null);
   const [selectedDayLog, setSelectedDayLog] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [selectedTicket, setSelectedTicket] = useState(null);
   const [calendarView, setCalendarView] = useState('list'); // 'month' | 'week' | 'day' | 'list'
 
   useEffect(() => {
@@ -681,24 +687,32 @@ export const DashboardPage = () => {
             <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
               Tickets
             </h3>
-            <button
-              onClick={() => setIsRaiseTicketOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                backgroundColor: '#0284c7',
-                color: '#ffffff',
-                border: 'none',
-                padding: '5px 12px',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
-              <Plus size={13} /> Raise Ticket
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                onClick={() => setIsRaiseTicketOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: '#0284c7',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                <Plus size={13} /> Raise Ticket
+              </button>
+              <button
+                onClick={() => navigate('/tickets')}
+                style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer' }}
+              >
+                View All →
+              </button>
+            </div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
@@ -713,7 +727,14 @@ export const DashboardPage = () => {
               </thead>
               <tbody>
                 {(tickets || []).slice(0, 3).map(tkt => (
-                  <tr key={tkt?._id || Math.random()} style={{ borderBottom: '1px solid #f8fafc' }}>
+                  <tr
+                    key={tkt?._id || Math.random()}
+                    onClick={() => setSelectedTicket(tkt)}
+                    style={{ borderBottom: '1px solid #f8fafc', cursor: 'pointer', transition: 'background 0.15s ease' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    title="Click to view full discussion & reply"
+                  >
                     <td style={{ padding: '12px 6px', color: '#0284c7', fontWeight: '600' }}>
                       {tkt?.ticketCode}
                     </td>
@@ -762,14 +783,23 @@ export const DashboardPage = () => {
           gap: '14px',
           boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
         }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
-            Birthdays
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+              Birthdays
+            </h3>
+            <button
+              onClick={() => navigate('/calendar')}
+              style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer' }}
+            >
+              View All →
+            </button>
+          </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {(birthdays || []).map(bday => (
               <div
                 key={bday?._id || Math.random()}
+                onClick={() => addToast(`🎉 Birthday wishes sent to ${bday?.name || 'Colleague'}!`, 'success')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -777,8 +807,13 @@ export const DashboardPage = () => {
                   padding: '10px 12px',
                   backgroundColor: '#f8fafc',
                   borderRadius: '10px',
-                  border: '1px solid #e2e8f0'
+                  border: '1px solid #e2e8f0',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
                 }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fffbeb'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                title="Click to send birthday greetings"
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <img
@@ -832,6 +867,7 @@ export const DashboardPage = () => {
             {(appreciations || []).slice(0, 2).map(app => (
               <div
                 key={app?._id || Math.random()}
+                onClick={() => navigate('/appreciation')}
                 style={{
                   padding: '12px',
                   backgroundColor: '#f8fafc',
@@ -839,7 +875,8 @@ export const DashboardPage = () => {
                   border: '1px solid #e2e8f0',
                   display: 'flex',
                   alignItems: 'flex-start',
-                  gap: '10px'
+                  gap: '10px',
+                  cursor: 'pointer'
                 }}
               >
                 <div style={{
@@ -886,21 +923,21 @@ export const DashboardPage = () => {
             
             {/* Calendar Controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer' }}>
-                <ChevronLeft size={13} />
+              <button
+                onClick={() => navigate('/calendar')}
+                style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Full View →
               </button>
-              <button style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '3px 6px', cursor: 'pointer' }}>
-                <ChevronRight size={13} />
-              </button>
-              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600' }}>Sep 21 – 27, 2026</span>
             </div>
           </div>
 
           {/* Calendar Event Banners */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {(events || []).map(ev => (
+            {(events || []).slice(0, 4).map(ev => (
               <div
                 key={ev?._id || Math.random()}
+                onClick={() => navigate('/calendar')}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -908,14 +945,19 @@ export const DashboardPage = () => {
                   padding: '8px 12px',
                   backgroundColor: ev?.bgColor || '#eff6ff',
                   borderRadius: '6px',
-                  borderLeft: `4px solid ${ev?.color || '#2563eb'}`
+                  borderLeft: `4px solid ${ev?.color || '#2563eb'}`,
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s ease'
                 }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'translateX(4px)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'translateX(0)'}
+                title="Click to open calendar"
               >
                 <span style={{ fontSize: '11.5px', fontWeight: '700', color: ev?.color || '#2563eb', fontFamily: 'monospace' }}>
-                  {ev?.time}
+                  {ev?.time || ev?.startTime || 'All Day'}
                 </span>
                 <span style={{ fontSize: '12.5px', fontWeight: '600', color: '#0f172a' }}>
-                  {ev?.title}
+                  {ev?.title || ev?.eventName || 'Company Event'}
                 </span>
               </div>
             ))}
@@ -994,9 +1036,17 @@ export const DashboardPage = () => {
           flexDirection: 'column',
           gap: '12px'
         }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
-            Today's Joinings & Work Anniversary
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+              Today's Joinings & Work Anniversary
+            </h3>
+            <button
+              onClick={() => setIsEmpDirectoryOpen(true)}
+              style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+            >
+              Directory →
+            </button>
+          </div>
           <div style={{ textAlign: 'center', padding: '24px 0', color: '#94a3b8' }}>
             <Cake size={28} style={{ margin: '0 auto 6px' }} />
             <div style={{ fontSize: '13px' }}>- No record found. -</div>
@@ -1077,6 +1127,12 @@ export const DashboardPage = () => {
               Official HR notices, policy updates, and team announcements
             </p>
           </div>
+          <button
+            onClick={() => navigate('/notice-board')}
+            style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+          >
+            All Notices →
+          </button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
@@ -1152,6 +1208,17 @@ export const DashboardPage = () => {
       <RaiseTicketModal
         isOpen={isRaiseTicketOpen}
         onClose={() => setIsRaiseTicketOpen(false)}
+      />
+
+      <TicketDetailModal
+        ticket={selectedTicket}
+        isOpen={!!selectedTicket}
+        onClose={() => setSelectedTicket(null)}
+      />
+
+      <EmployeeDirectoryModal
+        isOpen={isEmpDirectoryOpen}
+        onClose={() => setIsEmpDirectoryOpen(false)}
       />
 
       <NoticeDetailModal

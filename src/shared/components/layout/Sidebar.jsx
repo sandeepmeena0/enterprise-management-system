@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users2,
@@ -29,6 +29,7 @@ import { EmployeeDirectoryModal } from '../../../modules/hr/components/employees
 
 export const Sidebar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { currentUser } = useHR();
   const [collapsed, setCollapsed] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(true); // Open Leads by default
@@ -79,7 +80,11 @@ export const Sidebar = () => {
         minHeight: '70px'
       }}>
         {!collapsed ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden' }}>
+          <div
+            onClick={() => navigate('/settings')}
+            style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden', cursor: 'pointer' }}
+            title="Click to open Profile Settings"
+          >
             {currentUser?.avatar ? (
               <img
                 src={currentUser.avatar}
@@ -622,20 +627,25 @@ export const Sidebar = () => {
           {!collapsed && <span>Notice Board</span>}
         </NavLink>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <Settings size={18} />
+        <NavLink
+          to="/settings"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            color: isActive ? '#ffffff' : '#94a3b8',
+            backgroundColor: isActive ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+            textDecoration: 'none',
+            fontSize: '13.5px',
+            fontWeight: isActive ? '600' : '500',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Settings size={18} color={location.pathname === '/settings' ? '#60a5fa' : '#94a3b8'} />
           {!collapsed && <span>Settings</span>}
-        </div>
+        </NavLink>
       </div>
 
       {/* Sidebar Footer & Collapse Toggle */}

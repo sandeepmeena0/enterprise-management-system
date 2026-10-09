@@ -56,41 +56,41 @@ export const CalendarPage = () => {
   // =========================================================================
   const allEvents = useMemo(() => {
     // 1. Base User & Company Events
-    const baseEvents = events.map(e => ({
-      _id: e._id,
-      title: e.eventName || e.title,
-      date: e.startDate || e.date,
-      endDate: e.endDate || e.startDate || e.date,
+    const baseEvents = (events || []).map(e => ({
+      _id: e._id || `ev_${Math.random()}`,
+      title: e.eventName || e.title || 'Company Event',
+      date: e.startDate || e.date || new Date().toISOString().split('T')[0],
+      endDate: e.endDate || e.startDate || e.date || new Date().toISOString().split('T')[0],
       time: e.startTime || e.time || 'All Day',
       type: e.eventType || e.type || 'Company Event',
-      location: e.location || 'Company Wide',
-      description: e.description,
-      isRecurring: e.isRecurring,
+      location: e.location || 'Headquarters / Main Office',
+      description: e.description || 'Company scheduled event and meeting.',
+      isRecurring: !!e.isRecurring,
       color: e.color || '#2563eb',
       bgColor: e.bgColor || '#eff6ff'
     }));
 
     // 2. Dynamic Automatic Birthdays calculated from Employee Profiles (DOB)
-    const dynamicBirthdayEvents = computedBirthdays.map(b => ({
-      _id: `bday_cal_${b.employeeId}`,
-      title: `🎂 Birthday: ${b.name}`,
-      date: b.eventDate, // e.g. 2026-10-15
-      endDate: b.eventDate,
+    const dynamicBirthdayEvents = (computedBirthdays || []).map(b => ({
+      _id: `bday_cal_${b.employeeId || Math.random()}`,
+      title: `🎂 Birthday: ${b.name || 'Team Member'}`,
+      date: b.eventDate || new Date().toISOString().split('T')[0],
+      endDate: b.eventDate || new Date().toISOString().split('T')[0],
       time: 'All Day',
       type: 'Birthday',
       location: 'Company Wide Celebration',
-      description: `${b.name} (${b.role}) celebrates their birthday! Don't forget to wish them! 🎂🎉`,
+      description: `${b.name || 'Team Member'} (${b.role || 'Colleague'}) celebrates their birthday! 🎂🎉`,
       isRecurring: true,
       color: '#d97706',
       bgColor: '#fef3c7'
     }));
 
     // 3. Official Public Holidays
-    const holidayEvents = holidays.map(h => ({
-      _id: `hol_cal_${h._id}`,
-      title: `🏖️ ${h.holidayName}`,
-      date: h.date,
-      endDate: h.date,
+    const holidayEvents = (holidays || []).map(h => ({
+      _id: `hol_cal_${h._id || Math.random()}`,
+      title: `🏖️ ${h.holidayName || 'Public Holiday'}`,
+      date: h.date || new Date().toISOString().split('T')[0],
+      endDate: h.date || new Date().toISOString().split('T')[0],
       time: 'All Day',
       type: 'Holiday',
       location: 'All Offices Closed',
@@ -100,9 +100,9 @@ export const CalendarPage = () => {
     }));
 
     // 4. Tasks Due Dates
-    const taskEvents = tasks.filter(t => t.dueDate).map(t => ({
-      _id: `tsk_cal_${t._id}`,
-      title: `📌 Due: ${t.title}`,
+    const taskEvents = (tasks || []).filter(t => t?.dueDate).map(t => ({
+      _id: `tsk_cal_${t._id || Math.random()}`,
+      title: `📌 Due: ${t.title || 'Assigned Task'}`,
       date: t.dueDate,
       endDate: t.dueDate,
       time: '06:00 PM',
@@ -541,6 +541,125 @@ export const CalendarPage = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Week View */}
+        {currentView === 'week' && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            borderLeft: '1px solid #f1f5f9',
+            borderTop: '1px solid #f1f5f9',
+            marginTop: '12px'
+          }}>
+            {calendarDays.slice(0, 7).map((day, idx) => (
+              <div
+                key={idx}
+                style={{
+                  minHeight: '260px',
+                  borderRight: '1px solid #f1f5f9',
+                  borderBottom: '1px solid #f1f5f9',
+                  padding: '10px',
+                  backgroundColor: '#ffffff'
+                }}
+              >
+                <div style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a', marginBottom: '8px' }}>
+                  {DAYS_OF_WEEK[idx]} ({day.dateStr})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {day.events.map(ev => (
+                    <div
+                      key={ev._id}
+                      onClick={() => setSelectedEvent(ev)}
+                      style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        backgroundColor: ev.bgColor,
+                        color: ev.color,
+                        borderLeft: `3px solid ${ev.color}`,
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                    >
+                      <div>{ev.title}</div>
+                      <div style={{ fontSize: '10.5px', opacity: 0.8, marginTop: '2px' }}>{ev.time}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Day View */}
+        {currentView === 'day' && (
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{
+              padding: '14px 18px',
+              backgroundColor: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              fontWeight: '700',
+              fontSize: '14px',
+              color: '#0f172a'
+            }}>
+              Events for {currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            </div>
+            {filteredEvents.filter(e => e.date === currentDate.toISOString().split('T')[0] || e.isRecurring).length > 0 ? (
+              filteredEvents.filter(e => e.date === currentDate.toISOString().split('T')[0] || e.isRecurring).map(ev => (
+                <div
+                  key={ev._id}
+                  onClick={() => setSelectedEvent(ev)}
+                  style={{
+                    padding: '16px',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: ev.bgColor,
+                      color: ev.color,
+                      fontWeight: '800',
+                      fontSize: '13px'
+                    }}>
+                      {ev.time}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>{ev.title}</div>
+                      <div style={{ fontSize: '12.5px', color: '#64748b', marginTop: '2px' }}>
+                        {ev.type} • {ev.location}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    backgroundColor: ev.bgColor,
+                    color: ev.color
+                  }}>
+                    {ev.type}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
+                <CalendarIcon size={32} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                <div style={{ fontSize: '13.5px' }}>No events scheduled for this day</div>
+              </div>
+            )}
           </div>
         )}
 

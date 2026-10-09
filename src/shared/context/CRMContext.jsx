@@ -15,16 +15,61 @@ export const CRMProvider = ({ children }) => {
   const { addToast } = useToast();
   const { currentUser, updateEmployee, employees } = useHR();
 
+  // Helper to normalize event objects so undefined values never leak to UI
+  const normalizeEvent = (e) => ({
+    _id: e._id || `ev_${Math.random()}`,
+    eventName: e.eventName || e.title || 'Company Event',
+    title: e.title || e.eventName || 'Company Event',
+    eventType: e.eventType || e.type || 'Company Event',
+    type: e.type || e.eventType || 'Company Event',
+    startDate: e.startDate || e.date || new Date().toISOString().split('T')[0],
+    date: e.date || e.startDate || new Date().toISOString().split('T')[0],
+    endDate: e.endDate || e.startDate || e.date || new Date().toISOString().split('T')[0],
+    startTime: e.startTime || e.time || '10:00 AM',
+    time: e.time || e.startTime || '10:00 AM',
+    location: e.location || 'Headquarters / Main Office',
+    description: e.description || '',
+    isRecurring: !!e.isRecurring,
+    color: e.color || '#2563eb',
+    bgColor: e.bgColor || '#eff6ff',
+    ...e
+  });
+
   // Core Storage States
   const [expenses, setExpenses] = useState(() => getCollection(KEYS.EXPENSES));
   const [tickets, setTickets] = useState(() => getCollection(KEYS.TICKETS));
   const [notices, setNotices] = useState(() => getCollection(KEYS.NOTICES));
-  const [events, setEvents] = useState(() => getCollection(KEYS.EVENTS));
+  const [events, setEvents] = useState(() => (getCollection(KEYS.EVENTS) || []).map(normalizeEvent));
   const [conversations, setConversations] = useState(() => getCollection(KEYS.CONVERSATIONS));
   const [activeConversationId, setActiveConversationId] = useState('conv_1');
   const [wfhEmployees, setWfhEmployees] = useState(() => getCollection(KEYS.WFH));
   const [weeklyTimeLogs, setWeeklyTimeLogs] = useState(() => getCollection(KEYS.WEEKLY_TIMELOGS));
   const [leads, setLeads] = useState(() => getCollection(KEYS.LEADS));
+  const [emergencyContacts, setEmergencyContacts] = useState(() => getCollection(KEYS.EMERGENCY_CONTACTS));
+  const [stickyNotes, setStickyNotes] = useState(() => getCollection(KEYS.STICKY_NOTES));
+  const [userSettings, setUserSettings] = useState(() => {
+    const saved = localStorage.getItem(KEYS.USER_SETTINGS);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return {
+      salutation: 'Mr.',
+      emailNotifications: 'enable',
+      googleCalendar: 'yes',
+      country: 'Afghanistan',
+      countryCode: '+93',
+      mobile: '9876543210',
+      language: 'English',
+      gender: 'Male',
+      dob: '1998-10-15',
+      slackId: '@avinash',
+      maritalStatus: 'Single',
+      address: '132, My Street, Kingston, New York 12401',
+      about: 'Passionate product & growth lead optimizing CRM and enterprise systems.',
+      twoFactorEmail: false,
+      twoFactorAuth: false
+    };
+  });
 
   const [leadsFilter, setLeadsFilter] = useState({
     search: '',
@@ -63,16 +108,18 @@ export const CRMProvider = ({ children }) => {
     setExpenses(getCollection(KEYS.EXPENSES));
     setTickets(getCollection(KEYS.TICKETS));
     setNotices(getCollection(KEYS.NOTICES));
-    setEvents(getCollection(KEYS.EVENTS));
+    setEvents((getCollection(KEYS.EVENTS) || []).map(normalizeEvent));
     setConversations(getCollection(KEYS.CONVERSATIONS));
     setWfhEmployees(getCollection(KEYS.WFH));
     setWeeklyTimeLogs(getCollection(KEYS.WEEKLY_TIMELOGS));
     setLeads(getCollection(KEYS.LEADS));
+    setEmergencyContacts(getCollection(KEYS.EMERGENCY_CONTACTS));
+    setStickyNotes(getCollection(KEYS.STICKY_NOTES));
   };
 
   useEffect(() => {
     const handleStorageUpdate = (e) => {
-      if (['ems_expenses', 'ems_tickets', 'ems_notices', 'ems_events', 'ems_conversations', 'ems_wfh', 'ems_leads'].includes(e.detail?.key)) {
+      if (['ems_expenses', 'ems_tickets', 'ems_notices', 'ems_events', 'ems_conversations', 'ems_wfh', 'ems_leads', 'ems_emergency_contacts', 'ems_sticky_notes'].includes(e.detail?.key)) {
         syncWithStorage();
       }
     };
@@ -764,6 +811,125 @@ export const CRMProvider = ({ children }) => {
     return formattedList;
   };
 
+  // =========================================================================
+  // 🚑 EMERGENCY CONTACTS
+  // =========================================================================
+  const addEmergencyContact = async (contactData) => {
+    const currentList = getCollection(KEYS.EMERGENCY_CONTACTS);
+    const newContact = {
+      _id: `emg_${Date.now()}`,
+      name: contactData.name || '',
+      email: contactData.email || '',
+      mobile: contactData.mobile || '',
+      alternateNumber: contactData.alternateNumber || '',
+      relationship: contactData.relationship || 'Family',
+      address: contactData.address || '',
+      employeeId: currentUser?._id || 'emp_001',
+      createdAt: new Date().toISOString()
+    };
+    currentList.push(newContact);
+    saveCollection(KEYS.EMERGENCY_CONTACTS, currentList);
+    setEmergencyContacts([...currentList]);
+    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMERGENCY_CONTACTS } }));
+    addToast('Emergency contact added successfully!', 'success');
+    return newContact;
+  };
+
+  const updateEmergencyContact = async (contactId, updateData) => {
+    const currentList = getCollection(KEYS.EMERGENCY_CONTACTS);
+    const idx = currentList.findIndex(c => c._id === contactId);
+    if (idx !== -1) {
+      currentList[idx] = { ...currentList[idx], ...updateData, updatedAt: new Date().toISOString() };
+      saveCollection(KEYS.EMERGENCY_CONTACTS, currentList);
+      setEmergencyContacts([...currentList]);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMERGENCY_CONTACTS } }));
+      addToast('Emergency contact updated!', 'success');
+    }
+  };
+
+  const deleteEmergencyContact = async (contactId) => {
+    const currentList = getCollection(KEYS.EMERGENCY_CONTACTS);
+    const filtered = currentList.filter(c => c._id !== contactId);
+    saveCollection(KEYS.EMERGENCY_CONTACTS, filtered);
+    setEmergencyContacts(filtered);
+    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMERGENCY_CONTACTS } }));
+    addToast('Emergency contact removed', 'info');
+  };
+
+  // =========================================================================
+  // 📝 STICKY NOTES
+  // =========================================================================
+  const createStickyNote = async (noteData) => {
+    const currentList = getCollection(KEYS.STICKY_NOTES);
+    const newNote = {
+      _id: `note_${Date.now()}`,
+      title: noteData.title || 'Untitled Note',
+      content: noteData.content || '',
+      color: noteData.color || '#fef08a',
+      isPinned: !!noteData.isPinned,
+      isCompleted: false,
+      createdAt: new Date().toISOString()
+    };
+    currentList.unshift(newNote);
+    saveCollection(KEYS.STICKY_NOTES, currentList);
+    setStickyNotes([...currentList]);
+    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.STICKY_NOTES } }));
+    addToast('Sticky note created!', 'success');
+    return newNote;
+  };
+
+  const updateStickyNote = async (noteId, updateData) => {
+    const currentList = getCollection(KEYS.STICKY_NOTES);
+    const idx = currentList.findIndex(n => n._id === noteId);
+    if (idx !== -1) {
+      currentList[idx] = { ...currentList[idx], ...updateData, updatedAt: new Date().toISOString() };
+      saveCollection(KEYS.STICKY_NOTES, currentList);
+      setStickyNotes([...currentList]);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.STICKY_NOTES } }));
+    }
+  };
+
+  const deleteStickyNote = async (noteId) => {
+    const currentList = getCollection(KEYS.STICKY_NOTES);
+    const filtered = currentList.filter(n => n._id !== noteId);
+    saveCollection(KEYS.STICKY_NOTES, filtered);
+    setStickyNotes(filtered);
+    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.STICKY_NOTES } }));
+    addToast('Note deleted', 'info');
+  };
+
+  const togglePinStickyNote = async (noteId) => {
+    const currentList = getCollection(KEYS.STICKY_NOTES);
+    const idx = currentList.findIndex(n => n._id === noteId);
+    if (idx !== -1) {
+      currentList[idx].isPinned = !currentList[idx].isPinned;
+      saveCollection(KEYS.STICKY_NOTES, currentList);
+      setStickyNotes([...currentList]);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.STICKY_NOTES } }));
+    }
+  };
+
+  const toggleCompleteStickyNote = async (noteId) => {
+    const currentList = getCollection(KEYS.STICKY_NOTES);
+    const idx = currentList.findIndex(n => n._id === noteId);
+    if (idx !== -1) {
+      currentList[idx].isCompleted = !currentList[idx].isCompleted;
+      saveCollection(KEYS.STICKY_NOTES, currentList);
+      setStickyNotes([...currentList]);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.STICKY_NOTES } }));
+    }
+  };
+
+  // =========================================================================
+  // ⚙️ USER SETTINGS
+  // =========================================================================
+  const updateUserSettings = async (newSettings) => {
+    const merged = { ...userSettings, ...newSettings };
+    setUserSettings(merged);
+    localStorage.setItem(KEYS.USER_SETTINGS, JSON.stringify(merged));
+    addToast('Settings saved successfully!', 'success');
+  };
+
   return (
     <CRMContext.Provider value={{
       expenses,
@@ -807,6 +973,21 @@ export const CRMProvider = ({ children }) => {
       updateLeadStatus,
       deleteLead,
       importLeadsBatch,
+
+      emergencyContacts,
+      addEmergencyContact,
+      updateEmergencyContact,
+      deleteEmergencyContact,
+
+      stickyNotes,
+      createStickyNote,
+      updateStickyNote,
+      deleteStickyNote,
+      togglePinStickyNote,
+      toggleCompleteStickyNote,
+
+      userSettings,
+      updateUserSettings,
 
       wfhEmployees,
       weeklyTimeLogs,

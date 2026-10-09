@@ -1584,4 +1584,57 @@ export const INITIAL_LEADS = [
   }
 ];
 
+export const INITIAL_EMERGENCY_CONTACTS = [
+  {
+    _id: 'emg_001',
+    name: 'Sunita Sharma',
+    email: 'sunita.sharma@gmail.com',
+    mobile: '+91 98765 43211',
+    alternateNumber: '+91 98765 00000',
+    relationship: 'Mother',
+    address: 'B-402, Green Valley Apartments, Mumbai, India',
+    employeeId: 'emp_001'
+  },
+  {
+    _id: 'emg_002',
+    name: 'Rajesh Sharma',
+    email: 'rajesh.sharma@yahoo.com',
+    mobile: '+91 98765 43212',
+    alternateNumber: '+91 98765 11111',
+    relationship: 'Father',
+    address: 'B-402, Green Valley Apartments, Mumbai, India',
+    employeeId: 'emp_001'
+  }
+];
+
+export const INITIAL_STICKY_NOTES = [
+  {
+    _id: 'note_001',
+    title: 'Q4 Product Roadmap Discussion',
+    content: 'Review the sprint deliverables with the UI/UX team and finalize the lead management filters by Thursday.',
+    color: '#fef08a',
+    isPinned: true,
+    isCompleted: false,
+    createdAt: '2026-09-25T10:00:00.000Z'
+  },
+  {
+    _id: 'note_002',
+    title: 'Client Demo Checklist',
+    content: '1. Prepare presentation slides\n2. Verify lead pipeline analytics\n3. Export expense report for CFO',
+    color: '#bfdbfe',
+    isPinned: false,
+    isCompleted: false,
+    createdAt: '2026-09-25T11:30:00.000Z'
+  },
+  {
+    _id: 'note_003',
+    title: 'Call HR Regarding Diwali Event',
+    content: 'Confirm lunch catering options and finalize gift distribution schedule for all office teams.',
+    color: '#bbf7d0',
+    isPinned: false,
+    isCompleted: true,
+    createdAt: '2026-09-24T15:20:00.000Z'
+  }
+];
+
 

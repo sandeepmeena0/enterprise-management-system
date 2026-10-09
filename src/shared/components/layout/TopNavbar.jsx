@@ -23,10 +23,12 @@ import {
   Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Users, Edit3, Moon, Sun, Coffee, ListTodo, FolderGit2, Ticket, Palmtree, Check } from 'lucide-react';
+import { UserPlus, Users, Users2, Edit3, Moon, Sun, Coffee, ListTodo, FolderGit2, Ticket, Palmtree, Check, StickyNote, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { useTimer } from '../../context/TimerContext';
 import { useHR } from '../../../modules/hr/context/HRContext';
 import { useCRM } from '../../context/CRMContext';
+import { useWork } from '../../../modules/work/context/WorkContext';
+import { useToast } from '../../context/ToastContext';
 import { AddEmployeeModal } from '../../../modules/hr/components/employees/AddEmployeeModal';
 import { EmployeeDirectoryModal } from '../../../modules/hr/components/employees/EmployeeDirectoryModal';
 import { EditProfileModal } from '../modals/EditProfileModal';
@@ -36,22 +38,44 @@ import { AddProjectModal } from '../../../modules/work/components/projects/AddPr
 import { RaiseTicketModal } from '../modals/RaiseTicketModal';
 import { NewLeaveModal } from '../../../modules/hr/components/leaves/NewLeaveModal';
 import { AddLeadModal } from '../../../modules/crm/components/leads/AddLeadModal';
+import { AddEventModal } from '../modals/AddEventModal';
+import { StickyNotesModal } from '../modals/StickyNotesModal';
+import { ScreenRecorderModal } from '../modals/ScreenRecorderModal';
+import { DashboardOverviewModal } from '../modals/DashboardOverviewModal';
 
 export const TopNavbar = () => {
   const navigate = useNavigate();
-  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, togglePauseResume, handleClockOut } = useTimer();
+  const { addToast } = useToast();
+  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, togglePauseResume, handleClockOut, handleClockIn } = useTimer();
   const { currentUser, leaves, employees, updateLeaveStatus } = useHR();
-  const { darkMode, toggleDarkMode } = useCRM();
+  const { darkMode, toggleDarkMode, tickets, events, leads, notices, computedBirthdays } = useCRM();
+  const { tasks, projects } = useWork();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Real Screen Recording State
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordedVideoBlob, setRecordedVideoBlob] = useState(null);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState('');
+  const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
+
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isAddEmpOpen, setIsAddEmpOpen] = useState(false);
   const [isEmpDirectoryOpen, setIsEmpDirectoryOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
+  const [isStickyNotesOpen, setIsStickyNotesOpen] = useState(false);
+  const [isAddEventOpen, setIsAddEventOpen] = useState(false);
+  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
 
   // Quick Action Modals
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -63,6 +87,8 @@ export const TopNavbar = () => {
   const quickCreateRef = useRef(null);
   const notifRef = useRef(null);
   const profileRef = useRef(null);
+  const searchRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   const pendingLeavesCount = (leaves || []).filter(l => l?.status === 'pending').length;
   const totalNotifications = pendingLeavesCount + 1; // +1 for attendance notification
@@ -91,6 +117,108 @@ export const TopNavbar = () => {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
+  // Global shortcut Ctrl+K / Cmd+K to focus search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setSearchFocused(true);
+      }
+      if (e.key === 'Escape') {
+        setSearchFocused(false);
+        setShowNotifications(false);
+        setShowProfileMenu(false);
+        setShowQuickCreate(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // ── Real Screen Recording Handlers ──
+  const startScreenRecording = async () => {
+    try {
+      recordedChunksRef.current = [];
+      setRecordingSeconds(0);
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: true
+        });
+
+        mediaStreamRef.current = stream;
+
+        let mimeType = 'video/webm;codecs=vp9,opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+        }
+
+        const recorder = new MediaRecorder(stream, { mimeType });
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedChunksRef.current.push(e.data);
+          }
+        };
+
+        recorder.onstop = () => {
+          const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          setRecordedVideoBlob(blob);
+          setRecordedVideoUrl(url);
+          setIsRecorderModalOpen(true);
+          setIsRecording(false);
+          if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        stream.getVideoTracks()[0].onended = () => {
+          if (recorder.state !== 'inactive') {
+            recorder.stop();
+          }
+        };
+
+        recorder.start(1000);
+        setIsRecording(true);
+
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingSeconds(prev => prev + 1);
+        }, 1000);
+
+        addToast('🔴 Screen recording started. Recording active...', 'info');
+      } else {
+        // Fallback simulation for unsupported environments
+        setIsRecording(true);
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingSeconds(prev => prev + 1);
+        }, 1000);
+        addToast('🔴 Screen recording started (Simulated).', 'info');
+      }
+    } catch (err) {
+      console.warn('Screen recording cancelled or failed:', err);
+      if (err.name !== 'NotAllowedError') {
+        addToast('Screen recording permission was cancelled.', 'info');
+      }
+    }
+  };
+
+  const stopScreenRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    } else {
+      // Create fallback sample blob
+      const dummyBlob = new Blob(['EMS_DEMO_SCREEN_RECORDING'], { type: 'video/webm' });
+      setRecordedVideoBlob(dummyBlob);
+      setRecordedVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
+      setIsRecorderModalOpen(true);
+      setIsRecording(false);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    }
+  };
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -115,51 +243,204 @@ export const TopNavbar = () => {
       gap: '16px'
     }}>
 
-      {/* ───────── LEFT: Search Bar ───────── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        background: searchFocused ? '#ffffff' : '#f1f5f9',
-        borderRadius: '10px',
-        padding: '0 14px',
-        width: '300px',
-        height: '38px',
-        border: searchFocused ? '1.5px solid #2563eb' : '1.5px solid transparent',
-        boxShadow: searchFocused ? '0 0 0 3px rgba(37,99,235,0.1)' : 'none',
-        transition: 'all 0.2s ease',
-        flexShrink: 0
-      }}>
-        <Search size={15} color={searchFocused ? '#2563eb' : '#94a3b8'} />
-        <input
-          type="text"
-          placeholder="Search anything..."
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            outline: 'none',
-            fontSize: '13px',
-            color: '#1e293b',
-            width: '100%',
-            fontFamily: 'inherit'
-          }}
-        />
-        <kbd style={{
-          display: searchFocused ? 'none' : 'flex',
+      {/* ───────── LEFT: Search Bar with Live Global Search Dropdown ───────── */}
+      <div style={{ position: 'relative' }} ref={searchRef}>
+        <div style={{
+          display: 'flex',
           alignItems: 'center',
-          gap: '2px',
-          fontSize: '10px',
-          color: '#94a3b8',
-          background: '#e2e8f0',
-          borderRadius: '4px',
-          padding: '2px 5px',
-          fontFamily: 'JetBrains Mono, monospace',
-          whiteSpace: 'nowrap'
+          gap: '8px',
+          background: searchFocused ? '#ffffff' : '#f1f5f9',
+          borderRadius: '10px',
+          padding: '0 14px',
+          width: '300px',
+          height: '38px',
+          border: searchFocused ? '1.5px solid #2563eb' : '1.5px solid transparent',
+          boxShadow: searchFocused ? '0 0 0 3px rgba(37,99,235,0.1)' : 'none',
+          transition: 'all 0.2s ease',
+          flexShrink: 0
         }}>
-          Ctrl K
-        </kbd>
+          <Search size={15} color={searchFocused ? '#2563eb' : '#94a3b8'} />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search employees, tasks, leads..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              outline: 'none',
+              fontSize: '13px',
+              color: '#1e293b',
+              width: '100%',
+              fontFamily: 'inherit'
+            }}
+          />
+          {searchQuery ? (
+            <X
+              size={14}
+              color="#64748b"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSearchQuery('')}
+            />
+          ) : (
+            <kbd
+              onClick={() => {
+                searchInputRef.current?.focus();
+                setSearchFocused(true);
+              }}
+              style={{
+                display: searchFocused ? 'none' : 'flex',
+                alignItems: 'center',
+                gap: '2px',
+                fontSize: '10px',
+                color: '#94a3b8',
+                background: '#e2e8f0',
+                borderRadius: '4px',
+                padding: '2px 5px',
+                fontFamily: 'JetBrains Mono, monospace',
+                whiteSpace: 'nowrap',
+                cursor: 'pointer'
+              }}
+            >
+              Ctrl K
+            </kbd>
+          )}
+        </div>
+
+        {/* Live Search Results Floating Panel */}
+        {searchFocused && searchQuery.trim().length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: '44px',
+            left: 0,
+            width: '360px',
+            maxHeight: '380px',
+            overflowY: 'auto',
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+            zIndex: 300,
+            padding: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px'
+          }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', padding: '4px 8px', textTransform: 'uppercase' }}>
+              Search Results ({searchQuery})
+            </div>
+
+            {/* Matching Employees */}
+            {(employees || []).filter(e => (e.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (e.role || '').toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 2).map(e => (
+              <div
+                key={e._id}
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchFocused(false);
+                  navigate('/leaves');
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: '#f8fafc'
+                }}
+              >
+                <img src={e.avatar} alt={e.name} style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover' }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{e.name}</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>{e.role} • Employee</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Matching Tasks */}
+            {(tasks || []).filter(t => (t.title || '').toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 2).map(t => (
+              <div
+                key={t._id}
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchFocused(false);
+                  navigate('/tasks');
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: '#eff6ff'
+                }}
+              >
+                <ListTodo size={16} color="#2563eb" />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{t.title}</div>
+                  <div style={{ fontSize: '11px', color: '#2563eb' }}>Task #{t.taskCode || '001'} • {t.status}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Matching Leads */}
+            {(leads || []).filter(l => (l.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (l.companyName || '').toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 2).map(l => (
+              <div
+                key={l._id}
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchFocused(false);
+                  navigate('/leads');
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: '#f0fdf4'
+                }}
+              >
+                <Users2 size={16} color="#16a34a" />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{l.name}</div>
+                  <div style={{ fontSize: '11px', color: '#16a34a' }}>Lead • {l.companyName}</div>
+                </div>
+              </div>
+            ))}
+
+            {/* Matching Tickets */}
+            {(tickets || []).filter(t => (t.subject || '').toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 2).map(t => (
+              <div
+                key={t._id}
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchFocused(false);
+                  navigate('/tickets');
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: '#fef3c7'
+                }}
+              >
+                <Ticket size={16} color="#d97706" />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{t.subject}</div>
+                  <div style={{ fontSize: '11px', color: '#d97706' }}>Ticket #{t.ticketCode} • {t.status}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ───────── RIGHT: All Controls ───────── */}
@@ -376,6 +657,46 @@ export const TopNavbar = () => {
                 <span>Raise Ticket</span>
               </div>
 
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsAddEventOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <CalendarIcon size={16} color="#2563eb" />
+                <span>Create Event</span>
+              </div>
+
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsStickyNotesOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <StickyNote size={16} color="#eab308" />
+                <span>New Sticky Note</span>
+              </div>
+
               <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '4px 0' }} />
 
               <div
@@ -404,43 +725,88 @@ export const TopNavbar = () => {
         {/* ── Separator ── */}
         <div style={{ width: '1px', height: '28px', background: '#e2e8f0', margin: '0 4px' }} />
 
-        {/* ── Grid / Dashboard Quick View ── */}
+        {/* ── Sticky Notes Drawer Button ── */}
         <button
           className="navbar-icon-btn"
-          title="Dashboard Overview"
-          style={navBtnStyle}
-        >
-          <LayoutGrid size={18} color="#64748b" />
-        </button>
-
-        {/* ── Screen Recording Toggle ── */}
-        <button
-          className="navbar-icon-btn"
-          title={isRecording ? 'Stop Recording' : 'Start Screen Recording'}
-          onClick={() => setIsRecording(!isRecording)}
+          title="Sticky Notes"
+          onClick={() => setIsStickyNotesOpen(true)}
           style={{
             ...navBtnStyle,
-            background: isRecording ? '#fef2f2' : 'transparent',
-            border: isRecording ? '1px solid #fecaca' : '1px solid transparent'
+            backgroundColor: isStickyNotesOpen ? '#fef9c3' : 'transparent',
+            border: isStickyNotesOpen ? '1px solid #fde047' : '1px solid transparent'
           }}
         >
-          <div style={{ position: 'relative' }}>
-            <Video size={18} color={isRecording ? '#ef4444' : '#64748b'} />
-            {isRecording && (
-              <span style={{
-                position: 'absolute',
-                top: '-3px',
-                right: '-3px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#ef4444',
-                border: '1.5px solid #ffffff',
-                animation: 'pulseGlow 1.2s infinite'
-              }} />
-            )}
-          </div>
+          <StickyNote size={18} color="#eab308" />
         </button>
+
+        {/* ── Grid / Dashboard Overview HUD ── */}
+        <button
+          className="navbar-icon-btn"
+          title="Dashboard Overview & Switcher"
+          onClick={() => setIsOverviewOpen(true)}
+          style={{
+            ...navBtnStyle,
+            backgroundColor: isOverviewOpen ? '#eff6ff' : 'transparent',
+            border: isOverviewOpen ? '1px solid #bfdbfe' : '1px solid transparent'
+          }}
+        >
+          <LayoutGrid size={18} color={isOverviewOpen ? '#2563eb' : '#64748b'} />
+        </button>
+
+        {/* ── Screen Recording Toggle & Live Status ── */}
+        {isRecording ? (
+          <div
+            onClick={stopScreenRecording}
+            title="Click to Stop & Preview Recording"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '5px 12px',
+              borderRadius: '8px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(239, 68, 68, 0.2)'
+            }}
+          >
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#ef4444',
+              display: 'inline-block'
+            }} />
+            <span style={{
+              fontSize: '12.5px',
+              fontWeight: '700',
+              color: '#dc2626',
+              fontFamily: 'JetBrains Mono, monospace'
+            }}>
+              REC {Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+            </span>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: '700',
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              marginLeft: '2px'
+            }}>
+              Stop
+            </span>
+          </div>
+        ) : (
+          <button
+            className="navbar-icon-btn"
+            title="Start Screen Recording"
+            onClick={startScreenRecording}
+            style={navBtnStyle}
+          >
+            <Video size={18} color="#64748b" />
+          </button>
+        )}
 
         {/* ── Fullscreen Toggle ── */}
         <button
@@ -626,6 +992,7 @@ export const TopNavbar = () => {
                             onClick={async (e) => {
                               e.stopPropagation();
                               await updateLeaveStatus(leave._id, 'approved');
+                              addToast(`Leave approved for ${leave.employeeName}`, 'success');
                             }}
                             style={{
                               display: 'inline-flex',
@@ -650,6 +1017,7 @@ export const TopNavbar = () => {
                             onClick={async (e) => {
                               e.stopPropagation();
                               await updateLeaveStatus(leave._id, 'rejected');
+                              addToast(`Leave rejected for ${leave.employeeName}`, 'info');
                             }}
                             style={{
                               display: 'inline-flex',
@@ -687,6 +1055,10 @@ export const TopNavbar = () => {
                   cursor: 'pointer',
                   transition: 'background 0.15s'
                 }}
+                  onClick={() => {
+                    setShowNotifications(false);
+                    navigate('/attendance');
+                  }}
                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
@@ -749,6 +1121,7 @@ export const TopNavbar = () => {
         <button
           className="navbar-icon-btn"
           title="System Settings"
+          onClick={() => navigate('/settings')}
           style={navBtnStyle}
         >
           <Settings size={18} color="#64748b" />
@@ -961,12 +1334,31 @@ export const TopNavbar = () => {
                   <ProfileMenuItem icon={<User size={14} />} label="Edit Profile" />
                 </div>
 
+                <div
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    navigate('/settings');
+                  }}
+                >
+                  <ProfileMenuItem icon={<Settings size={14} />} label="Settings & Security" />
+                </div>
+
+                <div
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    setIsStickyNotesOpen(true);
+                  }}
+                >
+                  <ProfileMenuItem icon={<StickyNote size={14} color="#eab308" />} label="Sticky Notes" />
+                </div>
+
                 <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
 
                 <div
                   onClick={() => {
                     setShowProfileMenu(false);
                     handleClockOut();
+                    addToast('Clocked out and signed off successfully', 'info');
                   }}
                   style={{
                     display: 'flex',
@@ -984,7 +1376,7 @@ export const TopNavbar = () => {
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <Power size={14} />
-                  <span>Logout</span>
+                  <span>Clock Out & Logout</span>
                 </div>
               </div>
             </div>
@@ -1036,6 +1428,41 @@ export const TopNavbar = () => {
       <AddLeadModal
         isOpen={isAddLeadOpen}
         onClose={() => setIsAddLeadOpen(false)}
+      />
+
+      <AddEventModal
+        isOpen={isAddEventOpen}
+        onClose={() => setIsAddEventOpen(false)}
+      />
+
+      <StickyNotesModal
+        isOpen={isStickyNotesOpen}
+        onClose={() => setIsStickyNotesOpen(false)}
+      />
+
+      <ScreenRecorderModal
+        isOpen={isRecorderModalOpen}
+        videoBlob={recordedVideoBlob}
+        videoUrl={recordedVideoUrl}
+        durationSeconds={recordingSeconds}
+        onClose={() => setIsRecorderModalOpen(false)}
+        onDiscard={() => {
+          if (recordedVideoUrl && recordedVideoUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(recordedVideoUrl);
+          }
+          setRecordedVideoBlob(null);
+          setRecordedVideoUrl('');
+          setIsRecorderModalOpen(false);
+        }}
+        onStartNewRecording={() => {
+          setIsRecorderModalOpen(false);
+          startScreenRecording();
+        }}
+      />
+
+      <DashboardOverviewModal
+        isOpen={isOverviewOpen}
+        onClose={() => setIsOverviewOpen(false)}
       />
     </header>
   );
