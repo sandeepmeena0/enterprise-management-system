@@ -84,9 +84,23 @@ export const hrService = {
       body: JSON.stringify(employeeData)
     }, async () => {
       const employees = getCollection(KEYS.EMPLOYEES);
+
+      // Duplicate check in fallback
+      const codeToTest = (employeeData.employeeCode || '').trim().toLowerCase();
+      const existing = employees.find(e => (e.employeeCode || '').toLowerCase() === codeToTest || e._id === codeToTest);
+      if (existing) {
+        throw new Error(`Employee ID "${employeeData.employeeCode}" already exists for ${existing.name}`);
+      }
+
+      const emailToTest = (employeeData.email || '').trim().toLowerCase();
+      const existingEmail = employees.find(e => (e.email || '').toLowerCase() === emailToTest);
+      if (existingEmail) {
+        throw new Error(`Email "${employeeData.email}" is already registered with ${existingEmail.name}`);
+      }
+
       const newEmployee = {
         _id: `emp_${Date.now()}`,
-        employeeCode: employeeData.employeeCode || `EMP-${String(employees.length + 1).padStart(3, '0')}`,
+        employeeCode: (employeeData.employeeCode || `EMP-${String(employees.length + 1).padStart(3, '0')}`).toUpperCase(),
         name: employeeData.name,
         email: employeeData.email,
         avatar: employeeData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(employeeData.name)}`,
@@ -111,8 +125,17 @@ export const hrService = {
       body: JSON.stringify(updateData)
     }, async () => {
       const employees = getCollection(KEYS.EMPLOYEES);
-      const index = employees.findIndex(e => e._id === employeeId);
-      if (index === -1) throw new Error('Employee not found');
+      const index = employees.findIndex(e => e._id === employeeId || (e.isCurrentUser && updateData.isCurrentUser));
+      if (index === -1) {
+        // If updating current user specifically
+        const currIdx = employees.findIndex(e => e.isCurrentUser);
+        if (currIdx !== -1) {
+          employees[currIdx] = { ...employees[currIdx], ...updateData, updatedAt: new Date().toISOString() };
+          saveCollection(KEYS.EMPLOYEES, employees);
+          return employees[currIdx];
+        }
+        throw new Error('Employee not found');
+      }
 
       employees[index] = { ...employees[index], ...updateData, updatedAt: new Date().toISOString() };
       saveCollection(KEYS.EMPLOYEES, employees);

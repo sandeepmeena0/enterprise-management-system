@@ -46,7 +46,32 @@ const getEmployeeById = asyncHandler(async (req, res) => {
 
 // ─── POST /api/employees ──────────────────────────────────────────────────────
 const createEmployee = asyncHandler(async (req, res) => {
-  const employee = new Employee(req.body);
+  const { employeeCode, email } = req.body;
+  if (employeeCode) {
+    const existingCode = await Employee.findOne({ employeeCode: employeeCode.trim().toUpperCase() });
+    if (existingCode) {
+      return res.status(409).json({
+        success: false,
+        message: `Employee ID "${employeeCode}" is already assigned to ${existingCode.name}`
+      });
+    }
+  }
+
+  if (email) {
+    const existingEmail = await Employee.findOne({ email: email.trim().toLowerCase() });
+    if (existingEmail) {
+      return res.status(409).json({
+        success: false,
+        message: `Email address "${email}" is already registered with ${existingEmail.name}`
+      });
+    }
+  }
+
+  const employee = new Employee({
+    ...req.body,
+    employeeCode: req.body.employeeCode ? req.body.employeeCode.trim().toUpperCase() : undefined,
+    email: req.body.email ? req.body.email.trim().toLowerCase() : undefined
+  });
   await employee.save();
   res.status(201).json({ success: true, data: employee });
 });

@@ -1,0 +1,203 @@
+/**
+ * @file TasksKanban.jsx
+ * @description Interactive Kanban Board view for Tasks in EMS.
+ */
+
+import React from 'react';
+import {
+  Clock,
+  Play,
+  Pause,
+  Square,
+  MoreVertical,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
+import { useWork } from '../../context/WorkContext';
+
+const COLUMNS = [
+  { key: 'incomplete', title: 'Incomplete', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+  { key: 'in_progress', title: 'In Progress', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+  { key: 'under_review', title: 'Under Review', color: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
+  { key: 'completed', title: 'Completed', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' }
+];
+
+export const TasksKanban = ({ onSelectTask }) => {
+  const { tasks, changeTaskStatus, startTaskTimer, stopTaskTimer } = useWork();
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      gap: '20px',
+      alignItems: 'start'
+    }}>
+      {COLUMNS.map((col) => {
+        const colTasks = tasks.filter(t => (t.status || 'incomplete') === col.key);
+
+        return (
+          <div
+            key={col.key}
+            style={{
+              backgroundColor: '#f8fafc',
+              borderRadius: '12px',
+              border: `1px solid ${col.border}`,
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              minHeight: '400px'
+            }}
+          >
+            {/* Column Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: '10px',
+              borderBottom: '1px solid #e2e8f0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: col.color
+                }} />
+                <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
+                  {col.title}
+                </h3>
+              </div>
+              <span style={{
+                fontSize: '12px',
+                fontWeight: '700',
+                color: col.color,
+                backgroundColor: col.bg,
+                padding: '2px 8px',
+                borderRadius: '12px'
+              }}>
+                {colTasks.length}
+              </span>
+            </div>
+
+            {/* Task Cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {colTasks.map((task) => (
+                <div
+                  key={task._id}
+                  onClick={() => onSelectTask && onSelectTask(task)}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    padding: '14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.08)'}
+                  onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'}
+                >
+                  {/* Top Bar: Code & Project */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#2563eb',
+                      backgroundColor: '#eff6ff',
+                      padding: '2px 6px',
+                      borderRadius: '4px'
+                    }}>
+                      {task.taskCode || 'TSK'}
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
+                      {task.projectName || 'General'}
+                    </span>
+                  </div>
+
+                  {/* Title */}
+                  <div style={{ fontSize: '13.5px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>
+                    {task.title}
+                  </div>
+
+                  {/* Timer pill if running */}
+                  {task.timerRunning && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      backgroundColor: '#0284c7',
+                      color: '#ffffff',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      fontSize: '11.5px',
+                      fontWeight: '600'
+                    }}>
+                      <span>⏱️ {task.hoursLoggedText}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          stopTaskTimer(task._id);
+                        }}
+                        style={{
+                          background: 'rgba(255,255,255,0.25)',
+                          border: 'none',
+                          color: '#ffffff',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Bottom details: Assignee & Date */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingTop: '8px',
+                    borderTop: '1px solid #f1f5f9'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <img
+                        src={task.assignedToAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
+                        alt={task.assignedToName}
+                        style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
+                      />
+                      <span style={{ fontSize: '12px', color: '#475569' }}>
+                        {task.assignedToName}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                      Due: {task.dueDate || 'N/A'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {colTasks.length === 0 && (
+                <div style={{
+                  padding: '30px 10px',
+                  textAlign: 'center',
+                  fontSize: '12.5px',
+                  color: '#94a3b8',
+                  fontStyle: 'italic'
+                }}>
+                  No tasks in this column
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};

@@ -9,6 +9,12 @@ import { Layout } from './shared/components/layout/Layout';
 // HR Module Provider
 import { HRProvider } from './modules/hr/context/HRContext';
 
+// Work Module Provider & Pages
+import { WorkProvider } from './modules/work/context/WorkContext';
+import { ProjectsPage } from './modules/work/pages/ProjectsPage';
+import { TasksPage } from './modules/work/pages/TasksPage';
+import { TimesheetPage } from './modules/work/pages/TimesheetPage';
+
 // HR Module Pages
 import { LeavesPage } from './modules/hr/pages/LeavesPage';
 import { AttendancePage } from './modules/hr/pages/AttendancePage';
@@ -16,10 +22,17 @@ import { HolidayPage } from './modules/hr/pages/HolidayPage';
 import { AppreciationPage } from './modules/hr/pages/AppreciationPage';
 import { DashboardPage } from './modules/hr/pages/DashboardPage';
 
+// CRM Module Provider & Pages
+import { CRMProvider } from './shared/context/CRMContext';
+import { TicketsPage } from './modules/crm/pages/TicketsPage';
+import { CalendarPage } from './modules/crm/pages/CalendarPage';
+import { NoticeBoardPage } from './modules/crm/pages/NoticeBoardPage';
+import { LeadsPage } from './modules/crm/pages/LeadsPage';
+import { MessagesPage } from './modules/crm/pages/MessagesPage';
+import { ExpensesPage } from './modules/finance/pages/ExpensesPage';
+
 /**
- * ModulePlaceholder — Shown for CRM modules not yet built.
- * When a new module (Leads, Finance, etc.) is ready, replace this
- * with the actual <ModulePage /> from `src/modules/<module>/pages/`.
+ * ModulePlaceholder — Shown for future modules
  */
 const ModulePlaceholder = ({ title }) => (
   <div style={{
@@ -31,12 +44,12 @@ const ModulePlaceholder = ({ title }) => (
     maxWidth: '600px',
     margin: '40px auto'
   }}>
-    <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚀</div>
+    <div style={{ fontSize: '32px', marginBottom: '12px' }}>⚙️</div>
     <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#0f172a', marginBottom: '8px' }}>
       {title} Module
     </h2>
     <p style={{ fontSize: '13.5px', color: '#64748b', lineHeight: '1.6' }}>
-      This module is part of the complete CRM roadmap. The HR module (Leaves, Attendance, Holiday, and Appreciation) is fully operational.
+      All Core Modules (Dashboard, Leads, Work, HR, Finance/Expenses, Tickets, Events, Messages, and Notice Board) are fully operational.
     </p>
   </div>
 );
@@ -46,32 +59,55 @@ export function App() {
     <ToastProvider>
       <TimerProvider>
         <HRProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Layout />}>
-                <Route index element={<Navigate to="/leaves" replace />} />
+          <WorkProvider>
+            <CRMProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={<Navigate to="/dashboard" replace />} />
 
-                {/* ── HR Module Routes ────────────────────────────────── */}
-                <Route path="dashboard"   element={<DashboardPage />} />
-                <Route path="leaves"      element={<LeavesPage />} />
-                <Route path="attendance"  element={<AttendancePage />} />
-                <Route path="holiday"     element={<HolidayPage />} />
-                <Route path="appreciation" element={<AppreciationPage />} />
+                    {/* ── Core HR & CRM Dashboard ─────────────────────────── */}
+                    <Route path="dashboard"   element={<DashboardPage />} />
 
-                {/* ── Future CRM Module Routes (add pages here as built) ─ */}
-                <Route path="leads"        element={<ModulePlaceholder title="Leads & Pipeline" />} />
-                <Route path="work"         element={<ModulePlaceholder title="Work & Project Management" />} />
-                <Route path="finance"      element={<ModulePlaceholder title="Finance & Invoicing" />} />
-                <Route path="tickets"      element={<ModulePlaceholder title="Helpdesk Tickets" />} />
-                <Route path="events"       element={<ModulePlaceholder title="Company Events" />} />
-                <Route path="messages"     element={<ModulePlaceholder title="Team Chat & Messages" />} />
-                <Route path="notice-board" element={<ModulePlaceholder title="Notice Board" />} />
-                <Route path="settings"     element={<ModulePlaceholder title="System Settings" />} />
+                    {/* ── Leads & Pipeline Module Routes ──────────────────── */}
+                    <Route path="leads"        element={<LeadsPage />} />
+                    <Route path="lead-contact" element={<LeadsPage />} />
 
-                <Route path="*" element={<Navigate to="/leaves" replace />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
+                    {/* ── Work Module Routes ──────────────────────────────── */}
+                    <Route path="projects"    element={<ProjectsPage />} />
+                    <Route path="tasks"       element={<TasksPage />} />
+                    <Route path="timesheet"   element={<TimesheetPage />} />
+                    <Route path="work"        element={<Navigate to="/projects" replace />} />
+
+                    {/* ── HR Module Routes ────────────────────────────────── */}
+                    <Route path="leaves"      element={<LeavesPage />} />
+                    <Route path="attendance"  element={<AttendancePage />} />
+                    <Route path="holiday"     element={<HolidayPage />} />
+                    <Route path="appreciation" element={<AppreciationPage />} />
+
+                    {/* ── Finance & Expenses Module ───────────────────────── */}
+                    <Route path="finance"          element={<ExpensesPage />} />
+                    <Route path="finance/expenses" element={<ExpensesPage />} />
+                    <Route path="expenses"         element={<ExpensesPage />} />
+
+                    {/* ── CRM Modules: Tickets, Events, Messages, Notices ──── */}
+                    <Route path="tickets"      element={<TicketsPage />} />
+                    <Route path="events"       element={<CalendarPage />} />
+                    <Route path="calendar"     element={<CalendarPage />} />
+                    <Route path="messages"     element={<MessagesPage />} />
+                    <Route path="chat"         element={<MessagesPage />} />
+                    <Route path="notice-board" element={<NoticeBoardPage />} />
+                    <Route path="notices"      element={<NoticeBoardPage />} />
+
+                    {/* ── Settings ────────────────────────────────────────── */}
+                    <Route path="settings"     element={<ModulePlaceholder title="System Settings" />} />
+
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  </Route>
+                </Routes>
+              </BrowserRouter>
+            </CRMProvider>
+          </WorkProvider>
         </HRProvider>
       </TimerProvider>
     </ToastProvider>

@@ -22,27 +22,49 @@ import {
   Keyboard,
   Clock
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { UserPlus, Users, Edit3, Moon, Sun, Coffee, ListTodo, FolderGit2, Ticket, Palmtree, Check } from 'lucide-react';
 import { useTimer } from '../../context/TimerContext';
 import { useHR } from '../../../modules/hr/context/HRContext';
-import { UserPlus, Users } from 'lucide-react';
+import { useCRM } from '../../context/CRMContext';
 import { AddEmployeeModal } from '../../../modules/hr/components/employees/AddEmployeeModal';
 import { EmployeeDirectoryModal } from '../../../modules/hr/components/employees/EmployeeDirectoryModal';
+import { EditProfileModal } from '../modals/EditProfileModal';
+import { BreakModal } from '../modals/BreakModal';
+import { AddTaskModal } from '../../../modules/work/components/tasks/AddTaskModal';
+import { AddProjectModal } from '../../../modules/work/components/projects/AddProjectModal';
+import { RaiseTicketModal } from '../modals/RaiseTicketModal';
+import { NewLeaveModal } from '../../../modules/hr/components/leaves/NewLeaveModal';
+import { AddLeadModal } from '../../../modules/crm/components/leads/AddLeadModal';
 
 export const TopNavbar = () => {
-  const { timeString, isRunning, isClockedIn, togglePauseResume, handleClockOut } = useTimer();
-  const { currentUser, leaves, employees } = useHR();
+  const navigate = useNavigate();
+  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, togglePauseResume, handleClockOut } = useTimer();
+  const { currentUser, leaves, employees, updateLeaveStatus } = useHR();
+  const { darkMode, toggleDarkMode } = useCRM();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isAddEmpOpen, setIsAddEmpOpen] = useState(false);
   const [isEmpDirectoryOpen, setIsEmpDirectoryOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
 
+  // Quick Action Modals
+  const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
+  const [isRaiseTicketOpen, setIsRaiseTicketOpen] = useState(false);
+  const [isApplyLeaveOpen, setIsApplyLeaveOpen] = useState(false);
+  const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
+
+  const quickCreateRef = useRef(null);
   const notifRef = useRef(null);
   const profileRef = useRef(null);
 
-  const pendingLeavesCount = leaves.filter(l => l.status === 'pending').length;
+  const pendingLeavesCount = (leaves || []).filter(l => l?.status === 'pending').length;
   const totalNotifications = pendingLeavesCount + 1; // +1 for attendance notification
 
   // Close dropdowns on outside click
@@ -53,6 +75,9 @@ export const TopNavbar = () => {
       }
       if (profileRef.current && !profileRef.current.contains(e.target)) {
         setShowProfileMenu(false);
+      }
+      if (quickCreateRef.current && !quickCreateRef.current.contains(e.target)) {
+        setShowQuickCreate(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -228,25 +253,153 @@ export const TopNavbar = () => {
           </div>
         </div>
 
-        {/* ── Add Employee Quick Action ── */}
-        <button
-          onClick={() => setIsAddEmpOpen(true)}
-          className="btn btn-primary"
-          style={{ height: '34px', fontSize: '12.5px', padding: '0 12px', gap: '6px' }}
-        >
-          <UserPlus size={14} />
-          <span>Add Employee</span>
-        </button>
+        {/* ── Real-Life Enterprise Quick Create Dropdown ── */}
+        <div style={{ position: 'relative' }} ref={quickCreateRef}>
+          <button
+            onClick={() => setShowQuickCreate(!showQuickCreate)}
+            style={{
+              height: '36px',
+              fontSize: '13px',
+              fontWeight: '600',
+              padding: '0 14px',
+              gap: '6px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Plus size={15} />
+            <span>Create</span>
+            <ChevronDown size={13} style={{ opacity: 0.8 }} />
+          </button>
 
-        {/* ── Employee Directory Quick View ── */}
-        <button
-          onClick={() => setIsEmpDirectoryOpen(true)}
-          className="navbar-icon-btn"
-          title="Team Roster & Employee Directory"
-          style={navBtnStyle}
-        >
-          <Users size={17} color="#64748b" />
-        </button>
+          {showQuickCreate && (
+            <div style={{
+              position: 'absolute',
+              top: '44px',
+              right: '0',
+              width: '210px',
+              background: '#ffffff',
+              borderRadius: '12px',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05)',
+              border: '1px solid #e2e8f0',
+              overflow: 'hidden',
+              zIndex: 250,
+              padding: '6px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px'
+            }}>
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsAddLeadOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <Users2 size={16} color="#0284c7" />
+                <span>New Lead Contact</span>
+              </div>
+
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsAddTaskOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <ListTodo size={16} color="#2563eb" />
+                <span>New Task</span>
+              </div>
+
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsAddProjectOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <FolderGit2 size={16} color="#0284c7" />
+                <span>New Project</span>
+              </div>
+
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsRaiseTicketOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <Ticket size={16} color="#d97706" />
+                <span>Raise Ticket</span>
+              </div>
+
+              <div style={{ height: '1px', backgroundColor: '#f1f5f9', margin: '4px 0' }} />
+
+              <div
+                onClick={() => { setShowQuickCreate(false); setIsApplyLeaveOpen(true); }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  color: '#1e293b'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <Palmtree size={16} color="#16a34a" />
+                <span>Apply for Leave</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Separator ── */}
         <div style={{ width: '1px', height: '28px', background: '#e2e8f0', margin: '0 4px' }} />
@@ -397,44 +550,132 @@ export const TopNavbar = () => {
               </div>
 
               {/* Notification Items */}
-              <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
-                {pendingLeavesCount > 0 && (
-                  <div style={{
-                    padding: '12px 16px',
-                    display: 'flex',
-                    gap: '12px',
-                    alignItems: 'flex-start',
-                    borderBottom: '1px solid #f8fafc',
-                    cursor: 'pointer',
-                    transition: 'background 0.15s'
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <div style={{
-                      width: '34px',
-                      height: '34px',
-                      borderRadius: '8px',
-                      background: '#fef3c7',
-                      color: '#d97706',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }}>
-                      <Sparkles size={16} />
+              <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                {/* Real-time Dynamic Pending Leaves */}
+                {(leaves || []).filter(l => l?.status === 'pending').length > 0 ? (
+                  (leaves || []).filter(l => l?.status === 'pending').map((leave) => (
+                    <div
+                      key={leave._id}
+                      style={{
+                        padding: '12px 16px',
+                        display: 'flex',
+                        gap: '12px',
+                        alignItems: 'flex-start',
+                        borderBottom: '1px solid #f1f5f9',
+                        background: '#fffdf5',
+                        transition: 'background 0.15s'
+                      }}
+                    >
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        {leave.employeeAvatar ? (
+                          <img
+                            src={leave.employeeAvatar}
+                            alt={leave.employeeName}
+                            style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #fed7aa' }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            background: '#fef3c7',
+                            color: '#d97706',
+                            fontWeight: '700',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '13px'
+                          }}>
+                            {leave.employeeName?.charAt(0) || 'L'}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                          <span style={{ fontWeight: '700', fontSize: '12.5px', color: '#0f172a' }}>
+                            {leave.employeeName}
+                          </span>
+                          <span style={{
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            background: '#fef3c7',
+                            color: '#d97706'
+                          }}>
+                            Pending Review
+                          </span>
+                        </div>
+
+                        <div style={{ color: '#475569', fontSize: '11.5px', marginTop: '2px' }}>
+                          <strong>{leave.leaveType}</strong> ({leave.durationText})
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                          📅 {leave.startDate} {leave.endDate !== leave.startDate ? `to ${leave.endDate}` : ''}
+                        </div>
+                        {leave.reason && (
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={leave.reason}>
+                            "{leave.reason}"
+                          </div>
+                        )}
+
+                        {/* Quick 1-Click Approve / Reject Action Bar */}
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await updateLeaveStatus(leave._id, 'approved');
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              background: '#16a34a',
+                              color: '#ffffff',
+                              border: 'none',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              boxShadow: '0 1px 3px rgba(22,163,74,0.25)'
+                            }}
+                            title="Approve immediately"
+                          >
+                            <Check size={12} />
+                            Approve
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await updateLeaveStatus(leave._id, 'rejected');
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              background: '#fee2e2',
+                              color: '#dc2626',
+                              border: '1px solid #fecaca',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                            title="Reject leave request"
+                          >
+                            <X size={12} />
+                            Reject
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '600', fontSize: '12.5px', color: '#1e293b' }}>
-                        {pendingLeavesCount} Leave Request{pendingLeavesCount > 1 ? 's' : ''} Awaiting
-                      </div>
-                      <div style={{ color: '#64748b', fontSize: '11.5px', marginTop: '2px', lineHeight: '1.4' }}>
-                        Rahul Verma requested 4-day Earned Leave — needs approval.
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                        2 hours ago
-                      </div>
-                    </div>
+                  ))
+                ) : (
+                  <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
+                    ✨ All leave requests have been reviewed!
                   </div>
                 )}
 
@@ -480,17 +721,24 @@ export const TopNavbar = () => {
               <div style={{
                 padding: '10px 16px',
                 borderTop: '1px solid #f1f5f9',
-                textAlign: 'center'
+                textAlign: 'center',
+                backgroundColor: '#f8fafc'
               }}>
-                <button style={{
-                  background: 'transparent',
-                  border: 'none',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  color: '#2563eb',
-                  cursor: 'pointer'
-                }}>
-                  View all notifications →
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    navigate('/leaves');
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#2563eb',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Go to Leave Management →
                 </button>
               </div>
             </div>
@@ -542,22 +790,37 @@ export const TopNavbar = () => {
             }}
           >
             {/* Avatar */}
-            <div style={{
-              width: '30px',
-              height: '30px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #d97706, #f59e0b)',
-              color: '#ffffff',
-              fontSize: '13px',
-              fontWeight: '800',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              boxShadow: '0 2px 6px rgba(217, 119, 6, 0.3)'
-            }}>
-              {currentUser?.name?.charAt(0) || 'A'}
-            </div>
+            {currentUser?.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name || 'User'}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  objectFit: 'cover',
+                  border: '1.5px solid #2563eb',
+                  flexShrink: 0
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                color: '#ffffff',
+                fontSize: '13px',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)'
+              }}>
+                {currentUser?.name?.charAt(0) || 'A'}
+              </div>
+            )}
 
             {/* Label */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', lineHeight: 1 }}>
@@ -594,55 +857,122 @@ export const TopNavbar = () => {
               zIndex: 200,
               animation: 'fadeIn 0.18s ease'
             }}>
-              {/* Profile Header */}
+              {/* Profile Header (Matching Screenshot 4) */}
               <div style={{
                 padding: '16px',
                 background: 'linear-gradient(135deg, #101b33, #1e293b)',
                 borderBottom: '1px solid rgba(255,255,255,0.08)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #d97706, #f59e0b)',
-                    color: '#ffffff',
-                    fontSize: '16px',
-                    fontWeight: '800',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 2px 8px rgba(217, 119, 6, 0.4)'
-                  }}>
-                    {currentUser?.name?.charAt(0) || 'A'}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '14px', color: '#ffffff' }}>
-                      {currentUser?.name || 'Avinash'}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                      {currentUser?.role || 'Digital Marketing Strategist'}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <img
+                      src={currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
+                      alt={currentUser?.name}
+                      style={{ width: '38px', height: '38px', borderRadius: '8px', objectFit: 'cover' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '13.5px', color: '#ffffff' }}>
+                        {currentUser?.name || 'Avinash'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
+                        {currentUser?.role || 'Digital Marketing Strategic'}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Edit icon */}
+                  <button
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      setIsEditProfileOpen(true);
+                    }}
+                    title="Edit Profile Information"
+                    style={{
+                      background: 'rgba(255,255,255,0.12)',
+                      border: 'none',
+                      borderRadius: '6px',
+                      width: '28px',
+                      height: '28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Edit3 size={13} />
+                  </button>
                 </div>
               </div>
 
-              {/* Menu Items */}
+              {/* Menu Items (Matching Screenshot 4) */}
               <div style={{ padding: '6px' }}>
-                <ProfileMenuItem icon={<User size={14} />} label="My Profile" />
-                <ProfileMenuItem icon={<Clock size={14} />} label="Work Logs & Sessions" />
-                <ProfileMenuItem icon={<HelpCircle size={14} />} label="Help & Support" />
-                <ProfileMenuItem icon={<Keyboard size={14} />} label="Keyboard Shortcuts" />
+                {/* Dark Mode toggle item */}
+                <div
+                  onClick={toggleDarkMode}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    color: '#334155',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {darkMode ? <Moon size={15} color="#2563eb" /> : <Sun size={15} color="#d97706" />}
+                    <span>Dark Mode</span>
+                  </div>
 
-                <div style={{ height: '1px', background: '#f1f5f9', margin: '6px 0' }} />
+                  {/* Toggle Switch */}
+                  <div style={{
+                    width: '36px',
+                    height: '20px',
+                    borderRadius: '10px',
+                    backgroundColor: darkMode ? '#2563eb' : '#cbd5e1',
+                    position: 'relative',
+                    transition: 'background-color 0.2s ease'
+                  }}>
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '50%',
+                      backgroundColor: '#ffffff',
+                      position: 'absolute',
+                      top: '2px',
+                      left: darkMode ? '18px' : '2px',
+                      transition: 'left 0.2s ease',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                    }} />
+                  </div>
+                </div>
 
                 <div
-                  onClick={() => setShowProfileMenu(false)}
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    setIsEditProfileOpen(true);
+                  }}
+                >
+                  <ProfileMenuItem icon={<User size={14} />} label="Edit Profile" />
+                </div>
+
+                <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
+
+                <div
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    handleClockOut();
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
-                    padding: '8px 10px',
+                    padding: '8px 12px',
                     borderRadius: '8px',
                     fontSize: '13px',
                     fontWeight: '600',
@@ -653,8 +983,8 @@ export const TopNavbar = () => {
                   onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <LogOut size={14} />
-                  <span>Sign Out</span>
+                  <Power size={14} />
+                  <span>Logout</span>
                 </div>
               </div>
             </div>
@@ -662,7 +992,27 @@ export const TopNavbar = () => {
         </div>
       </div>
 
-      {/* Employee Management Modals */}
+      {/* Modals */}
+      <AddTaskModal
+        isOpen={isAddTaskOpen}
+        onClose={() => setIsAddTaskOpen(false)}
+      />
+
+      <AddProjectModal
+        isOpen={isAddProjectOpen}
+        onClose={() => setIsAddProjectOpen(false)}
+      />
+
+      <RaiseTicketModal
+        isOpen={isRaiseTicketOpen}
+        onClose={() => setIsRaiseTicketOpen(false)}
+      />
+
+      <NewLeaveModal
+        isOpen={isApplyLeaveOpen}
+        onClose={() => setIsApplyLeaveOpen(false)}
+      />
+
       <AddEmployeeModal
         isOpen={isAddEmpOpen}
         onClose={() => setIsAddEmpOpen(false)}
@@ -671,6 +1021,21 @@ export const TopNavbar = () => {
       <EmployeeDirectoryModal
         isOpen={isEmpDirectoryOpen}
         onClose={() => setIsEmpDirectoryOpen(false)}
+      />
+
+      <EditProfileModal
+        isOpen={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
+
+      <BreakModal
+        isOpen={isBreakModalOpen}
+        onClose={() => setIsBreakModalOpen(false)}
+      />
+
+      <AddLeadModal
+        isOpen={isAddLeadOpen}
+        onClose={() => setIsAddLeadOpen(false)}
       />
     </header>
   );

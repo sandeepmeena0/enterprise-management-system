@@ -1,0 +1,146 @@
+/**
+ * @file Task.js
+ * @description Mongoose Schema for Tasks in EMS.
+ */
+
+const mongoose = require('mongoose');
+
+const TaskSchema = new mongoose.Schema(
+  {
+    taskCode: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    title: {
+      type: String,
+      required: [true, 'Task title is required'],
+      trim: true
+    },
+    category: {
+      type: String,
+      trim: true,
+      default: 'General'
+    },
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      default: null
+    },
+    projectId: {
+      type: String,
+      default: ''
+    },
+    projectName: {
+      type: String,
+      trim: true,
+      default: 'General Work'
+    },
+    projectCode: {
+      type: String,
+      trim: true,
+      default: 'GEN'
+    },
+    startDate: {
+      type: String,
+      required: [true, 'Start date is required']
+    },
+    dueDate: {
+      type: String,
+      default: null
+    },
+    hasNoDueDate: {
+      type: Boolean,
+      default: false
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    priority: {
+      type: String,
+      enum: ['low', 'medium', 'high', 'urgent'],
+      default: 'medium'
+    },
+    status: {
+      type: String,
+      enum: ['incomplete', 'in_progress', 'under_review', 'completed'],
+      default: 'incomplete'
+    },
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Employee',
+      default: null
+    },
+    assignedToId: {
+      type: String,
+      default: ''
+    },
+    assignedToName: {
+      type: String,
+      trim: true,
+      default: 'Unassigned'
+    },
+    assignedToAvatar: {
+      type: String,
+      default: ''
+    },
+    assignedToRole: {
+      type: String,
+      default: ''
+    },
+    estimatedHours: {
+      type: Number,
+      default: 0
+    },
+    hoursLogged: {
+      type: Number,
+      default: 0
+    },
+    hoursLoggedText: {
+      type: String,
+      default: '0s'
+    },
+    completedOn: {
+      type: String,
+      default: null
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false
+    },
+    isBillable: {
+      type: Boolean,
+      default: true
+    },
+    labels: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+    milestone: {
+      type: String,
+      default: ''
+    },
+    timerRunning: {
+      type: Boolean,
+      default: false
+    },
+    timerSeconds: {
+      type: Number,
+      default: 0
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+TaskSchema.index({ taskCode: 1 });
+TaskSchema.index({ status: 1 });
+TaskSchema.index({ project: 1 });
+TaskSchema.index({ assignedTo: 1 });
+
+module.exports = mongoose.model('Task', TaskSchema);

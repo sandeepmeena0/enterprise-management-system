@@ -17,6 +17,9 @@ const Leave = require('../modules/hr/models/Leave');
 const Attendance = require('../modules/hr/models/Attendance');
 const Holiday = require('../modules/hr/models/Holiday');
 const Appreciation = require('../modules/hr/models/Appreciation');
+const Project = require('../modules/work/models/Project');
+const Task = require('../modules/work/models/Task');
+const Timesheet = require('../modules/work/models/Timesheet');
 
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
@@ -110,13 +113,16 @@ async function seedDatabase() {
     await mongoose.connect(MONGO_URI);
     console.log('Connected to MongoDB successfully.');
 
-    console.log('Clearing existing HR collections...');
+    console.log('Clearing existing collections (HR & Work)...');
     await Promise.all([
       Employee.deleteMany({}),
       Leave.deleteMany({}),
       Attendance.deleteMany({}),
       Holiday.deleteMany({}),
-      Appreciation.deleteMany({})
+      Appreciation.deleteMany({}),
+      Project.deleteMany({}),
+      Task.deleteMany({}),
+      Timesheet.deleteMany({})
     ]);
 
     console.log('Inserting Employees...');
@@ -281,6 +287,222 @@ async function seedDatabase() {
 
     await Attendance.insertMany(attendanceRecords);
     console.log(`Inserted ${attendanceRecords.length} attendance records.`);
+
+    console.log('Inserting Work Projects...');
+    const insertedProjects = await Project.insertMany([
+      {
+        projectCode: 'CPC',
+        name: 'City Prime Care Health Portal',
+        startDate: '2026-09-01',
+        deadline: '2026-11-30',
+        hasNoDeadline: false,
+        category: 'Digital Marketing',
+        department: 'Marketing & Growth',
+        client: 'City Prime Care',
+        summary: 'Comprehensive SEO, social growth, and multi-channel acquisition funnel for healthcare operations.',
+        status: 'in_progress',
+        progress: 65,
+        publicGanttChart: true,
+        publicTaskBoard: true,
+        taskApprovalRequired: false,
+        budget: 250000,
+        currency: 'INR',
+        members: [empMap['EMP-001']._id, empMap['EMP-002']._id],
+        membersList: [
+          { _id: empMap['EMP-001']._id.toString(), name: empMap['EMP-001'].name, avatar: empMap['EMP-001'].avatar, role: empMap['EMP-001'].role },
+          { _id: empMap['EMP-002']._id.toString(), name: empMap['EMP-002'].name, avatar: empMap['EMP-002'].avatar, role: empMap['EMP-002'].role }
+        ]
+      },
+      {
+        projectCode: 'NBR',
+        name: 'Novainfinity Brand Revamp & Design System',
+        startDate: '2026-08-15',
+        deadline: '2026-10-31',
+        hasNoDeadline: false,
+        category: 'UI/UX Design',
+        department: 'Product Design',
+        client: 'Novainfinity Global',
+        summary: 'Complete brand redesign, UI component kit, and dark-mode multi-theme web applications.',
+        status: 'in_progress',
+        progress: 80,
+        publicGanttChart: true,
+        publicTaskBoard: true,
+        taskApprovalRequired: true,
+        budget: 400000,
+        currency: 'INR',
+        members: [empMap['EMP-002']._id, empMap['EMP-003']._id],
+        membersList: [
+          { _id: empMap['EMP-002']._id.toString(), name: empMap['EMP-002'].name, avatar: empMap['EMP-002'].avatar, role: empMap['EMP-002'].role },
+          { _id: empMap['EMP-003']._id.toString(), name: empMap['EMP-003'].name, avatar: empMap['EMP-003'].avatar, role: empMap['EMP-003'].role }
+        ]
+      },
+      {
+        projectCode: 'ERP',
+        name: 'Enterprise ERP Core Pipeline',
+        startDate: '2026-07-01',
+        deadline: '2026-12-31',
+        hasNoDeadline: false,
+        category: 'Web Development',
+        department: 'Engineering',
+        client: 'In-House Tech Suite',
+        summary: 'Scalable MERN business management platform with HRMS, Work, Finance, and CRM automation.',
+        status: 'in_progress',
+        progress: 50,
+        publicGanttChart: true,
+        publicTaskBoard: true,
+        taskApprovalRequired: false,
+        budget: 800000,
+        currency: 'INR',
+        members: [empMap['EMP-001']._id, empMap['EMP-003']._id, empMap['EMP-005']._id],
+        membersList: [
+          { _id: empMap['EMP-001']._id.toString(), name: empMap['EMP-001'].name, avatar: empMap['EMP-001'].avatar, role: empMap['EMP-001'].role },
+          { _id: empMap['EMP-003']._id.toString(), name: empMap['EMP-003'].name, avatar: empMap['EMP-003'].avatar, role: empMap['EMP-003'].role },
+          { _id: empMap['EMP-005']._id.toString(), name: empMap['EMP-005'].name, avatar: empMap['EMP-005'].avatar, role: empMap['EMP-005'].role }
+        ]
+      }
+    ]);
+
+    const projectMap = {};
+    insertedProjects.forEach(p => {
+      projectMap[p.projectCode] = p;
+    });
+
+    console.log('Inserting Work Tasks...');
+    const insertedTasks = await Task.insertMany([
+      {
+        taskCode: 'CPC-0',
+        title: 'Bookmarking 20',
+        category: 'Digital Marketing',
+        project: projectMap['CPC']._id,
+        projectId: projectMap['CPC']._id.toString(),
+        projectName: 'CITY PRIME CARE',
+        projectCode: 'CPC',
+        startDate: '2026-09-25',
+        dueDate: '2026-09-25',
+        hasNoDueDate: false,
+        description: 'Execute high DA bookmarking submissions and citation links for City Prime Care campaign.',
+        priority: 'medium',
+        status: 'incomplete',
+        assignedTo: empMap['EMP-001']._id,
+        assignedToId: empMap['EMP-001']._id.toString(),
+        assignedToName: 'Avinash',
+        assignedToAvatar: empMap['EMP-001'].avatar,
+        assignedToRole: empMap['EMP-001'].role,
+        estimatedHours: 4,
+        hoursLogged: 2.29,
+        hoursLoggedText: '02:17:21',
+        completedOn: null,
+        isPrivate: false,
+        isBillable: true,
+        labels: ['Marketing', 'SEO'],
+        timerRunning: true,
+        timerSeconds: 8241
+      },
+      {
+        taskCode: 'NBR-1',
+        title: 'Design System Token Definition & UI Kit',
+        category: 'UI/UX Design',
+        project: projectMap['NBR']._id,
+        projectId: projectMap['NBR']._id.toString(),
+        projectName: 'Novainfinity Brand Revamp & Design System',
+        projectCode: 'NBR',
+        startDate: '2026-09-20',
+        dueDate: '2026-09-28',
+        hasNoDueDate: false,
+        description: 'Create harmonious HSL color palette, typography scales, glassmorphism card elevation tokens.',
+        priority: 'high',
+        status: 'in_progress',
+        assignedTo: empMap['EMP-002']._id,
+        assignedToId: empMap['EMP-002']._id.toString(),
+        assignedToName: 'Priya Sharma',
+        assignedToAvatar: empMap['EMP-002'].avatar,
+        assignedToRole: empMap['EMP-002'].role,
+        estimatedHours: 16,
+        hoursLogged: 12,
+        hoursLoggedText: '12h 00m',
+        completedOn: null,
+        isPrivate: false,
+        isBillable: true,
+        labels: ['Figma', 'UI Kit'],
+        timerRunning: false,
+        timerSeconds: 0
+      },
+      {
+        taskCode: 'ERP-2',
+        title: 'MongoDB Atlas Cloud Cluster Connection & Schema Seeder',
+        category: 'Web Development',
+        project: projectMap['ERP']._id,
+        projectId: projectMap['ERP']._id.toString(),
+        projectName: 'Enterprise ERP Core Pipeline',
+        projectCode: 'ERP',
+        startDate: '2026-09-15',
+        dueDate: '2026-09-22',
+        hasNoDueDate: false,
+        description: 'Configure Mongoose connection pooling, production environment variables, and reliable schema seeding.',
+        priority: 'urgent',
+        status: 'completed',
+        assignedTo: empMap['EMP-003']._id,
+        assignedToId: empMap['EMP-003']._id.toString(),
+        assignedToName: 'Rahul Verma',
+        assignedToAvatar: empMap['EMP-003'].avatar,
+        assignedToRole: empMap['EMP-003'].role,
+        estimatedHours: 8,
+        hoursLogged: 8,
+        hoursLoggedText: '08h 00m',
+        completedOn: '2026-09-22',
+        isPrivate: false,
+        isBillable: true,
+        labels: ['Database', 'MongoDB'],
+        timerRunning: false,
+        timerSeconds: 0
+      }
+    ]);
+
+    console.log('Inserting Timesheets...');
+    await Timesheet.insertMany([
+      {
+        task: insertedTasks[0]._id,
+        taskId: insertedTasks[0]._id.toString(),
+        taskCode: 'CPC-0',
+        taskTitle: 'Bookmarking 20',
+        project: projectMap['CPC']._id,
+        projectId: projectMap['CPC']._id.toString(),
+        projectName: 'CITY PRIME CARE',
+        employee: empMap['EMP-001']._id,
+        employeeId: empMap['EMP-001']._id.toString(),
+        employeeName: 'Avinash',
+        employeeAvatar: empMap['EMP-001'].avatar,
+        employeeRole: empMap['EMP-001'].role,
+        date: '2026-09-25',
+        startTime: '09:30:00',
+        endTime: null,
+        totalDurationSeconds: 8241,
+        totalDurationText: '02:17:21',
+        memo: 'Executing citation bookmarks and niche directory submissions',
+        status: 'active'
+      },
+      {
+        task: insertedTasks[1]._id,
+        taskId: insertedTasks[1]._id.toString(),
+        taskCode: 'NBR-1',
+        taskTitle: 'Design System Token Definition & UI Kit',
+        project: projectMap['NBR']._id,
+        projectId: projectMap['NBR']._id.toString(),
+        projectName: 'Novainfinity Brand Revamp & Design System',
+        employee: empMap['EMP-002']._id,
+        employeeId: empMap['EMP-002']._id.toString(),
+        employeeName: 'Priya Sharma',
+        employeeAvatar: empMap['EMP-002'].avatar,
+        employeeRole: empMap['EMP-002'].role,
+        date: '2026-09-24',
+        startTime: '10:00:00',
+        endTime: '15:30:00',
+        totalDurationSeconds: 19800,
+        totalDurationText: '05h 30m',
+        memo: 'Color contrast ratios and accessible interactive states',
+        status: 'stopped'
+      }
+    ]);
 
     console.log('✅ MongoDB Seeding completed successfully!');
     process.exit(0);

@@ -19,7 +19,10 @@ import {
   CalendarCheck,
   Palmtree,
   UserCheck,
-  Users
+  Users,
+  FolderGit2,
+  ListTodo,
+  Clock
 } from 'lucide-react';
 import { useHR } from '../../../modules/hr/context/HRContext';
 import { EmployeeDirectoryModal } from '../../../modules/hr/components/employees/EmployeeDirectoryModal';
@@ -28,10 +31,25 @@ export const Sidebar = () => {
   const location = useLocation();
   const { currentUser } = useHR();
   const [collapsed, setCollapsed] = useState(false);
-  const [hrExpanded, setHrExpanded] = useState(true);
+  const [leadsExpanded, setLeadsExpanded] = useState(true); // Open Leads by default
+  const [hrExpanded, setHrExpanded] = useState(false); // Collapsed by default - HR only when needed!
+  const [workExpanded, setWorkExpanded] = useState(true); // Work open by default
+  const [financeExpanded, setFinanceExpanded] = useState(true); // Finance open by default
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
 
+  const isLeadsActive = ['/leads', '/lead-contact'].some(path =>
+    location.pathname.startsWith(path)
+  );
+
   const isHrActive = ['/leaves', '/attendance', '/holiday', '/appreciation'].some(path =>
+    location.pathname.startsWith(path)
+  );
+
+  const isWorkActive = ['/projects', '/tasks', '/timesheet', '/work'].some(path =>
+    location.pathname.startsWith(path)
+  );
+
+  const isFinanceActive = ['/finance', '/expenses'].some(path =>
     location.pathname.startsWith(path)
   );
 
@@ -62,26 +80,42 @@ export const Sidebar = () => {
       }}>
         {!collapsed ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden' }}>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 4px 10px rgba(37,99,235,0.4)',
-              flexShrink: 0
-            }}>
-              <Zap size={20} fill="#ffffff" />
-            </div>
+            {currentUser?.avatar ? (
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name || 'User'}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  objectFit: 'cover',
+                  border: '2px solid rgba(59, 130, 246, 0.6)',
+                  boxShadow: '0 4px 10px rgba(37,99,235,0.4)',
+                  flexShrink: 0
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                boxShadow: '0 4px 10px rgba(37,99,235,0.4)',
+                flexShrink: 0
+              }}>
+                <Zap size={20} fill="#ffffff" />
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '16px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.01em' }}>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.01em' }}>
                   EMS
                 </span>
-                <span style={{ fontSize: '11.5px', color: '#60a5fa', fontWeight: '600' }}>Enterprise</span>
+                <span style={{ fontSize: '11px', color: '#60a5fa', fontWeight: '600' }}>Enterprise</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{
@@ -91,7 +125,9 @@ export const Sidebar = () => {
                   background: '#10b981',
                   boxShadow: '0 0 6px #10b981'
                 }}></span>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>{currentUser?.name || 'Avinash'}</span>
+                <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: '500', maxWidth: '130px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {currentUser?.name || 'Avinash'}
+                </span>
               </div>
             </div>
           </div>
@@ -142,30 +178,169 @@ export const Sidebar = () => {
           {!collapsed && <span>Dashboard</span>}
         </NavLink>
 
-        {/* Leads */}
-        <div
-          onClick={() => {}}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '10px 12px',
-            borderRadius: '8px',
-            color: '#94a3b8',
-            fontSize: '13.5px',
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}
-          title="Leads Module (CRM Roadmap)"
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Users2 size={18} />
-            {!collapsed && <span>Leads</span>}
+        {/* Leads - Core CRM Prospect & Deal Pipeline Section */}
+        <div>
+          <div
+            onClick={() => setLeadsExpanded(!leadsExpanded)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 12px',
+              borderRadius: '8px',
+              color: isLeadsActive ? '#ffffff' : '#94a3b8',
+              backgroundColor: isLeadsActive ? 'rgba(37, 99, 235, 0.12)' : 'transparent',
+              fontSize: '13.5px',
+              fontWeight: isLeadsActive ? '600' : '500',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Users2 size={18} color={isLeadsActive ? '#3b82f6' : '#94a3b8'} />
+              {!collapsed && <span>Leads</span>}
+            </div>
+            {!collapsed && (
+              leadsExpanded ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#64748b" />
+            )}
           </div>
-          {!collapsed && <ChevronRight size={14} color="#64748b" />}
+
+          {/* Submenu for Leads */}
+          {leadsExpanded && (
+            <div style={{
+              marginTop: '4px',
+              marginLeft: collapsed ? '0' : '16px',
+              paddingLeft: collapsed ? '0' : '12px',
+              borderLeft: collapsed ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px'
+            }}>
+              <NavLink
+                to="/leads"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                <UserCheck size={15} />
+                {!collapsed && <span>Lead Contact</span>}
+              </NavLink>
+            </div>
+          )}
         </div>
 
-        {/* HR - Core Module (Collapsible Accordion) */}
+        {/* Work - Core Daily Work Section (Expanded by default) */}
+        <div>
+          <div
+            onClick={() => setWorkExpanded(!workExpanded)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 12px',
+              borderRadius: '8px',
+              color: isWorkActive ? '#ffffff' : '#94a3b8',
+              backgroundColor: isWorkActive ? 'rgba(37, 99, 235, 0.12)' : 'transparent',
+              fontSize: '13.5px',
+              fontWeight: isWorkActive ? '600' : '500',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Layers size={18} color={isWorkActive ? '#3b82f6' : '#94a3b8'} />
+              {!collapsed && <span>Work</span>}
+            </div>
+            {!collapsed && (
+              workExpanded ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#64748b" />
+            )}
+          </div>
+
+          {/* Submenu for Work */}
+          {workExpanded && (
+            <div style={{
+              marginTop: '4px',
+              marginLeft: collapsed ? '0' : '16px',
+              paddingLeft: collapsed ? '0' : '12px',
+              borderLeft: collapsed ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px'
+            }}>
+              <NavLink
+                to="/projects"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                <FolderGit2 size={15} />
+                {!collapsed && <span>Projects</span>}
+              </NavLink>
+
+              <NavLink
+                to="/tasks"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                <ListTodo size={15} />
+                {!collapsed && <span>Tasks</span>}
+              </NavLink>
+
+              <NavLink
+                to="/timesheet"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                <Clock size={15} />
+                {!collapsed && <span>Timesheet</span>}
+              </NavLink>
+            </div>
+          )}
+        </div>
+
+        {/* HR & Personnel - Dedicated Section (Collapsed by default, only accessed when actually needed) */}
         <div>
           <div
             onClick={() => setHrExpanded(!hrExpanded)}
@@ -185,7 +360,7 @@ export const Sidebar = () => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Briefcase size={18} color={isHrActive ? '#3b82f6' : '#94a3b8'} />
-              {!collapsed && <span>HR</span>}
+              {!collapsed && <span>HR & Attendance</span>}
             </div>
             {!collapsed && (
               hrExpanded ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#64748b" />
@@ -221,7 +396,7 @@ export const Sidebar = () => {
                 onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
               >
                 <Users size={15} />
-                {!collapsed && <span>Employees</span>}
+                {!collapsed && <span>Team Directory</span>}
               </div>
 
               <NavLink
@@ -307,102 +482,145 @@ export const Sidebar = () => {
           )}
         </div>
 
-        {/* Future Modules as per Screenshot */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Layers size={18} />
-            {!collapsed && <span>Work</span>}
+        {/* Finance - Admin Side Module (Screenshot 1) */}
+        <div>
+          <div
+            onClick={() => setFinanceExpanded(!financeExpanded)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 12px',
+              borderRadius: '8px',
+              color: isFinanceActive ? '#ffffff' : '#94a3b8',
+              backgroundColor: isFinanceActive ? 'rgba(37, 99, 235, 0.12)' : 'transparent',
+              fontSize: '13.5px',
+              fontWeight: isFinanceActive ? '600' : '500',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <DollarSign size={18} color={isFinanceActive ? '#3b82f6' : '#94a3b8'} />
+              {!collapsed && <span>Finance</span>}
+            </div>
+            {!collapsed && (
+              financeExpanded ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#64748b" />
+            )}
           </div>
-          {!collapsed && <ChevronRight size={14} color="#64748b" />}
+
+          {/* Submenu for Finance */}
+          {financeExpanded && (
+            <div style={{
+              marginTop: '4px',
+              marginLeft: collapsed ? '0' : '16px',
+              paddingLeft: collapsed ? '0' : '12px',
+              borderLeft: collapsed ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px'
+            }}>
+              <NavLink
+                to="/finance/expenses"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                {!collapsed && <span>Expenses</span>}
+              </NavLink>
+            </div>
+          )}
         </div>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <DollarSign size={18} />
-            {!collapsed && <span>Finance</span>}
-          </div>
-          {!collapsed && <ChevronRight size={14} color="#64748b" />}
-        </div>
-
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <Ticket size={18} />
+        <NavLink
+          to="/tickets"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            color: isActive ? '#ffffff' : '#94a3b8',
+            backgroundColor: isActive ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+            textDecoration: 'none',
+            fontSize: '13.5px',
+            fontWeight: isActive ? '600' : '500',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Ticket size={18} color={location.pathname === '/tickets' ? '#60a5fa' : '#94a3b8'} />
           {!collapsed && <span>Tickets</span>}
-        </div>
+        </NavLink>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <Calendar size={18} />
+        <NavLink
+          to="/events"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            color: isActive ? '#ffffff' : '#94a3b8',
+            backgroundColor: isActive ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+            textDecoration: 'none',
+            fontSize: '13.5px',
+            fontWeight: isActive ? '600' : '500',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Calendar size={18} color={location.pathname === '/events' ? '#60a5fa' : '#94a3b8'} />
           {!collapsed && <span>Events</span>}
-        </div>
+        </NavLink>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <MessageSquare size={18} />
+        <NavLink
+          to="/messages"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            color: isActive ? '#ffffff' : '#94a3b8',
+            backgroundColor: isActive ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+            textDecoration: 'none',
+            fontSize: '13.5px',
+            fontWeight: isActive ? '600' : '500',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <MessageSquare size={18} color={location.pathname === '/messages' ? '#60a5fa' : '#94a3b8'} />
           {!collapsed && <span>Messages</span>}
-        </div>
+        </NavLink>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '10px 12px',
-          borderRadius: '8px',
-          color: '#94a3b8',
-          fontSize: '13.5px',
-          fontWeight: '500',
-          cursor: 'pointer'
-        }}>
-          <BellRing size={18} />
+        <NavLink
+          to="/notice-board"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            color: isActive ? '#ffffff' : '#94a3b8',
+            backgroundColor: isActive ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+            textDecoration: 'none',
+            fontSize: '13.5px',
+            fontWeight: isActive ? '600' : '500',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <BellRing size={18} color={location.pathname === '/notice-board' ? '#60a5fa' : '#94a3b8'} />
           {!collapsed && <span>Notice Board</span>}
-        </div>
+        </NavLink>
 
         <div style={{
           display: 'flex',

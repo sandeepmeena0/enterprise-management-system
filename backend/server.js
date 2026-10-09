@@ -58,9 +58,13 @@ app.use('/api/attendance',   require('./src/modules/hr/routes/attendanceRoutes')
 app.use('/api/holidays',     require('./src/modules/hr/routes/holidayRoutes'));
 app.use('/api/appreciations', require('./src/modules/hr/routes/appreciationRoutes'));
 
-// Future module routes go here:
-// app.use('/api/leads',   require('./src/modules/leads/routes/leadRoutes'));
-// app.use('/api/finance', require('./src/modules/finance/routes/financeRoutes'));
+// Work Module (Projects, Tasks, Timesheets)
+app.use('/api/projects',     require('./src/modules/work/routes/projectRoutes'));
+app.use('/api/tasks',        require('./src/modules/work/routes/taskRoutes'));
+app.use('/api/timesheet',    require('./src/modules/work/routes/timesheetRoutes'));
+
+// CRM Module (Leads, etc.)
+app.use('/api/leads',        require('./src/modules/crm/routes/leadRoutes'));
 
 // 404 & Error Handlers
 app.use(notFound);

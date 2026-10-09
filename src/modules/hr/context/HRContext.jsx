@@ -67,11 +67,13 @@ export const HRProvider = ({ children }) => {
   const addEmployee = async (empData) => {
     try {
       const created = await hrService.createEmployee(empData);
+      setEmployees(prev => [...prev, created]);
       addToast(`Employee "${created.name}" added to database!`, 'success');
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
       await loadData();
       return created;
     } catch (err) {
-      addToast('Failed to add employee', 'error');
+      addToast(err?.message || 'Failed to add employee', 'error');
       throw err;
     }
   };
@@ -79,11 +81,24 @@ export const HRProvider = ({ children }) => {
   const updateEmployee = async (employeeId, updateData) => {
     try {
       const updated = await hrService.updateEmployee(employeeId, updateData);
-      addToast('Employee details updated', 'success');
+      
+      // Instant React memory sync for current user & all employee lists
+      setCurrentUser(prev => {
+        if (!prev) return updated;
+        if (prev._id === employeeId || prev.isCurrentUser) {
+          return { ...prev, ...updated };
+        }
+        return prev;
+      });
+
+      setEmployees(prev => prev.map(e => (e._id === employeeId || (e.isCurrentUser && updated.isCurrentUser) ? { ...e, ...updated } : e)));
+
+      addToast('Profile & employee details updated successfully!', 'success');
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
       await loadData();
       return updated;
     } catch (err) {
-      addToast('Failed to update employee', 'error');
+      addToast(err?.message || 'Failed to update employee', 'error');
       throw err;
     }
   };
@@ -91,7 +106,9 @@ export const HRProvider = ({ children }) => {
   const deleteEmployee = async (employeeId) => {
     try {
       await hrService.deleteEmployee(employeeId);
+      setEmployees(prev => prev.filter(e => e._id !== employeeId));
       addToast('Employee removed from roster', 'info');
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
       await loadData();
     } catch (err) {
       addToast('Failed to delete employee', 'error');
@@ -103,29 +120,50 @@ export const HRProvider = ({ children }) => {
   const applyLeave = async (leaveData) => {
     try {
       const created = await hrService.createLeave(leaveData);
-      addToast('Leave request submitted successfully!', 'success');
+      // Instant React state update
+      setLeaves(prev => [created, ...(prev || [])]);
+      addToast('Leave request submitted successfully! HR will review.', 'success');
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_leaves' } }));
       await loadData();
       return created;
     } catch (err) {
-      addToast('Failed to submit leave request', 'error');
+      addToast(err?.message || 'Failed to submit leave request', 'error');
       throw err;
     }
   };
 
   const updateLeaveStatus = async (leaveId, status) => {
     try {
-      await hrService.updateLeaveStatus(leaveId, status, currentUser?.name || 'HR Admin');
-      addToast(`Leave marked as ${status}`, 'success');
+      const approver = currentUser?.name || 'HR Admin';
+      await hrService.updateLeaveStatus(leaveId, status, approver);
+
+      // Instant React memory update
+      setLeaves(prev => (prev || []).map(l => {
+        if (l._id === leaveId) {
+          return { ...l, status, approvedBy: status === 'approved' ? approver : null };
+        }
+        return l;
+      }));
+
+      addToast(
+        status === 'approved'
+          ? `🎉 Leave approved successfully! Employee notified.`
+          : `Leave marked as ${status}`,
+        status === 'approved' ? 'success' : 'info'
+      );
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_leaves' } }));
       await loadData();
     } catch (err) {
-      addToast('Failed to update leave status', 'error');
+      addToast(err?.message || 'Failed to update leave status', 'error');
     }
   };
 
   const deleteLeave = async (leaveId) => {
     try {
       await hrService.deleteLeave(leaveId);
+      setLeaves(prev => (prev || []).filter(l => l._id !== leaveId));
       addToast('Leave request removed', 'info');
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_leaves' } }));
       await loadData();
     } catch (err) {
       addToast('Failed to delete leave', 'error');
