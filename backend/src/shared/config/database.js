@@ -5,10 +5,13 @@ let isConnected = false;
 const connectDB = async () => {
   if (isConnected) return;
 
+  if (!process.env.MONGO_URI) {
+    console.warn('\n⚠️  MONGO_URI is not defined in environment variables. Database features will be in standby.\n');
+    return;
+  }
+
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      // Mongoose 8.x has sensible defaults, no need for deprecated options
-    });
+    const conn = await mongoose.connect(process.env.MONGO_URI);
 
     isConnected = true;
 
@@ -24,9 +27,7 @@ const connectDB = async () => {
 
   } catch (error) {
     console.error('\n❌ MongoDB Connection Error:', error.message);
-    console.error('\n💡 Tip: Make sure MongoDB is running on your machine.');
-    console.error('   Run: mongod  (or start MongoDB service)\n');
-    process.exit(1);
+    console.error('💡 Tip: Ensure your IP is whitelisted (0.0.0.0/0) in MongoDB Atlas Network Access.\n');
   }
 };
 

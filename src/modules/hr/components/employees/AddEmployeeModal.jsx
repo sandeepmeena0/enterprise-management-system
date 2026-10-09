@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
-import { User, Mail, Briefcase, Building, Calendar, Clock, Sparkles } from 'lucide-react';
+import { User, Mail, Briefcase, Building, Calendar, Clock, Sparkles, ShieldAlert, Check } from 'lucide-react';
+import { getRoles, canUserAssignRole } from '../../../../shared/services/roleManagementService';
 
 export const AddEmployeeModal = ({ isOpen, onClose }) => {
-  const { addEmployee, employees } = useHR();
+  const { addEmployee, employees, currentUser } = useHR();
+  const [availableRoles, setAvailableRoles] = useState(getRoles());
 
   // Smart calculation of next available employee code
   const getNextAvailableCode = () => {
@@ -105,11 +107,36 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
       return;
     }
 
+    // Role Security Boundary: HR cannot create Admins
+    const userRole = (currentUser?.role || '').toLowerCase();
+    const isHR = userRole.includes('hr') || userRole.includes('human resources');
+    const isActorAdmin = userRole.includes('admin') || !isHR;
+
+    if (!isActorAdmin && formData.role.toLowerCase().includes('admin')) {
+      alert('🔒 Security Rule: HR Managers cannot create or assign Admin accounts. Only Super Admin has this privilege.');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
+      const empCode = formData.employeeCode.trim().toUpperCase();
+      const gross = formData.startingSalary || 35000;
+      const basic = Math.round(gross * 0.5);
+      const hra = Math.round(basic * 0.4);
+      const allowances = Math.max(0, gross - basic - hra);
+      const pf = Math.round(basic * 0.08);
+      const pt = 200;
+      const tds = gross > 50000 ? Math.round(gross * 0.05) : 0;
+
+      try {
+        const savedMap = JSON.parse(localStorage.getItem('EMS_SALARY_MAP') || '{}');
+        savedMap[empCode] = { basic, hra, allowances, bonus: 0, pf, pt, tds };
+        localStorage.setItem('EMS_SALARY_MAP', JSON.stringify(savedMap));
+      } catch (e) {}
+
       await addEmployee({
         ...formData,
-        employeeCode: formData.employeeCode.trim().toUpperCase(),
+        employeeCode: empCode,
         avatar: formData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(formData.name)}`
       });
       // Reset form
@@ -121,6 +148,7 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
         department: 'Engineering',
         joiningDate: new Date().toISOString().split('T')[0],
         leaveBalance: { casual: 10, sick: 8, earned: 15, maternity: 0 },
+        startingSalary: 35000,
         avatar: ''
       });
       onClose();
@@ -246,13 +274,25 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
             </label>
             <input
               type="text"
-              placeholder="e.g. Frontend Engineer"
+              list="role-options-list"
+              placeholder="e.g. Senior Software Engineer / Team Lead"
               value={formData.role}
               onChange={(e) => setFormData({ ...formData, role: e.target.value })}
               className="filter-input"
               style={{ width: '100%', height: '40px', paddingLeft: '12px' }}
               required
             />
+            <datalist id="role-options-list">
+              {availableRoles.map(r => (
+                <option key={r.id} value={r.name}>
+                  {r.category} ({r.isSystem ? 'System Role' : 'Custom Role'})
+                </option>
+              ))}
+              <option value="Senior Software Engineer">Core Workforce</option>
+              <option value="Junior Associate Engineer">Entry Level</option>
+              <option value="Team Leader">Project Leadership</option>
+              <option value="HR Business Partner">Human Resources</option>
+            </datalist>
           </div>
         </div>
 
@@ -288,7 +328,56 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Row 4: Initial Leave Quota Setup */}
+        {/* Row 4: Initial Joining Salary Package */}
+        <div style={{
+          background: '#f0fdf4',
+          border: '1px solid #bbf7d0',
+          borderRadius: '10px',
+          padding: '14px',
+          marginTop: '4px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#166534' }}>
+              💰 Initial Joining Compensation (CTC):
+            </span>
+            <span style={{ fontSize: '11px', color: '#15803d', fontWeight: '600' }}>
+              Annual CTC: ₹{((formData.startingSalary || 35000) * 12).toLocaleString()} / yr
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '11px', color: '#166534', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
+                Monthly Starting Salary (₹ Gross) *
+              </label>
+              <input
+                type="number"
+                step="500"
+                min="5000"
+                placeholder="e.g. 25000"
+                value={formData.startingSalary || 35000}
+                onChange={(e) => setFormData({ ...formData, startingSalary: Number(e.target.value) })}
+                className="filter-input"
+                style={{ width: '100%', height: '38px', paddingLeft: '10px', fontWeight: '700', color: '#0f172a' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '11px', color: '#166534', display: 'block', marginBottom: '4px', fontWeight: '600' }}>
+                Basic Pay (Auto 50%)
+              </label>
+              <input
+                type="text"
+                disabled
+                value={`₹${Math.round((formData.startingSalary || 35000) * 0.5).toLocaleString()} / mo`}
+                className="filter-input"
+                style={{ width: '100%', height: '38px', paddingLeft: '10px', backgroundColor: '#e2e8f0', color: '#475569', fontWeight: '600' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Row 5: Initial Leave Quota Setup */}
         <div style={{
           background: '#f8fafc',
           border: '1px solid #e2e8f0',

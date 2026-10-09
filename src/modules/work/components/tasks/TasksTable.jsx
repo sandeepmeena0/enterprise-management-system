@@ -328,18 +328,23 @@ export const TasksTable = ({ onSelectTask }) => {
                     {task.hoursLogged ? `${task.hoursLogged}h` : '0s'}
                   </td>
 
-                  {/* Assigned To (Avatar + Name + Smart Leave Badge) */}
+                  {/* Assigned To (Avatar + Name + Smart Leave Badge + Assigner info) */}
                   <td style={{ padding: '16px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <img
                         src={task.assignedToAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                         alt={task.assignedToName}
-                        style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover' }}
+                        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
                       />
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '500', color: '#0f172a' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>
                           {task.assignedToName || 'Unassigned'}
                         </div>
+                        {task.assignedBy && task.assignedBy !== task.assignedToName && (
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            By {task.assignedBy}
+                          </div>
+                        )}
                         {isOnLeave && (
                           <span style={{
                             fontSize: '10px',

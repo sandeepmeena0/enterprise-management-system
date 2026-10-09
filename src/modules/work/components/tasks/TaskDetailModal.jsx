@@ -24,10 +24,31 @@ export const TaskDetailModal = ({ task, onClose }) => {
     startTaskTimer,
     pauseTaskTimer,
     stopTaskTimer,
-    changeTaskStatus
+    changeTaskStatus,
+    updateTask,
+    employees
   } = useWork();
 
+  const [isReassigning, setIsReassigning] = useState(false);
+
   if (!task) return null;
+
+  const handleReassign = async (newEmpId) => {
+    const newAssignee = employees.find(e => e._id === newEmpId);
+    if (!newAssignee) return;
+    try {
+      await updateTask(task._id, {
+        assignedTo: newAssignee._id,
+        assignedToId: newAssignee._id,
+        assignedToName: newAssignee.name,
+        assignedToAvatar: newAssignee.avatar,
+        assignedToRole: newAssignee.role
+      });
+      setIsReassigning(false);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <div style={{
@@ -48,7 +69,7 @@ export const TaskDetailModal = ({ task, onClose }) => {
         backgroundColor: '#ffffff',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '720px',
+        maxWidth: '760px',
         maxHeight: '90vh',
         overflowY: 'auto',
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
@@ -210,53 +231,114 @@ export const TaskDetailModal = ({ task, onClose }) => {
             </div>
           </div>
 
-          {/* Meta Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginBottom: '4px' }}>Assigned Member</div>
+          {/* Meta Grid (Assignee, Assigner, Timeline, Priority, Status) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
+            {/* Assigned Member (Assignee) with quick Reassign button */}
+            <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600' }}>Assigned To</div>
+                <button
+                  onClick={() => setIsReassigning(!isReassigning)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    fontSize: '11.5px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    padding: '0'
+                  }}
+                >
+                  {isReassigning ? 'Cancel' : 'Reassign ↻'}
+                </button>
+              </div>
+
+              {!isReassigning ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <img
+                    src={task.assignedToAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
+                    alt={task.assignedToName}
+                    style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{task.assignedToName}</div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>{task.assignedToRole || 'Team Member'}</div>
+                  </div>
+                </div>
+              ) : (
+                <select
+                  value={task.assignedToId || ''}
+                  onChange={(e) => handleReassign(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #3b82f6',
+                    fontSize: '12.5px',
+                    fontWeight: '600',
+                    backgroundColor: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="" disabled>Select colleague...</option>
+                  {employees.map(emp => (
+                    <option key={emp._id} value={emp._id}>
+                      {emp.name} ({emp.role})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Assigned By (Creator) */}
+            <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600', marginBottom: '6px' }}>Assigned By</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <img
-                  src={task.assignedToAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
-                  alt={task.assignedToName}
-                  style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
+                  src={task.assignedByAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
+                  alt={task.assignedBy || 'Creator'}
+                  style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
                 />
-                <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>{task.assignedToName}</span>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{task.assignedBy || 'Avinash'}</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>{task.assignedByRole || 'Assigner'}</div>
+                </div>
               </div>
             </div>
 
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginBottom: '4px' }}>Timeline</div>
+            {/* Timeline */}
+            <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600', marginBottom: '6px' }}>Timeline</div>
               <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>
                 {task.startDate} → {task.hasNoDueDate ? 'No Due Date' : task.dueDate}
               </div>
-            </div>
-
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginBottom: '4px' }}>Priority</div>
-              <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', textTransform: 'capitalize' }}>
-                {task.priority || 'Medium'}
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Priority: <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{task.priority || 'Medium'}</strong>
               </div>
             </div>
 
-            <div style={{ padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginBottom: '4px' }}>Current Status</div>
+            {/* Status Selector */}
+            <div style={{ padding: '14px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600', marginBottom: '6px' }}>Current Status</div>
               <select
                 value={task.status}
                 onChange={e => changeTaskStatus(task._id, e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '4px 8px',
+                  padding: '6px 10px',
                   borderRadius: '6px',
                   border: '1px solid #cbd5e1',
                   fontSize: '12.5px',
                   fontWeight: '600',
-                  outline: 'none'
+                  outline: 'none',
+                  backgroundColor: '#ffffff'
                 }}
               >
-                <option value="incomplete">Incomplete</option>
-                <option value="in_progress">In Progress</option>
-                <option value="under_review">Under Review</option>
-                <option value="completed">Completed</option>
+                <option value="incomplete">🔴 Incomplete</option>
+                <option value="in_progress">🔵 In Progress</option>
+                <option value="under_review">🟣 Under Review</option>
+                <option value="completed">🟢 Completed</option>
               </select>
             </div>
           </div>

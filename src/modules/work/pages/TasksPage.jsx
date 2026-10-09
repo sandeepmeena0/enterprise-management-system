@@ -30,34 +30,50 @@ export const TasksPage = () => {
     taskFilter,
     setTaskFilter,
     currentUser,
-    projects
+    projects,
+    employees
   } = useWork();
 
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'kanban'
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [scopeMode, setScopeMode] = useState('all'); // 'all' | 'assigned_to_me' | 'assigned_by_me'
 
-  // Toggle "My Tasks"
-  const handleToggleMyTasks = () => {
-    const next = !myTasksOnly;
-    setMyTasksOnly(next);
-    setTaskFilter(prev => ({
-      ...prev,
-      assignedTo: next ? (currentUser?._id || 'emp_001') : 'all'
-    }));
+  // Handle Scope Switching
+  const handleScopeChange = (mode) => {
+    setScopeMode(mode);
+    if (mode === 'assigned_to_me') {
+      setTaskFilter(prev => ({
+        ...prev,
+        assignedTo: currentUser?._id || 'emp_001',
+        assignedBy: 'all'
+      }));
+    } else if (mode === 'assigned_by_me') {
+      setTaskFilter(prev => ({
+        ...prev,
+        assignedTo: 'all',
+        assignedBy: currentUser?._id || currentUser?.name || 'Avinash'
+      }));
+    } else {
+      setTaskFilter(prev => ({
+        ...prev,
+        assignedTo: 'all',
+        assignedBy: 'all'
+      }));
+    }
   };
 
   // Export CSV
   const handleExportCSV = () => {
     if (!tasks.length) return;
-    const headers = ['Code', 'Title', 'Project', 'Category', 'Assignee', 'Start Date', 'Due Date', 'Status', 'Estimated Hours', 'Hours Logged'];
+    const headers = ['Code', 'Title', 'Project', 'Category', 'Assignee', 'Assigned By', 'Start Date', 'Due Date', 'Status', 'Estimated Hours', 'Hours Logged'];
     const rows = tasks.map(t => [
       t.taskCode,
       `"${t.title.replace(/"/g, '""')}"`,
       `"${t.projectName.replace(/"/g, '""')}"`,
       t.category,
       t.assignedToName,
+      t.assignedBy || 'Avinash',
       t.startDate,
       t.hasNoDueDate ? 'No Due Date' : t.dueDate,
       t.status,
@@ -92,12 +108,12 @@ export const TasksPage = () => {
             <span style={{ color: '#0f172a', fontWeight: '600' }}>Tasks</span>
           </div>
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
-            Tasks
+            Tasks & Delegation
           </h1>
         </div>
       </div>
 
-      {/* Top Filter Controls Bar (Matching Screenshot 2) */}
+      {/* Top Filter Controls Bar */}
       <div style={{
         backgroundColor: '#ffffff',
         borderRadius: '12px',
@@ -111,10 +127,15 @@ export const TasksPage = () => {
         boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', flex: 1 }}>
-          {/* Duration Selector */}
+          {/* Member Filter Dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Duration</span>
+            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Member</span>
             <select
+              value={taskFilter.assignedTo || 'all'}
+              onChange={(e) => {
+                setTaskFilter(prev => ({ ...prev, assignedTo: e.target.value, assignedBy: 'all' }));
+                setScopeMode('all');
+              }}
               style={{
                 padding: '6px 10px',
                 borderRadius: '6px',
@@ -125,10 +146,12 @@ export const TasksPage = () => {
                 backgroundColor: '#ffffff'
               }}
             >
-              <option>Start Date To End Date</option>
-              <option>This Week</option>
-              <option>This Month</option>
-              <option>Today</option>
+              <option value="all">All Members</option>
+              {employees?.map(emp => (
+                <option key={emp._id} value={emp._id}>
+                  {emp.name} ({emp.role})
+                </option>
+              ))}
             </select>
           </div>
 
@@ -164,7 +187,7 @@ export const TasksPage = () => {
             </select>
           </div>
 
-          {/* Search Input (Matching Screenshot 2 "Start typing to search") */}
+          {/* Search Input */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -173,13 +196,13 @@ export const TasksPage = () => {
             border: '1px solid #cbd5e1',
             borderRadius: '6px',
             padding: '6px 12px',
-            minWidth: '240px',
+            minWidth: '220px',
             flex: 1
           }}>
             <Search size={15} color="#64748b" />
             <input
               type="text"
-              placeholder="Start typing to search"
+              placeholder="Search by task title, project, assignee or assigner..."
               value={taskFilter.search}
               onChange={e => setTaskFilter(prev => ({ ...prev, search: e.target.value }))}
               style={{
@@ -193,29 +216,9 @@ export const TasksPage = () => {
             />
           </div>
         </div>
-
-        {/* Filters Action */}
-        <button
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            backgroundColor: '#ffffff',
-            border: '1px solid #cbd5e1',
-            borderRadius: '6px',
-            padding: '6px 14px',
-            fontSize: '13px',
-            color: '#475569',
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}
-        >
-          <Filter size={14} />
-          Filters
-        </button>
       </div>
 
-      {/* Action Sub-Bar: + Add Task, My Tasks, Export, View Mode (Matching Screenshot 2) */}
+      {/* Action Sub-Bar: + Add Task, All / Assigned to Me / Assigned by Me, Export, View Mode */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -223,8 +226,8 @@ export const TasksPage = () => {
         flexWrap: 'wrap',
         gap: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Add Task Button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Add Task Button (Anyone can assign to anyone) */}
           <button
             id="btn-add-task"
             onClick={() => setIsAddModalOpen(true)}
@@ -247,29 +250,70 @@ export const TasksPage = () => {
             onMouseLeave={e => e.currentTarget.style.backgroundColor = '#0284c7'}
           >
             <Plus size={16} />
-            Add Task
+            Assign New Task
           </button>
 
-          {/* My Tasks Toggle Button */}
-          <button
-            onClick={handleToggleMyTasks}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: myTasksOnly ? '#eff6ff' : '#ffffff',
-              color: myTasksOnly ? '#2563eb' : '#475569',
-              border: `1px solid ${myTasksOnly ? '#3b82f6' : '#cbd5e1'}`,
-              padding: '8px 14px',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            <UserCheck size={15} />
-            My Tasks
-          </button>
+          {/* Scope Filter Pills (All / Assigned To Me / Assigned By Me) */}
+          <div style={{
+            display: 'flex',
+            backgroundColor: '#f1f5f9',
+            padding: '3px',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
+            gap: '2px'
+          }}>
+            <button
+              onClick={() => handleScopeChange('all')}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: scopeMode === 'all' ? '700' : '500',
+                backgroundColor: scopeMode === 'all' ? '#ffffff' : 'transparent',
+                color: scopeMode === 'all' ? '#0f172a' : '#64748b',
+                boxShadow: scopeMode === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              All Team Tasks
+            </button>
+            <button
+              onClick={() => handleScopeChange('assigned_to_me')}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: scopeMode === 'assigned_to_me' ? '700' : '500',
+                backgroundColor: scopeMode === 'assigned_to_me' ? '#ffffff' : 'transparent',
+                color: scopeMode === 'assigned_to_me' ? '#2563eb' : '#64748b',
+                boxShadow: scopeMode === 'assigned_to_me' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Assigned to Me
+            </button>
+            <button
+              onClick={() => handleScopeChange('assigned_by_me')}
+              style={{
+                padding: '6px 12px',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: scopeMode === 'assigned_by_me' ? '700' : '500',
+                backgroundColor: scopeMode === 'assigned_by_me' ? '#ffffff' : 'transparent',
+                color: scopeMode === 'assigned_by_me' ? '#0284c7' : '#64748b',
+                boxShadow: scopeMode === 'assigned_by_me' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Assigned by Me
+            </button>
+          </div>
 
           {/* Export Button */}
           <button

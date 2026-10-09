@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
+  User,
   Palmtree,
   UserCheck,
   UserX,
@@ -219,6 +220,49 @@ export const DashboardPage = () => {
               <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '500' }}>Projects</div>
               <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a' }}>{activeProjectsCount}</div>
             </div>
+          </div>
+
+          {/* Quick Direct Button for Employees & Role Control */}
+          <div style={{ display: 'flex', gap: '8px', paddingTop: '4px' }}>
+            <button
+              onClick={() => navigate('/employees')}
+              style={{
+                flex: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                backgroundColor: '#eff6ff',
+                color: '#1d4ed8',
+                border: '1.5px solid #bfdbfe',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(37,99,235,0.08)'
+              }}
+            >
+              <Users size={14} />
+              <span>👥 Employees & Role Control</span>
+            </button>
+
+            <button
+              onClick={() => setIsEditProfileOpen(true)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                backgroundColor: '#f8fafc',
+                color: '#475569',
+                border: '1px solid #cbd5e1',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer'
+              }}
+              title="Edit My Profile"
+            >
+              <User size={14} />
+            </button>
           </div>
         </div>
 

@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
-import { Plus, Trash2, Mail, Briefcase, Building, Search, Calendar, UserCheck } from 'lucide-react';
+import { Plus, Trash2, Mail, Briefcase, Building, Search, Calendar, UserCheck, Award, User, Edit3 } from 'lucide-react';
 import { AddEmployeeModal } from './AddEmployeeModal';
+import { PromoteEmployeeModal } from './PromoteEmployeeModal';
+import { EditProfileModal } from '../../../../shared/components/modals/EditProfileModal';
 
 export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
   const { employees, deleteEmployee } = useHR();
   const [search, setSearch] = useState('');
   const [selectedDept, setSelectedDept] = useState('all');
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [selectedPromoteEmp, setSelectedPromoteEmp] = useState(null);
+  const [selectedProfileEmp, setSelectedProfileEmp] = useState(null);
 
   const filtered = (employees || []).filter(e => {
     if (selectedDept !== 'all' && e.department !== selectedDept) return false;
@@ -90,15 +94,20 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
                 {filtered.map(emp => (
                   <tr key={emp._id}>
                     <td>
-                      <div className="employee-cell">
+                      <div
+                        className="employee-cell"
+                        onClick={() => setSelectedProfileEmp(emp)}
+                        style={{ cursor: 'pointer' }}
+                        title="Click to view & edit employee profile and role"
+                      >
                         <div className="employee-avatar">
                           {emp.avatar ? <img src={emp.avatar} alt={emp.name} /> : (emp.name?.charAt(0) || 'E')}
                         </div>
                         <div className="employee-name-group">
-                          <span className="employee-name">
+                          <span className="employee-name" style={{ color: '#2563eb', textDecoration: 'underline' }}>
                             {emp.name}
                             {emp.isCurrentUser && (
-                              <span className="its-you-pill" style={{ fontSize: '9px', padding: '1px 5px' }}>It's You</span>
+                              <span className="its-you-pill" style={{ fontSize: '9px', padding: '1px 5px', marginLeft: '6px' }}>It's You</span>
                             )}
                           </span>
                           <span className="employee-role">{emp.role} • {emp.email}</span>
@@ -131,7 +140,51 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
                       CL: {emp.leaveBalance?.casual || 0} | SL: {emp.leaveBalance?.sick || 0} | EL: {emp.leaveBalance?.earned || 0}
                     </td>
 
-                    <td style={{ textAlign: 'right' }}>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <button
+                        onClick={() => setSelectedProfileEmp(emp)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: '#f8fafc',
+                          color: '#475569',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          marginRight: '6px'
+                        }}
+                        title="View & Edit Full Profile / Role"
+                      >
+                        <User size={12} color="#0284c7" />
+                        <span>Profile & Role</span>
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedPromoteEmp(emp)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: '#eff6ff',
+                          color: '#2563eb',
+                          border: '1px solid #bfdbfe',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          marginRight: '6px'
+                        }}
+                        title="Promote / Upgrade Post (Admin & HR)"
+                      >
+                        <Award size={12} />
+                        <span>Promote</span>
+                      </button>
+
                       {!emp.isCurrentUser && (
                         <button
                           onClick={() => {
@@ -158,6 +211,18 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
       <AddEmployeeModal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
+      />
+
+      <PromoteEmployeeModal
+        isOpen={!!selectedPromoteEmp}
+        onClose={() => setSelectedPromoteEmp(null)}
+        employee={selectedPromoteEmp}
+      />
+
+      <EditProfileModal
+        isOpen={!!selectedProfileEmp}
+        onClose={() => setSelectedProfileEmp(null)}
+        employee={selectedProfileEmp}
       />
     </>
   );

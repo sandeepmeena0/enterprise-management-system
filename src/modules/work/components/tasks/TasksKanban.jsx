@@ -171,9 +171,16 @@ export const TasksKanban = ({ onSelectTask }) => {
                         alt={task.assignedToName}
                         style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                       />
-                      <span style={{ fontSize: '12px', color: '#475569' }}>
-                        {task.assignedToName}
-                      </span>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#334155' }}>
+                          {task.assignedToName}
+                        </div>
+                        {task.assignedBy && task.assignedBy !== task.assignedToName && (
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>
+                            By {task.assignedBy}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>

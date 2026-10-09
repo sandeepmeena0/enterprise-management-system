@@ -5,8 +5,7 @@
  */
 
 import { getCollection, saveCollection, KEYS } from '../../../shared/services/storageService';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+import { API_BASE as API_BASE_URL } from '../../../shared/config/apiConfig';
 
 const isBackendAvailable = async () => {
   try {
@@ -172,6 +171,9 @@ export const workService = {
     }
     if (filters.assignedTo && filters.assignedTo !== 'all') {
       list = list.filter(t => t.assignedToId === filters.assignedTo || t.assignedTo === filters.assignedTo);
+    }
+    if (filters.assignedBy && filters.assignedBy !== 'all') {
+      list = list.filter(t => t.assignedById === filters.assignedBy || t.assignedBy === filters.assignedBy);
     }
     if (filters.search) {
       const q = filters.search.toLowerCase();

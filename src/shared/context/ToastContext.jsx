@@ -6,9 +6,27 @@ const ToastContext = createContext();
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
 
-  const addToast = useCallback((message, type = 'success', duration = 3500) => {
+  const addToast = useCallback((input, type = 'success', duration = 3500) => {
     const id = Date.now() + Math.random();
-    setToasts(prev => [...prev, { id, message, type }]);
+    let text = '';
+    let toastType = type;
+
+    if (input && typeof input === 'object') {
+      if (input.message && typeof input.message === 'string') {
+        text = input.title ? `${input.title}: ${input.message}` : input.message;
+      } else if (input.title && typeof input.title === 'string') {
+        text = input.title;
+      } else if (input instanceof Error) {
+        text = input.message || 'An unexpected error occurred';
+      } else {
+        text = JSON.stringify(input);
+      }
+      if (input.type) toastType = input.type;
+    } else {
+      text = String(input || 'Action completed');
+    }
+
+    setToasts(prev => [...prev, { id, message: text, type: toastType }]);
 
     if (duration) {
       setTimeout(() => {
@@ -58,7 +76,7 @@ export const ToastProvider = ({ children }) => {
             {toast.type === 'success' && <CheckCircle2 size={18} color="#10b981" />}
             {toast.type === 'error' && <AlertCircle size={18} color="#ef4444" />}
             {toast.type === 'info' && <Info size={18} color="#3b82f6" />}
-            <span style={{ flex: 1 }}>{toast.message}</span>
+            <span style={{ flex: 1 }}>{typeof toast.message === 'string' ? toast.message : String(toast.message || '')}</span>
             <button
               onClick={() => removeToast(toast.id)}
               style={{

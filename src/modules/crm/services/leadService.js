@@ -4,8 +4,7 @@
  */
 
 import { getCollection, saveCollection, KEYS } from '../../../shared/services/storageService';
-
-const API_BASE = '/api';
+import { API_BASE } from '../../../shared/config/apiConfig';
 
 async function fetchWithFallback(url, options = {}, fallbackFn) {
   try {

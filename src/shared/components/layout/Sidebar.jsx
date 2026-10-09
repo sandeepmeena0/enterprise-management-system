@@ -32,17 +32,42 @@ export const Sidebar = () => {
   const navigate = useNavigate();
   const { currentUser } = useHR();
   const [collapsed, setCollapsed] = useState(false);
-  const [leadsExpanded, setLeadsExpanded] = useState(true); // Open Leads by default
-  const [hrExpanded, setHrExpanded] = useState(false); // Collapsed by default - HR only when needed!
-  const [workExpanded, setWorkExpanded] = useState(true); // Work open by default
-  const [financeExpanded, setFinanceExpanded] = useState(true); // Finance open by default
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
+
+  // Helper to determine active section from route
+  const getSectionForPath = (pathname) => {
+    if (['/leads', '/lead-contact'].some(path => pathname.startsWith(path))) return 'leads';
+    if (['/projects', '/tasks', '/timesheet', '/work'].some(path => pathname.startsWith(path))) return 'work';
+    if (['/leaves', '/attendance', '/holiday', '/documents', '/appreciation'].some(path => pathname.startsWith(path))) return 'hr';
+    if (['/payroll', '/finance', '/expenses'].some(path => pathname.startsWith(path))) return 'finance';
+    return null;
+  };
+
+  // Only one section dropdown can be open at a time (mutually exclusive accordion)
+  const [openSection, setOpenSection] = useState(() => getSectionForPath(location.pathname) || 'work');
+
+  // Keep section open when route changes to a child page
+  React.useEffect(() => {
+    const routeSection = getSectionForPath(location.pathname);
+    if (routeSection) {
+      setOpenSection(routeSection);
+    }
+  }, [location.pathname]);
+
+  const toggleSection = (sectionKey) => {
+    setOpenSection(prev => (prev === sectionKey ? null : sectionKey));
+  };
+
+  const leadsExpanded = openSection === 'leads';
+  const workExpanded = openSection === 'work';
+  const hrExpanded = openSection === 'hr';
+  const financeExpanded = openSection === 'finance';
 
   const isLeadsActive = ['/leads', '/lead-contact'].some(path =>
     location.pathname.startsWith(path)
   );
 
-  const isHrActive = ['/leaves', '/attendance', '/holiday', '/appreciation'].some(path =>
+  const isHrActive = ['/leaves', '/attendance', '/holiday', '/documents', '/appreciation'].some(path =>
     location.pathname.startsWith(path)
   );
 
@@ -50,7 +75,7 @@ export const Sidebar = () => {
     location.pathname.startsWith(path)
   );
 
-  const isFinanceActive = ['/finance', '/expenses'].some(path =>
+  const isFinanceActive = ['/payroll', '/finance', '/expenses'].some(path =>
     location.pathname.startsWith(path)
   );
 
@@ -183,10 +208,38 @@ export const Sidebar = () => {
           {!collapsed && <span>Dashboard</span>}
         </NavLink>
 
+        {/* Employees & Role Management (Master Direct Access) */}
+        <NavLink
+          to="/employees"
+          style={({ isActive }) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            color: isActive ? '#ffffff' : '#94a3b8',
+            backgroundColor: isActive ? 'rgba(37, 99, 235, 0.25)' : 'transparent',
+            textDecoration: 'none',
+            fontSize: '13.5px',
+            fontWeight: isActive ? '700' : '500',
+            transition: 'all 0.15s ease'
+          })}
+        >
+          <Users size={18} color={location.pathname === '/employees' ? '#60a5fa' : '#94a3b8'} />
+          {!collapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <span>Employees & Roles</span>
+              <span style={{ fontSize: '10px', backgroundColor: '#2563eb', color: '#ffffff', padding: '1px 6px', borderRadius: '10px', fontWeight: '700' }}>
+                RBAC
+              </span>
+            </div>
+          )}
+        </NavLink>
+
         {/* Leads - Core CRM Prospect & Deal Pipeline Section */}
         <div>
           <div
-            onClick={() => setLeadsExpanded(!leadsExpanded)}
+            onClick={() => toggleSection('leads')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -244,10 +297,10 @@ export const Sidebar = () => {
           )}
         </div>
 
-        {/* Work - Core Daily Work Section (Expanded by default) */}
+        {/* Work - Core Daily Work Section */}
         <div>
           <div
-            onClick={() => setWorkExpanded(!workExpanded)}
+            onClick={() => toggleSection('work')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -345,10 +398,10 @@ export const Sidebar = () => {
           )}
         </div>
 
-        {/* HR & Personnel - Dedicated Section (Collapsed by default, only accessed when actually needed) */}
+        {/* HR & Personnel - Dedicated Section */}
         <div>
           <div
-            onClick={() => setHrExpanded(!hrExpanded)}
+            onClick={() => toggleSection('hr')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -383,27 +436,6 @@ export const Sidebar = () => {
               flexDirection: 'column',
               gap: '2px'
             }}>
-              <div
-                onClick={() => setIsDirectoryOpen(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '8px 10px',
-                  borderRadius: '6px',
-                  color: '#94a3b8',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '400',
-                  transition: 'all 0.15s ease'
-                }}
-                onMouseEnter={e => e.currentTarget.style.color = '#ffffff'}
-                onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
-              >
-                <Users size={15} />
-                {!collapsed && <span>Team Directory</span>}
-              </div>
-
               <NavLink
                 to="/leaves"
                 style={({ isActive }) => ({
@@ -465,6 +497,26 @@ export const Sidebar = () => {
               </NavLink>
 
               <NavLink
+                to="/documents"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                <FolderGit2 size={15} />
+                {!collapsed && <span>Documents & KYC</span>}
+              </NavLink>
+
+              <NavLink
                 to="/appreciation"
                 style={({ isActive }) => ({
                   display: 'flex',
@@ -487,10 +539,10 @@ export const Sidebar = () => {
           )}
         </div>
 
-        {/* Finance - Admin Side Module (Screenshot 1) */}
+        {/* Finance - Dedicated Section */}
         <div>
           <div
-            onClick={() => setFinanceExpanded(!financeExpanded)}
+            onClick={() => toggleSection('finance')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -507,7 +559,7 @@ export const Sidebar = () => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <DollarSign size={18} color={isFinanceActive ? '#3b82f6' : '#94a3b8'} />
-              {!collapsed && <span>Finance</span>}
+              {!collapsed && <span>Finance & Payroll</span>}
             </div>
             {!collapsed && (
               financeExpanded ? <ChevronDown size={14} color="#94a3b8" /> : <ChevronRight size={14} color="#64748b" />
@@ -525,6 +577,25 @@ export const Sidebar = () => {
               flexDirection: 'column',
               gap: '2px'
             }}>
+              <NavLink
+                to="/payroll"
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  color: isActive ? '#ffffff' : '#94a3b8',
+                  backgroundColor: isActive ? '#1d4ed8' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                })}
+              >
+                {!collapsed && <span>Salary & Payslips</span>}
+              </NavLink>
+
               <NavLink
                 to="/finance/expenses"
                 style={({ isActive }) => ({

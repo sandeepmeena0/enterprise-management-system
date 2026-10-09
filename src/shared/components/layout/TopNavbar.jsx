@@ -20,7 +20,8 @@ import {
   User,
   HelpCircle,
   Keyboard,
-  Clock
+  Clock,
+  ShieldCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, Users, Users2, Edit3, Moon, Sun, Coffee, ListTodo, FolderGit2, Ticket, Palmtree, Check, StickyNote, Calendar as CalendarIcon, FileText } from 'lucide-react';
@@ -1328,10 +1329,28 @@ export const TopNavbar = () => {
                 <div
                   onClick={() => {
                     setShowProfileMenu(false);
+                    navigate('/employees');
+                  }}
+                >
+                  <ProfileMenuItem icon={<Users size={14} color="#2563eb" />} label="Employees & Role Control" />
+                </div>
+
+                <div
+                  onClick={() => {
+                    setShowProfileMenu(false);
                     setIsEditProfileOpen(true);
                   }}
                 >
-                  <ProfileMenuItem icon={<User size={14} />} label="Edit Profile" />
+                  <ProfileMenuItem icon={<User size={14} />} label="Edit My Profile" />
+                </div>
+
+                <div
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    navigate('/settings');
+                  }}
+                >
+                  <ProfileMenuItem icon={<ShieldCheck size={14} color="#16a34a" />} label="Roles & Hierarchy (RBAC)" />
                 </div>
 
                 <div

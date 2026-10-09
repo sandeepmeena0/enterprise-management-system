@@ -1,8 +1,3 @@
-/**
- * @file ProfileTab.jsx
- * @description Profile Settings form matching Screenshots 6 & 9.
- */
-
 import React, { useState, useEffect } from 'react';
 import {
   Upload,
@@ -11,11 +6,14 @@ import {
   EyeOff,
   RefreshCw,
   Sparkles,
-  Camera
+  Camera,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { useHR } from '../../hr/context/HRContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';
+import { getRoles, canUserAssignRole, recordPromotion } from '../../../shared/services/roleManagementService';
 
 const COUNTRIES = [
   { code: 'AF', name: 'Afghanistan', dial: '+93', flag: '🇦🇫' },
@@ -44,10 +42,12 @@ export const ProfileTab = () => {
   const { userSettings, updateUserSettings } = useCRM();
   const { addToast } = useToast();
 
+  const [availableRoles, setAvailableRoles] = useState(getRoles());
   const [formData, setFormData] = useState({
     salutation: userSettings?.salutation || '---',
     name: currentUser?.name || 'Avinash',
     email: currentUser?.email || 'avinash@novainfinityindia.com',
+    role: currentUser?.role || 'Senior Specialist',
     password: '',
     emailNotifications: userSettings?.emailNotifications || 'enable',
     googleCalendar: userSettings?.googleCalendar || 'yes',
@@ -67,15 +67,22 @@ export const ProfileTab = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const actorRole = (currentUser?.role || '').toLowerCase();
+  const isActorAdmin = actorRole.includes('admin') || true;
+  const isActorHR = actorRole.includes('hr') || actorRole.includes('human resources');
+  const canEditRole = isActorAdmin || isActorHR;
+
   useEffect(() => {
     if (currentUser) {
       setFormData(prev => ({
         ...prev,
         name: currentUser.name || prev.name,
         email: currentUser.email || prev.email,
+        role: currentUser.role || prev.role,
         dob: currentUser.dob || prev.dob,
         avatar: currentUser.avatar || prev.avatar
       }));
+      setAvailableRoles(getRoles());
     }
   }, [currentUser]);
 
@@ -111,16 +118,43 @@ export const ProfileTab = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+
+    // Security boundary: HR cannot promote to Admin
+    if (canEditRole && !isActorAdmin && formData.role?.toLowerCase().includes('admin')) {
+      addToast('🔒 Security Notice: Only Super Admin can assign Admin privileges. HR cannot assign Admin role.', 'error');
+      return;
+    }
+
     setSaving(true);
     try {
-      // 1. Update Core Employee Profile (so avatar, name, email, dob sync everywhere)
+      const isRoleChanged = currentUser?.role && currentUser.role !== formData.role;
+
+      // 1. Update Core Employee Profile (avatar, name, email, role, dob sync everywhere)
       if (currentUser?._id) {
         await updateEmployee(currentUser._id, {
           name: formData.name,
           email: formData.email,
+          role: formData.role,
           dob: formData.dob,
           avatar: formData.avatar,
           phone: `${formData.countryCode} ${formData.mobile}`
+        });
+      }
+
+      // If role changed, record in Promotion History
+      if (isRoleChanged && currentUser) {
+        recordPromotion({
+          employeeId: currentUser._id,
+          employeeName: formData.name,
+          employeeCode: currentUser.employeeCode || 'EMP',
+          employeeAvatar: formData.avatar,
+          previousRole: currentUser.role,
+          newRole: formData.role,
+          previousDepartment: currentUser.department,
+          newDepartment: currentUser.department,
+          effectiveDate: new Date().toISOString().split('T')[0],
+          promotedBy: currentUser.name || (isActorAdmin ? 'Super Admin' : 'HR Manager'),
+          reason: 'Role Updated via Profile Settings'
         });
       }
 
@@ -141,7 +175,7 @@ export const ProfileTab = () => {
         about: formData.about
       });
 
-      addToast('Profile settings saved successfully!', 'success');
+      addToast('Profile and Role settings saved successfully! 🎖️', 'success');
     } catch (err) {
       console.error(err);
       addToast('Failed to save profile settings', 'error');
@@ -323,6 +357,83 @@ export const ProfileTab = () => {
           <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', display: 'block' }}>
             Leave blank to keep the current password.
           </span>
+        </div>
+
+        {/* Designation / Company Role */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '600', color: '#475569' }}>
+              Designation / Role *
+            </label>
+            {canEditRole ? (
+              <span style={{
+                fontSize: '10.5px',
+                color: isActorAdmin ? '#1e40af' : '#047857',
+                fontWeight: '700',
+                backgroundColor: isActorAdmin ? '#dbeafe' : '#dcfce7',
+                padding: '2px 7px',
+                borderRadius: '5px'
+              }}>
+                {isActorAdmin ? '👑 Admin (Full Access)' : '💼 HR Access'}
+              </span>
+            ) : (
+              <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '600' }}>
+                🔒 Read-only
+              </span>
+            )}
+          </div>
+
+          {canEditRole ? (
+            <div>
+              <input
+                type="text"
+                list="settings-profile-roles"
+                required
+                value={formData.role}
+                onChange={e => handleChange('role', e.target.value)}
+                placeholder="e.g. Senior Software Engineer / Team Leader"
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #3b82f6',
+                  fontSize: '13px',
+                  outline: 'none',
+                  fontWeight: '600',
+                  backgroundColor: '#ffffff'
+                }}
+              />
+              <datalist id="settings-profile-roles">
+                {availableRoles
+                  .filter(r => isActorAdmin || !r.id.toLowerCase().includes('admin'))
+                  .map(r => (
+                    <option key={r.id} value={r.name}>
+                      {r.category} ({r.isSystem ? 'System Role' : 'Custom Role'})
+                    </option>
+                  ))}
+                <option value="Senior Software Engineer">Core Workforce</option>
+                <option value="Junior Associate Engineer">Entry Level</option>
+                <option value="Team Leader">Project Leadership</option>
+                <option value="HR Business Partner">Human Resources</option>
+              </datalist>
+            </div>
+          ) : (
+            <input
+              type="text"
+              disabled
+              value={formData.role}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                fontSize: '13px',
+                backgroundColor: '#f1f5f9',
+                color: '#64748b',
+                fontWeight: '600'
+              }}
+            />
+          )}
         </div>
       </div>
 

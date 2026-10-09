@@ -10,13 +10,10 @@
  */
 
 import { getCollection, saveCollection, KEYS, initStorage } from '../../../shared/services/storageService';
+import { API_BASE } from '../../../shared/config/apiConfig';
 
 // Ensure storage is initialized
 initStorage();
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '')}/api`
-  : '/api';
 
 /**
  * Safe fetch helper that attempts backend API first, falling back to local storage

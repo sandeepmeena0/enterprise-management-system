@@ -17,17 +17,22 @@ import {
 import { ProfileTab } from '../components/ProfileTab';
 import { EmergencyContactsTab } from '../components/EmergencyContactsTab';
 import { SecuritySettingsTab } from '../components/SecuritySettingsTab';
+import { CompanyBrandingTab } from '../components/CompanyBrandingTab';
+import { RolesManagementTab } from '../components/RolesManagementTab';
 import { useTimer } from '../../../shared/context/TimerContext';
+import { Building2, Layers } from 'lucide-react';
 
 export const SettingsPage = () => {
   const { timeString, isClockedIn, isOnBreak } = useTimer();
-  const [activeSection, setActiveSection] = useState('profile'); // 'profile' | 'security'
+  const [activeSection, setActiveSection] = useState('profile'); // 'profile' | 'security' | 'company' | 'roles'
   const [profileSubTab, setProfileSubTab] = useState('profile'); // 'profile' | 'emergency_contacts'
   const [searchMenu, setSearchMenu] = useState('');
 
   const menuItems = [
     { id: 'profile', label: 'Profile Settings', icon: User },
-    { id: 'security', label: 'Security Settings', icon: ShieldCheck }
+    { id: 'security', label: 'Security Settings', icon: ShieldCheck },
+    { id: 'roles', label: 'Roles & Hierarchy (RBAC)', icon: Layers },
+    { id: 'company', label: 'Company & Payslip Branding', icon: Building2 }
   ];
 
   const filteredMenuItems = menuItems.filter(item =>
@@ -222,6 +227,20 @@ export const SettingsPage = () => {
           {activeSection === 'security' && (
             <div>
               <SecuritySettingsTab />
+            </div>
+          )}
+
+          {/* Section: Roles & Hierarchy RBAC */}
+          {activeSection === 'roles' && (
+            <div>
+              <RolesManagementTab />
+            </div>
+          )}
+
+          {/* Section: Company & Payslip Branding (Admin Only) */}
+          {activeSection === 'company' && (
+            <div>
+              <CompanyBrandingTab />
             </div>
           )}
 

@@ -63,12 +63,23 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
 
   const [showOtherDetails, setShowOtherDetails] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
 
   if (!isOpen) return null;
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const filteredEmployees = employees.filter(emp => {
+    if (!employeeSearch.trim()) return true;
+    const q = employeeSearch.toLowerCase();
+    return (
+      emp.name?.toLowerCase().includes(q) ||
+      emp.role?.toLowerCase().includes(q) ||
+      emp.department?.toLowerCase().includes(q)
+    );
+  });
 
   const handleSave = async (andAddMore = false) => {
     if (!formData.title.trim()) {
@@ -91,6 +102,10 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
         assignedToName: selectedAssignee?.name || 'Unassigned',
         assignedToAvatar: selectedAssignee?.avatar || '',
         assignedToRole: selectedAssignee?.role || '',
+        assignedBy: currentUser?.name || 'Avinash',
+        assignedById: currentUser?._id || 'emp_001',
+        assignedByAvatar: currentUser?.avatar || '',
+        assignedByRole: currentUser?.role || 'Team Member',
         estimatedHours: formData.hasTimeEstimate ? Number(formData.estimatedHours) || 0 : 0
       });
 
@@ -314,11 +329,36 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* Assigned To (Active CRM & HR Team Members) */}
+            {/* Assigned To (Any Team Member Across Organization) */}
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Assigned To (CRM Team Members) *
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                  Assign To (Any Team Member) *
+                </label>
+                <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                  Assigning as: <strong style={{ color: '#0f172a' }}>{currentUser?.name || 'Avinash'}</strong>
+                </span>
+              </div>
+
+              {/* Quick Search for Employee */}
+              <div style={{ marginBottom: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search employee by name, designation, or department..."
+                  value={employeeSearch}
+                  onChange={e => setEmployeeSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12.5px',
+                    outline: 'none',
+                    backgroundColor: '#ffffff'
+                  }}
+                />
+              </div>
+
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
@@ -327,11 +367,12 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
                 borderRadius: '8px',
                 padding: '12px',
                 backgroundColor: '#f8fafc',
-                maxHeight: '160px',
+                maxHeight: '170px',
                 overflowY: 'auto'
               }}>
-                {employees.map(emp => {
+                {filteredEmployees.map(emp => {
                   const isSelected = formData.assignedToId === emp._id;
+                  const isSelf = emp._id === currentUser?._id || emp.isCurrentUser;
                   return (
                     <div
                       key={emp._id}
@@ -351,11 +392,18 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
                       <img
                         src={emp.avatar}
                         alt={emp.name}
-                        style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }}
+                        style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
                       />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {emp.name}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {emp.name}
+                          </span>
+                          {isSelf && (
+                            <span style={{ fontSize: '10px', color: '#2563eb', backgroundColor: '#dbeafe', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>
+                              You
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {emp.role}
@@ -365,6 +413,11 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
                     </div>
                   );
                 })}
+                {filteredEmployees.length === 0 && (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '16px', color: '#94a3b8', fontSize: '13px' }}>
+                    No employees matching "{employeeSearch}"
+                  </div>
+                )}
               </div>
             </div>
 
