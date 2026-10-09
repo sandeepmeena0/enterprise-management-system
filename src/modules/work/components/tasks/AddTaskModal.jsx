@@ -658,24 +658,66 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
 
                 {/* Estimated hours input if enabled */}
                 {formData.hasTimeEstimate && (
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                      Estimated Time (Hours)
+                  <div style={{
+                    padding: '14px',
+                    backgroundColor: '#eff6ff',
+                    border: '1.5px solid #bfdbfe',
+                    borderRadius: '8px'
+                  }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e3a8a', marginBottom: '6px' }}>
+                      ⏱️ Target Time Allocation / Estimated Budget
                     </label>
-                    <input
-                      type="number"
-                      value={formData.estimatedHours}
-                      onChange={e => handleChange('estimatedHours', e.target.value)}
-                      placeholder="e.g. 4"
-                      style={{
-                        width: '160px',
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        outline: 'none'
-                      }}
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="200"
+                          step="0.5"
+                          value={formData.estimatedHours}
+                          onChange={e => handleChange('estimatedHours', Number(e.target.value))}
+                          placeholder="e.g. 4"
+                          style={{
+                            width: '100px',
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: '1.5px solid #3b82f6',
+                            fontSize: '14px',
+                            fontWeight: '700',
+                            color: '#0f172a',
+                            outline: 'none',
+                            backgroundColor: '#ffffff'
+                          }}
+                        />
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Hours</span>
+                      </div>
+
+                      {/* Quick Hour Preset Chips */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {[1, 2, 4, 8, 16, 24].map(hrs => (
+                          <button
+                            key={hrs}
+                            type="button"
+                            onClick={() => handleChange('estimatedHours', hrs)}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              border: formData.estimatedHours === hrs ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                              backgroundColor: formData.estimatedHours === hrs ? '#dbeafe' : '#ffffff',
+                              color: formData.estimatedHours === hrs ? '#1e40af' : '#475569',
+                              fontSize: '11.5px',
+                              fontWeight: '700',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {hrs}h {hrs === 8 ? '(1 Day)' : hrs === 16 ? '(2 Days)' : hrs === 24 ? '(3 Days)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px' }}>
+                      Assignee will see a live progress bar comparing their logged time against this {formData.estimatedHours || 0}h budget.
+                    </div>
                   </div>
                 )}
 

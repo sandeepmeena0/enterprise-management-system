@@ -67,6 +67,21 @@ const EmployeeSchema = new mongoose.Schema(
       sick: { type: Number, default: 12, min: 0 },
       earned: { type: Number, default: 15, min: 0 },
       maternity: { type: Number, default: 0, min: 0 }
+    },
+    salary: {
+      basic: { type: Number, default: 45000 },
+      hra: { type: Number, default: 18000 },
+      allowances: { type: Number, default: 12000 },
+      bonus: { type: Number, default: 0 },
+      pf: { type: Number, default: 3600 },
+      pt: { type: Number, default: 200 },
+      tds: { type: Number, default: 2500 },
+      revisionType: { type: String, enum: ['hike', 'decrease', 'initial'], default: 'initial' },
+      lastRevisionDate: { type: String, default: '' },
+      lastRevisionPercentage: { type: Number, default: 0 },
+      lastRevisionAmount: { type: Number, default: 0 },
+      reason: { type: String, default: '' },
+      remarks: { type: String, default: '' }
     }
   },
   {

@@ -47,7 +47,7 @@ import { DashboardOverviewModal } from '../modals/DashboardOverviewModal';
 export const TopNavbar = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, togglePauseResume, handleClockOut, handleClockIn } = useTimer();
+  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, currentBreakTimeString, togglePauseResume, handleClockOut, handleClockIn } = useTimer();
   const { currentUser, leaves, employees, updateLeaveStatus } = useHR();
   const { darkMode, toggleDarkMode, tickets, events, leads, notices, computedBirthdays } = useCRM();
   const { tasks, projects } = useWork();
@@ -447,91 +447,168 @@ export const TopNavbar = () => {
       {/* ───────── RIGHT: All Controls ───────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
 
-        {/* ── Work Timer Pill ── */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          background: isClockedIn ? '#f0fdf4' : '#fef2f2',
-          border: isClockedIn ? '1px solid #bbf7d0' : '1px solid #fecaca',
-          borderRadius: '10px',
-          padding: '6px 14px 6px 12px',
-          marginRight: '4px'
-        }}>
-          {/* Status Dot */}
-          <span style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            background: isClockedIn && isRunning ? '#10b981' : (isClockedIn ? '#f59e0b' : '#ef4444'),
-            boxShadow: isClockedIn && isRunning ? '0 0 6px #10b981' : 'none',
-            flexShrink: 0
-          }} />
+        {/* ── Work & Break Session Timer Controls ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
+          
+          {/* Active Break Pill (If currently on break) */}
+          {isOnBreak ? (
+            <button
+              onClick={() => setIsBreakModalOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                backgroundColor: '#fffbeb',
+                border: '1.5px solid #f59e0b',
+                borderRadius: '10px',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                animation: 'pulse 2s infinite'
+              }}
+              title="You are currently on break. Click to manage or resume."
+            >
+              <Coffee size={15} color="#d97706" />
+              <span style={{ fontSize: '12px', fontWeight: '800', color: '#b45309' }}>
+                On {breakType}
+              </span>
+              <span style={{
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                color: '#ea580c',
+                backgroundColor: '#fef3c7',
+                padding: '1px 6px',
+                borderRadius: '4px'
+              }}>
+                {currentBreakTimeString}
+              </span>
+            </button>
+          ) : (
+            /* Break Button when working */
+            isClockedIn && (
+              <button
+                onClick={() => setIsBreakModalOpen(true)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '10px',
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: '#475569',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Take a Break (Lunch, Tea, Quick Rest) & View Break History"
+                onMouseEnter={e => {
+                  e.currentTarget.style.backgroundColor = '#fff7ed';
+                  e.currentTarget.style.borderColor = '#fdba74';
+                  e.currentTarget.style.color = '#c2410c';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                  e.currentTarget.style.color = '#475569';
+                }}
+              >
+                <Coffee size={14} color="#ea580c" />
+                <span>Break</span>
+              </button>
+            )
+          )}
 
-          {/* Timer Display */}
-          <span style={{
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: '14px',
-            fontWeight: '700',
-            color: isClockedIn ? '#15803d' : '#94a3b8',
-            letterSpacing: '0.04em',
-            minWidth: '60px'
+          {/* Daily Work Timer Pill */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: isClockedIn ? '#f0fdf4' : '#fef2f2',
+            border: isClockedIn ? '1px solid #bbf7d0' : '1px solid #fecaca',
+            borderRadius: '10px',
+            padding: '5px 12px'
           }}>
-            {timeString}
-          </span>
+            {/* Status Dot */}
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: isClockedIn && isRunning ? '#10b981' : (isClockedIn ? '#f59e0b' : '#ef4444'),
+              boxShadow: isClockedIn && isRunning ? '0 0 6px #10b981' : 'none',
+              flexShrink: 0
+            }} />
 
-          {/* Timer Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            {/* Play / Pause */}
-            <button
-              onClick={togglePauseResume}
-              title={isRunning ? 'Pause (Break)' : 'Resume Work'}
+            {/* Timer Display */}
+            <span
               style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '6px',
-                border: 'none',
-                background: isRunning ? '#2563eb' : '#64748b',
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                flexShrink: 0
+                fontFamily: 'JetBrains Mono, monospace',
+                fontSize: '13.5px',
+                fontWeight: '700',
+                color: isClockedIn ? '#15803d' : '#94a3b8',
+                letterSpacing: '0.04em',
+                minWidth: '58px'
               }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              title={isClockedIn ? `Clocked in at ${loginTime}. Total productive time.` : 'Clocked out'}
             >
-              {isRunning
-                ? <Pause size={13} fill="#fff" />
-                : <Play size={13} fill="#fff" />
-              }
-            </button>
+              {timeString}
+            </span>
 
-            {/* Clock Out / Clock In */}
-            <button
-              onClick={handleClockOut}
-              title={isClockedIn ? 'Clock Out for Today' : 'Clock In'}
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '6px',
-                border: 'none',
-                background: isClockedIn ? '#ef4444' : '#10b981',
-                color: '#ffffff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                flexShrink: 0
-              }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              {isClockedIn ? <Square size={11} fill="#fff" /> : <Play size={13} fill="#fff" />}
-            </button>
+            {/* Timer Play/Pause Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {isClockedIn && (
+                <button
+                  onClick={togglePauseResume}
+                  title={isRunning ? 'Pause Work Timer' : 'Resume Work Timer'}
+                  style={{
+                    width: '26px',
+                    height: '26px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: isRunning ? '#2563eb' : '#64748b',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    flexShrink: 0
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                >
+                  {isRunning
+                    ? <Pause size={12} fill="#fff" />
+                    : <Play size={12} fill="#fff" />
+                  }
+                </button>
+              )}
+
+              {/* Clock In / Out */}
+              <button
+                onClick={handleClockOut}
+                title={isClockedIn ? 'Clock Out for Today' : 'Clock In for Today'}
+                style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: isClockedIn ? '#ef4444' : '#16a34a',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                {isClockedIn ? <Square size={10} fill="#fff" /> : <Play size={12} fill="#fff" />}
+              </button>
+            </div>
           </div>
         </div>
 

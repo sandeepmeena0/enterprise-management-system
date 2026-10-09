@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
-import { Plus, Trash2, Mail, Briefcase, Building, Search, Calendar, UserCheck, Award, User, Edit3 } from 'lucide-react';
+import { Plus, Trash2, Mail, Briefcase, Building, Search, Calendar, UserCheck, Award, User, Edit3, ArrowUpDown } from 'lucide-react';
 import { AddEmployeeModal } from './AddEmployeeModal';
 import { PromoteEmployeeModal } from './PromoteEmployeeModal';
 import { EditProfileModal } from '../../../../shared/components/modals/EditProfileModal';
+import { SalaryIncrementModal } from '../../../finance/components/SalaryIncrementModal';
 
 export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
   const { employees, deleteEmployee } = useHR();
@@ -13,6 +14,33 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedPromoteEmp, setSelectedPromoteEmp] = useState(null);
   const [selectedProfileEmp, setSelectedProfileEmp] = useState(null);
+  const [selectedSalaryEmp, setSelectedSalaryEmp] = useState(null);
+
+  const [salaryMap, setSalaryMap] = useState(() => {
+    try {
+      const saved = localStorage.getItem('EMS_SALARY_MAP');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    const handleSalaryUpdate = () => {
+      try {
+        const saved = localStorage.getItem('EMS_SALARY_MAP');
+        if (saved) setSalaryMap(JSON.parse(saved));
+      } catch (e) {}
+    };
+    window.addEventListener('hrms_salary_update', handleSalaryUpdate);
+    return () => window.removeEventListener('hrms_salary_update', handleSalaryUpdate);
+  }, []);
+
+  const handleSalaryUpdated = (empCode, updatedSalary) => {
+    const updated = { ...salaryMap, [empCode]: updatedSalary };
+    setSalaryMap(updated);
+    localStorage.setItem('EMS_SALARY_MAP', JSON.stringify(updated));
+  };
 
   const filtered = (employees || []).filter(e => {
     if (selectedDept !== 'all' && e.department !== selectedDept) return false;
@@ -36,7 +64,7 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
         onClose={onClose}
         title="Employee Directory & Team Roster"
         subtitle={`Total ${employees?.length || 0} active employees registered in company database.`}
-        maxWidth="850px"
+        maxWidth="920px"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Action & Filter Bar */}
@@ -142,6 +170,28 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
 
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button
+                        onClick={() => setSelectedSalaryEmp(emp)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: '#f0fdf4',
+                          color: '#15803d',
+                          border: '1px solid #bbf7d0',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          marginRight: '6px'
+                        }}
+                        title="Revise Compensation (Hike 📈 or Decrease 📉)"
+                      >
+                        <ArrowUpDown size={11} color="#16a34a" />
+                        <span>Revise Salary</span>
+                      </button>
+
+                      <button
                         onClick={() => setSelectedProfileEmp(emp)}
                         style={{
                           display: 'inline-flex',
@@ -223,6 +273,14 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
         isOpen={!!selectedProfileEmp}
         onClose={() => setSelectedProfileEmp(null)}
         employee={selectedProfileEmp}
+      />
+
+      <SalaryIncrementModal
+        isOpen={!!selectedSalaryEmp}
+        onClose={() => setSelectedSalaryEmp(null)}
+        employee={selectedSalaryEmp}
+        currentSalaryData={selectedSalaryEmp ? salaryMap[selectedSalaryEmp.employeeCode] : null}
+        onSalaryUpdated={handleSalaryUpdated}
       />
     </>
   );

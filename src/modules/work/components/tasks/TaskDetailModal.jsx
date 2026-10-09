@@ -221,6 +221,91 @@ export const TaskDetailModal = ({ task, onClose }) => {
             </div>
           </div>
 
+          {/* Time Budget vs Logged Hours Progress Card */}
+          <div style={{
+            padding: '16px 20px',
+            backgroundColor: '#f8fafc',
+            borderRadius: '12px',
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Clock size={16} color="#2563eb" />
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                  Task Time Allocation & Progress
+                </span>
+              </div>
+              <span style={{
+                fontSize: '11.5px',
+                fontWeight: '700',
+                padding: '2px 8px',
+                borderRadius: '6px',
+                backgroundColor: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#fee2e2' : '#eff6ff',
+                color: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#dc2626' : '#2563eb'
+              }}>
+                {task.estimatedHours > 0 
+                  ? `${Math.round(((Number(task.hoursLogged) || 0) / Number(task.estimatedHours)) * 100)}% of Budget`
+                  : 'Open Budget'}
+              </span>
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: '10px',
+              fontSize: '12.5px'
+            }}>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '11.5px', display: 'block' }}>Estimated Budget:</span>
+                <strong style={{ color: '#0f172a', fontSize: '13.5px' }}>
+                  {task.estimatedHours ? `${task.estimatedHours}h 00m` : 'Not set'}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '11.5px', display: 'block' }}>Actual Logged:</span>
+                <strong style={{ color: '#2563eb', fontSize: '13.5px' }}>
+                  {task.hoursLogged ? `${task.hoursLogged}h` : (task.hoursLoggedText || '0s')}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '11.5px', display: 'block' }}>Variance / Balance:</span>
+                <strong style={{
+                  color: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#dc2626' : '#16a34a',
+                  fontSize: '13.5px'
+                }}>
+                  {task.estimatedHours > 0
+                    ? ((Number(task.hoursLogged) || 0) > Number(task.estimatedHours)
+                      ? `+${((Number(task.hoursLogged) || 0) - Number(task.estimatedHours)).toFixed(1)}h Overtime`
+                      : `${(Number(task.estimatedHours) - (Number(task.hoursLogged) || 0)).toFixed(1)}h Left`)
+                    : 'Flexible'}
+                </strong>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            {task.estimatedHours > 0 && (
+              <div style={{
+                width: '100%',
+                height: '7px',
+                backgroundColor: '#e2e8f0',
+                borderRadius: '4px',
+                overflow: 'hidden',
+                marginTop: '4px'
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min(100, Math.round(((Number(task.hoursLogged) || 0) / Number(task.estimatedHours)) * 100))}%`,
+                  backgroundColor: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#ef4444' : '#2563eb',
+                  borderRadius: '4px',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+            )}
+          </div>
+
           {/* Description */}
           <div>
             <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px 0' }}>

@@ -15,6 +15,8 @@ import {
   Lock,
   ArrowRight,
   TrendingUp,
+  TrendingDown,
+  ArrowUpDown,
   Filter
 } from 'lucide-react';
 import { useHR } from '../context/HRContext';
@@ -23,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { AddEmployeeModal } from '../components/employees/AddEmployeeModal';
 import { PromoteEmployeeModal } from '../components/employees/PromoteEmployeeModal';
 import { EditProfileModal } from '../../../shared/components/modals/EditProfileModal';
+import { SalaryIncrementModal } from '../../finance/components/SalaryIncrementModal';
 import { getRoles } from '../../../shared/services/roleManagementService';
 
 export const EmployeesPage = () => {
@@ -38,6 +41,34 @@ export const EmployeesPage = () => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedPromoteEmp, setSelectedPromoteEmp] = useState(null);
   const [selectedProfileEmp, setSelectedProfileEmp] = useState(null);
+  const [selectedSalaryEmp, setSelectedSalaryEmp] = useState(null);
+
+  // Salary map from localStorage for quick lookup
+  const [salaryMap, setSalaryMap] = useState(() => {
+    try {
+      const saved = localStorage.getItem('EMS_SALARY_MAP');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    const handleSalaryUpdate = () => {
+      try {
+        const saved = localStorage.getItem('EMS_SALARY_MAP');
+        if (saved) setSalaryMap(JSON.parse(saved));
+      } catch (e) {}
+    };
+    window.addEventListener('hrms_salary_update', handleSalaryUpdate);
+    return () => window.removeEventListener('hrms_salary_update', handleSalaryUpdate);
+  }, []);
+
+  const handleSalaryUpdated = (empCode, updatedSalary) => {
+    const updated = { ...salaryMap, [empCode]: updatedSalary };
+    setSalaryMap(updated);
+    localStorage.setItem('EMS_SALARY_MAP', JSON.stringify(updated));
+  };
 
   const actorRole = (currentUser?.role || '').toLowerCase();
   const isActorAdmin = actorRole.includes('admin') || true;
@@ -393,7 +424,30 @@ export const EmployeesPage = () => {
                       {/* Actions: Direct Role Change & Profile Edit */}
                       <td style={{ padding: '14px 18px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          {/* Button 1: Direct Role & Post Change (Promote Modal) */}
+                          {/* Button 1: Revise Compensation (Hike / Reduction) */}
+                          <button
+                            onClick={() => setSelectedSalaryEmp(emp)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '6px 10px',
+                              borderRadius: '7px',
+                              backgroundColor: '#f0fdf4',
+                              color: '#15803d',
+                              border: '1.5px solid #bbf7d0',
+                              fontSize: '12px',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              boxShadow: '0 1px 2px rgba(22,163,74,0.08)'
+                            }}
+                            title="Revise Compensation (Hike 📈 or Deduction 📉)"
+                          >
+                            <ArrowUpDown size={12} color="#16a34a" />
+                            <span>Revise Salary</span>
+                          </button>
+
+                          {/* Button 2: Direct Role & Post Change (Promote Modal) */}
                           <button
                             onClick={() => setSelectedPromoteEmp(emp)}
                             style={{
@@ -413,10 +467,10 @@ export const EmployeesPage = () => {
                             title="Promote or Change Post (Admin & HR)"
                           >
                             <Award size={13} />
-                            <span>Change Role / Promote</span>
+                            <span>Change Role</span>
                           </button>
 
-                          {/* Button 2: Full Profile & Role Edit */}
+                          {/* Button 3: Full Profile & Role Edit */}
                           <button
                             onClick={() => setSelectedProfileEmp(emp)}
                             style={{
@@ -490,6 +544,14 @@ export const EmployeesPage = () => {
         isOpen={!!selectedProfileEmp}
         onClose={() => setSelectedProfileEmp(null)}
         employee={selectedProfileEmp}
+      />
+
+      <SalaryIncrementModal
+        isOpen={!!selectedSalaryEmp}
+        onClose={() => setSelectedSalaryEmp(null)}
+        employee={selectedSalaryEmp}
+        currentSalaryData={selectedSalaryEmp ? salaryMap[selectedSalaryEmp.employeeCode] : null}
+        onSalaryUpdated={handleSalaryUpdated}
       />
 
     </div>

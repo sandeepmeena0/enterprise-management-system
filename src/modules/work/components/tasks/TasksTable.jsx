@@ -319,13 +319,56 @@ export const TasksTable = ({ onSelectTask }) => {
                   </td>
 
                   {/* Estimated Time */}
-                  <td style={{ padding: '16px 14px', fontSize: '13px', color: '#64748b' }}>
-                    {task.estimatedHours ? `${task.estimatedHours}h` : '0s'}
+                  <td style={{ padding: '16px 14px' }}>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      backgroundColor: '#eff6ff',
+                      color: '#1d4ed8',
+                      fontWeight: '700',
+                      fontSize: '12px',
+                      border: '1px solid #dbeafe'
+                    }}>
+                      ⏱️ {task.estimatedHours ? `${task.estimatedHours}h 00m` : '0h (Open)'}
+                    </span>
                   </td>
 
-                  {/* Hours Logged */}
-                  <td style={{ padding: '16px 14px', fontSize: '13px', color: '#0f172a', fontWeight: '500' }}>
-                    {task.hoursLogged ? `${task.hoursLogged}h` : '0s'}
+                  {/* Hours Logged with Visual Progress Bar */}
+                  <td style={{ padding: '16px 14px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '110px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+                        <span>{task.hoursLogged ? `${task.hoursLogged}h` : (task.hoursLoggedText || '0s')}</span>
+                        {task.estimatedHours > 0 && (
+                          <span style={{
+                            fontSize: '10.5px',
+                            fontWeight: '800',
+                            color: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#dc2626' : '#16a34a'
+                          }}>
+                            {Math.round(((Number(task.hoursLogged) || 0) / Number(task.estimatedHours)) * 100)}%
+                          </span>
+                        )}
+                      </div>
+                      {task.estimatedHours > 0 && (
+                        <div style={{
+                          width: '100%',
+                          height: '5px',
+                          backgroundColor: '#e2e8f0',
+                          borderRadius: '3px',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${Math.min(100, Math.round(((Number(task.hoursLogged) || 0) / Number(task.estimatedHours)) * 100))}%`,
+                            backgroundColor: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#ef4444' : '#2563eb',
+                            borderRadius: '3px',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                      )}
+                    </div>
                   </td>
 
                   {/* Assigned To (Avatar + Name + Smart Leave Badge + Assigner info) */}
