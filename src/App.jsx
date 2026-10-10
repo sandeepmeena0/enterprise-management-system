@@ -3,9 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // Shared Providers & Layout
 import { ToastProvider } from './shared/context/ToastContext';
+import { AuthProvider } from './shared/context/AuthContext';
 import { TimerProvider } from './shared/context/TimerContext';
 import { Layout } from './shared/components/layout/Layout';
 import { ErrorBoundary } from './shared/components/common/ErrorBoundary';
+import { LoginPage } from './modules/auth/pages/LoginPage';
 
 // HR Module Provider
 import { HRProvider } from './modules/hr/context/HRContext';
@@ -63,14 +65,19 @@ export function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <TimerProvider>
+        <AuthProvider>
           <HRProvider>
-            <WorkProvider>
-              <CRMProvider>
-                <BrowserRouter>
-                  <Routes>
-                    <Route path="/" element={<Layout />}>
-                      <Route index element={<Navigate to="/dashboard" replace />} />
+            <TimerProvider>
+              <WorkProvider>
+                <CRMProvider>
+                  <BrowserRouter>
+                    <Routes>
+                      {/* ── Public Auth Routes ── */}
+                      <Route path="/login" element={<LoginPage />} />
+
+                      {/* ── Protected Workspace Routes ── */}
+                      <Route path="/" element={<Layout />}>
+                        <Route index element={<Navigate to="/dashboard" replace />} />
 
                       {/* ── Core HR & CRM Dashboard ─────────────────────────── */}
                       <Route path="dashboard"   element={<DashboardPage />} />
@@ -140,11 +147,12 @@ export function App() {
                 </BrowserRouter>
               </CRMProvider>
             </WorkProvider>
-          </HRProvider>
-        </TimerProvider>
-      </ToastProvider>
-    </ErrorBoundary>
-  );
+          </TimerProvider>
+        </HRProvider>
+      </AuthProvider>
+    </ToastProvider>
+  </ErrorBoundary>
+);
 }
 
 export default App;

@@ -438,7 +438,7 @@ export const workService = {
       projectId: task?.projectId || '',
       projectName: task?.projectName || 'General Work',
       employeeId: task?.assignedToId || 'emp_001',
-      employeeName: task?.assignedToName || 'Avinash',
+      employeeName: task?.assignedToName || 'Team Member',
       employeeAvatar: task?.assignedToAvatar || '',
       employeeRole: task?.assignedToRole || '',
       date: new Date().toISOString().split('T')[0],

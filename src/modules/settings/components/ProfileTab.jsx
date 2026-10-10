@@ -11,6 +11,7 @@ import {
   Lock
 } from 'lucide-react';
 import { useHR } from '../../hr/context/HRContext';
+import { useAuth } from '../../../shared/context/AuthContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { getRoles, canUserAssignRole, recordPromotion } from '../../../shared/services/roleManagementService';
@@ -38,29 +39,31 @@ const LANGUAGES = [
 ];
 
 export const ProfileTab = () => {
-  const { currentUser, updateEmployee } = useHR();
+  const { currentUser: authUser, setCurrentUser: setAuthCurrentUser } = useAuth();
+  const { currentUser: hrUser, updateEmployee } = useHR();
+  const currentUser = authUser || hrUser;
   const { userSettings, updateUserSettings } = useCRM();
   const { addToast } = useToast();
 
   const [availableRoles, setAvailableRoles] = useState(getRoles());
   const [formData, setFormData] = useState({
     salutation: userSettings?.salutation || '---',
-    name: currentUser?.name || 'Avinash',
-    email: currentUser?.email || 'avinash@novainfinityindia.com',
+    name: currentUser?.name || 'User',
+    email: currentUser?.email || 'user@company.com',
     role: currentUser?.role || 'Senior Specialist',
     password: '',
     emailNotifications: userSettings?.emailNotifications || 'enable',
     googleCalendar: userSettings?.googleCalendar || 'yes',
-    country: userSettings?.country || 'Afghanistan',
-    countryCode: userSettings?.countryCode || '+93',
-    mobile: userSettings?.mobile || '1234567890',
+    country: userSettings?.country || 'India',
+    countryCode: userSettings?.countryCode || '+91',
+    mobile: userSettings?.mobile || '9876543210',
     language: userSettings?.language || 'English',
     gender: userSettings?.gender || 'Male',
     dob: currentUser?.dob || userSettings?.dob || '1998-10-15',
-    slackId: userSettings?.slackId || '@avinash',
+    slackId: userSettings?.slackId || `@${(currentUser?.name || 'user').toLowerCase().replace(/\s+/g, '')}`,
     maritalStatus: userSettings?.maritalStatus || 'Single',
-    address: userSettings?.address || '132, My Street, Kingston, New York 12401',
-    about: userSettings?.about || 'Passionate product & growth lead optimizing CRM and enterprise systems.',
+    address: userSettings?.address || 'Corporate Headquarters, Building 4',
+    about: userSettings?.about || 'Passionate team member contributing to enterprise success.',
     avatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'
   });
 
@@ -139,6 +142,12 @@ export const ProfileTab = () => {
           avatar: formData.avatar,
           phone: `${formData.countryCode} ${formData.mobile}`
         });
+
+        // Sync AuthContext and session immediately
+        const updatedAuth = { ...(authUser || currentUser), ...formData, isCurrentUser: true };
+        setAuthCurrentUser?.(updatedAuth);
+        localStorage.setItem('ems_auth_session', JSON.stringify(updatedAuth));
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
       }
 
       // If role changed, record in Promotion History

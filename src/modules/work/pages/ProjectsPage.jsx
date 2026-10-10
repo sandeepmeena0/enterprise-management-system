@@ -33,22 +33,22 @@ export const ProjectsPage = () => {
   const reviewCount = projects.filter(p => p.status === 'under_review' || p.status === 'on_hold').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {/* Page Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '16px'
+        gap: '8px'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#64748b', marginBottom: '1px' }}>
             <span>Work</span>
             <span>•</span>
             <span style={{ color: '#0f172a', fontWeight: '600' }}>Projects</span>
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
             Projects Management
           </h1>
         </div>
@@ -59,22 +59,23 @@ export const ProjectsPage = () => {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '5px',
             backgroundColor: '#0284c7',
             color: '#ffffff',
             border: 'none',
-            padding: '10px 20px',
-            borderRadius: '8px',
-            fontSize: '13.5px',
+            padding: '6px 14px',
+            borderRadius: '6px',
+            fontSize: '12px',
             fontWeight: '600',
             cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
-            transition: 'all 0.15s ease'
+            boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)',
+            transition: 'all 0.15s ease',
+            height: '30px'
           }}
           onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0369a1'}
           onMouseLeave={e => e.currentTarget.style.backgroundColor = '#0284c7'}
         >
-          <Plus size={16} />
+          <Plus size={14} />
           Add Project
         </button>
       </div>
@@ -82,34 +83,35 @@ export const ProjectsPage = () => {
       {/* KPI Stats Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '16px'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '10px'
       }}>
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#eff6ff',
             color: '#2563eb',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <FolderGit2 size={22} />
+            <FolderGit2 size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Total Projects</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Total Projects</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', lineHeight: '1.1' }}>
               {totalProjects}
             </div>
           </div>
@@ -117,29 +119,30 @@ export const ProjectsPage = () => {
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#f0fdf4',
             color: '#16a34a',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <CheckCircle2 size={22} />
+            <CheckCircle2 size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>In Progress</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#16a34a', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>In Progress</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#16a34a', lineHeight: '1.1' }}>
               {inProgressCount}
             </div>
           </div>
@@ -147,29 +150,30 @@ export const ProjectsPage = () => {
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#eff6ff',
             color: '#3b82f6',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <Clock size={22} />
+            <Clock size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Completed</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#2563eb', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Completed</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#2563eb', lineHeight: '1.1' }}>
               {completedCount}
             </div>
           </div>
@@ -177,29 +181,30 @@ export const ProjectsPage = () => {
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#fef3c7',
             color: '#d97706',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <AlertCircle size={22} />
+            <AlertCircle size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Under Review / Hold</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#d97706', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Under Review / Hold</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#d97706', lineHeight: '1.1' }}>
               {reviewCount}
             </div>
           </div>
@@ -209,27 +214,29 @@ export const ProjectsPage = () => {
       {/* Filter & Search Bar */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
-        padding: '16px 20px',
+        borderRadius: '8px',
+        padding: '8px 14px',
         border: '1px solid #e2e8f0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
+          gap: '8px',
           backgroundColor: '#f8fafc',
           border: '1px solid #cbd5e1',
-          borderRadius: '8px',
-          padding: '8px 14px',
-          minWidth: '280px',
-          flex: '1'
+          borderRadius: '6px',
+          padding: '4px 10px',
+          minWidth: '220px',
+          flex: '1',
+          height: '30px'
         }}>
-          <Search size={16} color="#64748b" />
+          <Search size={14} color="#64748b" />
           <input
             type="text"
             placeholder="Search projects by name, code, client..."
@@ -239,26 +246,27 @@ export const ProjectsPage = () => {
               border: 'none',
               backgroundColor: 'transparent',
               outline: 'none',
-              fontSize: '13.5px',
+              fontSize: '12px',
               width: '100%',
               color: '#0f172a'
             }}
           />
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* Status Filter */}
           <select
             value={projectFilter.status}
             onChange={e => setProjectFilter(prev => ({ ...prev, status: e.target.value }))}
             style={{
-              padding: '8px 12px',
-              borderRadius: '8px',
+              padding: '4px 8px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#ffffff',
-              fontSize: '13px',
+              fontSize: '12px',
               color: '#334155',
-              outline: 'none'
+              outline: 'none',
+              height: '30px'
             }}
           >
             <option value="all">All Status</option>
@@ -274,13 +282,14 @@ export const ProjectsPage = () => {
             value={projectFilter.department}
             onChange={e => setProjectFilter(prev => ({ ...prev, department: e.target.value }))}
             style={{
-              padding: '8px 12px',
-              borderRadius: '8px',
+              padding: '4px 8px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#ffffff',
-              fontSize: '13px',
+              fontSize: '12px',
               color: '#334155',
-              outline: 'none'
+              outline: 'none',
+              height: '30px'
             }}
           >
             <option value="all">All Departments</option>

@@ -132,16 +132,37 @@ export const DocumentationPage = () => {
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
-            <span style={{ fontWeight: '700', color: '#0f172a' }}>Documentation & KYC Hub</span>
-            <span>HR • Employee Records</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <FolderLock size={17} />
           </div>
-          <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b' }}>
-            Secure repository for Aadhaar, PAN, Offer Letters, and onboarding compliance certificates.
-          </p>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Documentation & KYC Hub</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#16a34a', fontWeight: '700' }}>
+                Verified Cloud
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Secure repository for Aadhaar, PAN, Offer Letters & compliance certificates
+            </p>
+          </div>
         </div>
 
         <button
@@ -149,98 +170,123 @@ export const DocumentationPage = () => {
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '9px 18px',
-            borderRadius: '8px',
+            gap: '6px',
+            padding: '6px 14px',
+            borderRadius: '7px',
             backgroundColor: '#2563eb',
             color: '#ffffff',
             border: 'none',
-            fontSize: '13px',
+            fontSize: '12px',
             fontWeight: '700',
             cursor: 'pointer',
-            boxShadow: '0 2px 6px rgba(37,99,235,0.3)'
+            boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
           }}
         >
-          <Upload size={16} />
+          <Upload size={14} />
           Upload Document
         </button>
       </div>
 
-      {/* Metric Cards */}
+      {/* Metric Cards - Compact High-Density Grid */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '16px'
+        gap: '10px'
       }}>
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          border: '1px solid #e2e8f0'
+          borderRadius: '10px',
+          padding: '10px 14px',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Total KYC Documents</span>
-          <div style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>
-            {documents.length} Files
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Total KYC Documents</span>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+              {documents.length} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Files</span>
+            </div>
+            <span style={{ fontSize: '10.5px', color: '#16a34a', fontWeight: '700' }}>● 100% Encrypted</span>
           </div>
-          <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: '600' }}>100% Encrypted</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FileText size={16} />
+          </div>
         </div>
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          border: '1px solid #e2e8f0'
+          borderRadius: '10px',
+          padding: '10px 14px',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Verified Onboarding</span>
-          <div style={{ fontSize: '22px', fontWeight: '800', color: '#16a34a', marginTop: '4px' }}>
-            {employees.length} / {employees.length} Complete
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Verified Onboarding</span>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#16a34a', marginTop: '2px' }}>
+              {employees.length} / {employees.length} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Complete</span>
+            </div>
+            <span style={{ fontSize: '10.5px', color: '#64748b' }}>Zero compliance backlog</span>
           </div>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>Zero compliance backlog</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldCheck size={16} />
+          </div>
         </div>
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          border: '1px solid #e2e8f0'
+          borderRadius: '10px',
+          padding: '10px 14px',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Storage Used</span>
-          <div style={{ fontSize: '22px', fontWeight: '800', color: '#2563eb', marginTop: '4px' }}>
-            11.4 MB
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Storage Used</span>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#2563eb', marginTop: '2px' }}>
+              11.4 MB
+            </div>
+            <span style={{ fontSize: '10.5px', color: '#64748b' }}>AWS S3 Cloud Active</span>
           </div>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>AWS S3 Cloud Active</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#f1f5f9', color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FolderLock size={16} />
+          </div>
         </div>
       </div>
 
       {/* Main Table Card */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '14px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
         overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
         {/* Filter / Search Bar */}
         <div style={{
-          padding: '14px 20px',
+          padding: '8px 12px',
           borderBottom: '1px solid #f1f5f9',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '12px',
+          gap: '10px',
           flexWrap: 'wrap'
         }}>
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '8px 14px',
-            borderRadius: '8px',
+            gap: '6px',
+            padding: '0 10px',
+            height: '30px',
+            borderRadius: '6px',
             border: '1px solid #cbd5e1',
             backgroundColor: '#f8fafc',
-            width: '280px'
+            width: '240px'
           }}>
-            <Search size={16} color="#94a3b8" />
+            <Search size={13} color="#94a3b8" />
             <input
               type="text"
               placeholder="Search document or employee..."
@@ -250,7 +296,7 @@ export const DocumentationPage = () => {
                 border: 'none',
                 background: 'transparent',
                 outline: 'none',
-                fontSize: '13px',
+                fontSize: '12px',
                 width: '100%',
                 color: '#0f172a'
               }}
@@ -261,11 +307,12 @@ export const DocumentationPage = () => {
             value={selectedCategory}
             onChange={e => setSelectedCategory(e.target.value)}
             style={{
-              padding: '8px 12px',
-              borderRadius: '8px',
+              height: '30px',
+              padding: '0 10px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#ffffff',
-              fontSize: '13px',
+              fontSize: '12px',
               color: '#0f172a',
               outline: 'none'
             }}
@@ -281,16 +328,16 @@ export const DocumentationPage = () => {
 
         {/* Documents Table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
             <thead>
-              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
-                <th style={{ padding: '12px 18px' }}>Document Name</th>
-                <th style={{ padding: '12px 18px' }}>Employee</th>
-                <th style={{ padding: '12px 18px' }}>Type</th>
-                <th style={{ padding: '12px 18px' }}>Size</th>
-                <th style={{ padding: '12px 18px' }}>Upload Date</th>
-                <th style={{ padding: '12px 18px' }}>Status</th>
-                <th style={{ padding: '12px 18px', textAlign: 'right' }}>Actions</th>
+              <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Document Name</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Employee</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Type</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Size</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Upload Date</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Status</th>
+                <th style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -301,12 +348,12 @@ export const DocumentationPage = () => {
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = '#ffffff'}
                 >
-                  <td style={{ padding: '14px 18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{
-                        width: '34px',
-                        height: '34px',
-                        borderRadius: '8px',
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '6px',
                         backgroundColor: '#eff6ff',
                         color: '#2563eb',
                         display: 'flex',
@@ -314,61 +361,65 @@ export const DocumentationPage = () => {
                         justifyContent: 'center',
                         flexShrink: 0
                       }}>
-                        <FileText size={18} />
+                        <FileText size={14} />
                       </div>
                       <div>
                         <div style={{ fontWeight: '700', color: '#0f172a' }}>{doc.title}</div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>{doc.fileName}</div>
+                        <div style={{ fontSize: '10.5px', color: '#64748b' }}>{doc.fileName}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '14px 18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <img
                         src={doc.employeeAvatar}
                         alt={doc.employeeName}
-                        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                        style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                       />
                       <div>
                         <div style={{ fontWeight: '600', color: '#0f172a' }}>{doc.employeeName}</div>
-                        <div style={{ fontSize: '10.5px', color: '#64748b' }}>{doc.department}</div>
+                        <div style={{ fontSize: '10px', color: '#64748b' }}>{doc.department}</div>
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '14px 18px', color: '#334155' }}>{doc.docType}</td>
-                  <td style={{ padding: '14px 18px', color: '#64748b' }}>{doc.fileSize}</td>
-                  <td style={{ padding: '14px 18px', color: '#64748b' }}>{doc.uploadDate}</td>
-                  <td style={{ padding: '14px 18px' }}>
+                  <td style={{ padding: '7px 12px', color: '#334155', whiteSpace: 'nowrap' }}>{doc.docType}</td>
+                  <td style={{ padding: '7px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{doc.fileSize}</td>
+                  <td style={{ padding: '7px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{doc.uploadDate}</td>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 8px',
-                      borderRadius: '12px',
+                      gap: '3px',
+                      padding: '2px 7px',
+                      borderRadius: '10px',
                       backgroundColor: '#dcfce7',
                       color: '#15803d',
-                      fontSize: '11.5px',
+                      fontSize: '10.5px',
                       fontWeight: '700'
                     }}>
-                      <CheckCircle size={13} />
+                      <CheckCircle size={11} />
                       Verified
                     </span>
                   </td>
-                  <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                       <button
                         onClick={() => handleDownload(doc)}
                         style={{
                           background: '#f1f5f9',
                           border: 'none',
                           color: '#2563eb',
-                          padding: '6px 8px',
-                          borderRadius: '6px',
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '5px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                           cursor: 'pointer'
                         }}
                         title="Download Document"
                       >
-                        <Download size={15} />
+                        <Download size={13} />
                       </button>
                       <button
                         onClick={() => handleDelete(doc.id)}
@@ -376,13 +427,17 @@ export const DocumentationPage = () => {
                           background: '#fee2e2',
                           border: 'none',
                           color: '#dc2626',
-                          padding: '6px 8px',
-                          borderRadius: '6px',
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '5px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                           cursor: 'pointer'
                         }}
                         title="Delete Document"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </td>

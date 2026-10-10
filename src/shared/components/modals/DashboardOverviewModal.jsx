@@ -45,7 +45,16 @@ export const DashboardOverviewModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const pendingLeaves = (leaves || []).filter(l => l?.status === 'pending').length;
-  const myTasks = (tasks || []).filter(t => t?.assignedToId === (currentUser?._id || 'emp_001') || t?.assignedToName === (currentUser?.name || 'Avinash'));
+  const myTasks = (tasks || []).filter(t => {
+    if (!t) return false;
+    const userIds = [currentUser?._id, currentUser?.id, currentUser?.employeeCode, currentUser?.email].filter(Boolean).map(s => String(s).toLowerCase());
+    const taskIds = [t?.assignedToId, t?.assignedTo, t?.employeeId, t?.assignedToEmail].filter(Boolean).map(s => String(s).toLowerCase());
+    if (userIds.some(uid => taskIds.includes(uid))) return true;
+    const userName = (currentUser?.name || '').trim().toLowerCase();
+    const taskName = (t?.assignedToName || '').trim().toLowerCase();
+    if (userName && taskName && (userName === taskName || (userName.split(' ')[0] === taskName.split(' ')[0] && userName.split(' ')[0].length > 2))) return true;
+    return false;
+  });
   const pendingTasks = myTasks.filter(t => t?.status !== 'completed').length;
   const activeProjects = (projects || []).filter(p => p?.status === 'in_progress').length;
   const openTickets = (tickets || []).filter(t => t?.status === 'open' || t?.status === 'pending').length;

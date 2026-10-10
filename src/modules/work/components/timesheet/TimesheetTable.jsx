@@ -77,31 +77,31 @@ export const TimesheetTable = () => {
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Task Name
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Project
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Assigned Employee
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Start Time
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 End Time
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Total Duration
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Date
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Status
               </th>
-              <th style={{ padding: '14px 18px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right', whiteSpace: 'nowrap' }}>
                 Actions
               </th>
             </tr>
@@ -122,24 +122,25 @@ export const TimesheetTable = () => {
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   {/* Task Name & Code */}
-                  <td style={{ padding: '16px 18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{
-                        padding: '2px 6px',
+                        padding: '1px 5px',
                         backgroundColor: '#eff6ff',
                         color: '#2563eb',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        fontWeight: '700'
+                        borderRadius: '3px',
+                        fontSize: '10.5px',
+                        fontWeight: '700',
+                        whiteSpace: 'nowrap'
                       }}>
                         {entry.taskCode || 'TSK'}
                       </span>
-                      <div>
-                        <div style={{ fontSize: '13.5px', fontWeight: '600', color: '#0f172a' }}>
+                      <div style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {entry.taskTitle || 'Session'}
                         </div>
                         {entry.memo && (
-                          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                          <div style={{ fontSize: '10.5px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {entry.memo}
                           </div>
                         )}
@@ -148,25 +149,25 @@ export const TimesheetTable = () => {
                   </td>
 
                   {/* Project */}
-                  <td style={{ padding: '16px' }}>
-                    <div style={{ fontSize: '13px', color: '#334155', fontWeight: '500' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '12px', color: '#334155', fontWeight: '500' }}>
                       {entry.projectName || 'General Work'}
                     </div>
                   </td>
 
                   {/* Employee */}
-                  <td style={{ padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <img
                         src={entry.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                         alt={entry.employeeName}
-                        style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover' }}
+                        style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                       />
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '500', color: '#0f172a' }}>
-                          {entry.employeeName || 'Avinash'}
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#0f172a', lineHeight: '1.2' }}>
+                          {entry.employeeName || 'Team Member'}
                         </div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        <div style={{ fontSize: '10px', color: '#64748b' }}>
                           {entry.employeeRole || 'Strategic'}
                         </div>
                       </div>
@@ -174,26 +175,26 @@ export const TimesheetTable = () => {
                   </td>
 
                   {/* Start Time */}
-                  <td style={{ padding: '16px', fontSize: '13px', color: '#334155', fontFamily: 'monospace' }}>
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#334155', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                     {entry.startTime || '09:30:00'}
                   </td>
 
                   {/* End Time */}
-                  <td style={{ padding: '16px', fontSize: '13px', color: '#334155', fontFamily: 'monospace' }}>
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#334155', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                     {entry.endTime || (entry.status === 'active' ? '— (Running)' : '18:00:00')}
                   </td>
 
                   {/* Total Duration */}
-                  <td style={{ padding: '16px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
-                      padding: '4px 8px',
-                      borderRadius: '6px',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
                       backgroundColor: entry.status === 'active' ? '#e0f2fe' : '#f1f5f9',
                       color: entry.status === 'active' ? '#0284c7' : '#0f172a',
-                      fontSize: '12.5px',
+                      fontSize: '11px',
                       fontWeight: '700',
                       fontFamily: 'monospace'
                     }}>
@@ -202,26 +203,26 @@ export const TimesheetTable = () => {
                   </td>
 
                   {/* Date */}
-                  <td style={{ padding: '16px', fontSize: '13px', color: '#475569' }}>
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#475569', whiteSpace: 'nowrap' }}>
                     {entry.date}
                   </td>
 
                   {/* Status */}
-                  <td style={{ padding: '16px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px',
-                      padding: '4px 8px',
-                      borderRadius: '16px',
-                      fontSize: '11.5px',
+                      gap: '4px',
+                      padding: '2px 6px',
+                      borderRadius: '12px',
+                      fontSize: '10.5px',
                       fontWeight: '600',
                       backgroundColor: status.bg,
                       color: status.color
                     }}>
                       <span style={{
-                        width: '6px',
-                        height: '6px',
+                        width: '5px',
+                        height: '5px',
                         borderRadius: '50%',
                         backgroundColor: status.dot
                       }} />
@@ -230,7 +231,7 @@ export const TimesheetTable = () => {
                   </td>
 
                   {/* Actions */}
-                  <td style={{ padding: '16px 18px', textAlign: 'right', position: 'relative' }}>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', position: 'relative', whiteSpace: 'nowrap' }}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

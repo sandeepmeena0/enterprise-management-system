@@ -1,69 +1,106 @@
 /**
  * @file AddTaskModal.jsx
- * @description Modal form for creating and assigning tasks matching Screenshots 3, 4, 5.
+ * @description Flexible, responsive, and easy-to-use task creation modal.
+ * Supports:
+ * 1. 📌 Basic / General Task (Standalone - no project needed)
+ * 2. 🏢 Existing Project selection
+ * 3. ✨ On-the-fly Custom Project Name creation
+ * 4. ⚡ 1-Click Task Title & Category Presets
+ * 5. ⏱️ Quick Duration Pills (30m, 1h, 2h, 4h, 8h)
+ * 6. 📅 Quick Due Date Presets (Today, Tomorrow, 3 Days, Next Week)
+ * 7. 👤 Quick "Assign to Me" button
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  List,
-  ListOrdered,
-  Image,
-  Link,
-  Table,
-  Type,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  UploadCloud,
-  FileText
+  Plus,
+  Calendar,
+  Clock,
+  User,
+  FolderGit2,
+  Tag,
+  CheckCircle2,
+  Sparkles,
+  Layers,
+  FileText,
+  AlertCircle,
+  Briefcase,
+  Zap
 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
+import { useToast } from '../../../../shared/context/ToastContext';
 
 const TASK_CATEGORIES = [
-  'Digital Marketing',
-  'UI/UX Design',
+  'General',
   'Web Development',
-  'Content Writing',
+  'UI/UX Design',
+  'Digital Marketing',
   'SEO & Growth',
   'DevOps & Cloud',
   'Client Servicing',
   'QA & Testing'
 ];
 
-export const AddTaskModal = ({ isOpen, onClose }) => {
-  const { createTask, projects, employees, currentUser } = useWork();
+const PRIORITIES = [
+  { id: 'low', label: 'Low', color: '#64748b', bg: '#f1f5f9' },
+  { id: 'medium', label: 'Medium', color: '#2563eb', bg: '#eff6ff' },
+  { id: 'high', label: 'High', color: '#ea580c', bg: '#fff7ed' },
+  { id: 'urgent', label: 'Urgent 🔥', color: '#dc2626', bg: '#fef2f2' }
+];
+
+const QUICK_TASK_PRESETS = [
+  { title: 'Bug Fixing & Debugging', category: 'Web Development', hours: 2, icon: '🐞' },
+  { title: 'Client Meeting / Discussion', category: 'Client Servicing', hours: 1, icon: '📞' },
+  { title: 'UI / UX Design & Assets', category: 'UI/UX Design', hours: 4, icon: '🎨' },
+  { title: 'New Feature Implementation', category: 'Web Development', hours: 4, icon: '🚀' },
+  { title: 'Documentation & Notes', category: 'General', hours: 1, icon: '📝' },
+  { title: 'QA & Testing Verification', category: 'QA & Testing', hours: 2, icon: '🔍' },
+  { title: 'Weekly Progress & Reporting', category: 'General', hours: 1, icon: '📊' },
+  { title: 'Deployment & Server Setup', category: 'DevOps & Cloud', hours: 2, icon: '⚡' }
+];
+
+const HOUR_PRESETS = [0.5, 1, 2, 4, 6, 8];
+
+export const AddTaskModal = ({ isOpen, onClose, initialProjectId = null }) => {
+  const { createTask, projects, employees, currentUser, createProject } = useWork();
+  const { addToast } = useToast();
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Helper to format date offset
+  const getDateOffset = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+  };
+
+  // Modes: 'basic' (Standalone General Task) | 'existing_project' | 'custom_project'
+  const [projectMode, setProjectMode] = useState(
+    initialProjectId ? 'existing_project' : (projects.length > 0 ? 'existing_project' : 'basic')
+  );
 
   const [formData, setFormData] = useState({
     title: '',
-    category: 'Digital Marketing',
-    projectId: projects[0]?._id || '',
-    startDate: '2026-09-25',
-    dueDate: '2026-09-25',
-    hasNoDueDate: false,
+    category: 'General',
+    projectId: initialProjectId || projects[0]?._id || '',
+    customProjectName: '',
+    startDate: todayStr,
+    dueDate: todayStr,
     assignedToId: currentUser?._id || employees[0]?._id || '',
-    description: '',
-    // Other Details accordion
-    label: '',
-    milestone: '',
-    status: 'incomplete',
     priority: 'medium',
-    isPrivate: false,
-    isBillable: true,
-    hasTimeEstimate: false,
     estimatedHours: 4,
-    isRepeat: false,
-    isDependent: false,
-    fileName: ''
+    description: ''
   });
 
-  const [showOtherDetails, setShowOtherDetails] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [employeeSearch, setEmployeeSearch] = useState('');
+
+  useEffect(() => {
+    if (initialProjectId) {
+      setProjectMode('existing_project');
+      setFormData(prev => ({ ...prev, projectId: initialProjectId }));
+    }
+  }, [initialProjectId]);
 
   if (!isOpen) return null;
 
@@ -71,55 +108,109 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const filteredEmployees = employees.filter(emp => {
-    if (!employeeSearch.trim()) return true;
-    const q = employeeSearch.toLowerCase();
-    return (
-      emp.name?.toLowerCase().includes(q) ||
-      emp.role?.toLowerCase().includes(q) ||
-      emp.department?.toLowerCase().includes(q)
-    );
-  });
+  const applyPreset = (preset) => {
+    setFormData(prev => ({
+      ...prev,
+      title: preset.title,
+      category: preset.category,
+      estimatedHours: preset.hours
+    }));
+  };
 
   const handleSave = async (andAddMore = false) => {
     if (!formData.title.trim()) {
-      alert('Please enter a task title');
+      addToast('Please enter a task title', 'error');
       return;
     }
 
     setSubmitting(true);
     try {
-      const selectedProject = projects.find(p => p._id === formData.projectId) || projects[0];
-      const selectedAssignee = employees.find(e => e._id === formData.assignedToId) || employees[0];
+      let finalProjectId = '';
+      let finalProjectName = 'General Work';
+      let finalProjectCode = 'GEN';
+
+      if (projectMode === 'existing_project') {
+        const selectedProject = projects.find(p => p._id === formData.projectId) || projects[0];
+        if (selectedProject) {
+          finalProjectId = selectedProject._id;
+          finalProjectName = selectedProject.name;
+          finalProjectCode = selectedProject.projectCode || 'PRJ';
+        }
+      } else if (projectMode === 'custom_project') {
+        const customName = formData.customProjectName.trim() || 'Custom Project';
+        finalProjectName = customName;
+        finalProjectCode = customName.substring(0, 3).toUpperCase();
+        // Create the custom project in the background so it's reusable
+        try {
+          const newProj = await createProject({
+            name: customName,
+            projectCode: `PRJ-${finalProjectCode}`,
+            client: 'Internal / Direct',
+            category: formData.category,
+            department: 'Engineering',
+            startDate: formData.startDate,
+            deadline: formData.dueDate,
+            budget: 0,
+            summary: `Created on the fly with task: ${formData.title.trim()}`,
+            status: 'in_progress',
+            members: []
+          });
+          if (newProj && newProj._id) {
+            finalProjectId = newProj._id;
+            finalProjectCode = newProj.projectCode;
+          }
+        } catch (e) {
+          console.warn('Could not auto-create project record, continuing with task metadata:', e);
+        }
+      } else {
+        // Basic / Standalone Task
+        finalProjectId = '';
+        finalProjectName = 'General / Basic Task';
+        finalProjectCode = 'GEN';
+      }
+
+      const selectedAssignee = employees.find(e => e._id === formData.assignedToId) || currentUser || employees[0];
 
       await createTask({
-        ...formData,
-        projectId: selectedProject?._id || '',
-        projectName: selectedProject?.name || 'General Work',
-        projectCode: selectedProject?.projectCode || 'TSK',
+        title: formData.title.trim(),
+        category: formData.category,
+        projectId: finalProjectId,
+        projectName: finalProjectName,
+        projectCode: finalProjectCode,
+        startDate: formData.startDate,
+        dueDate: formData.dueDate,
+        priority: formData.priority,
+        estimatedHours: Number(formData.estimatedHours) || 0,
+        description: formData.description.trim(),
         assignedTo: selectedAssignee?._id || null,
         assignedToId: selectedAssignee?._id || '',
         assignedToName: selectedAssignee?.name || 'Unassigned',
+        assignedToEmail: selectedAssignee?.email || '',
         assignedToAvatar: selectedAssignee?.avatar || '',
         assignedToRole: selectedAssignee?.role || '',
-        assignedBy: currentUser?.name || 'Avinash',
-        assignedById: currentUser?._id || 'emp_001',
+        assignedBy: currentUser?.name || 'Admin',
+        assignedById: currentUser?._id || 'emp_admin',
         assignedByAvatar: currentUser?.avatar || '',
-        assignedByRole: currentUser?.role || 'Team Member',
-        estimatedHours: formData.hasTimeEstimate ? Number(formData.estimatedHours) || 0 : 0
+        assignedByRole: currentUser?.role || 'Administrator',
+        status: 'incomplete',
+        progress: 0
       });
+
+      addToast(`Task "${formData.title}" created successfully!`, 'success');
 
       if (andAddMore) {
         setFormData(prev => ({
           ...prev,
           title: '',
-          description: ''
+          description: '',
+          estimatedHours: 4
         }));
       } else {
         onClose();
       }
     } catch (err) {
       console.error(err);
+      addToast('Failed to create task', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -133,684 +224,649 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
       right: 0,
       bottom: 0,
       backgroundColor: 'rgba(15, 23, 42, 0.65)',
-      backdropFilter: 'blur(4px)',
+      backdropFilter: 'blur(5px)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 1000,
-      padding: '20px'
+      padding: '16px'
     }}>
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
+        borderRadius: '20px',
         width: '100%',
-        maxWidth: '880px',
-        maxHeight: '92vh',
-        overflowY: 'auto',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-        border: '1px solid #e2e8f0',
+        maxWidth: '740px',
+        maxHeight: '94vh',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        border: '1px solid #e2e8f0',
+        overflow: 'hidden'
       }}>
-        {/* Header */}
+        {/* Modal Header */}
         <div style={{
-          padding: '20px 28px',
+          padding: '18px 24px',
           borderBottom: '1px solid #f1f5f9',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          backgroundColor: '#f8fafc',
-          borderTopLeftRadius: '16px',
-          borderTopRightRadius: '16px'
+          backgroundColor: '#f8fafc'
         }}>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
-              Add Task
-            </h2>
-            <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
-              Create and assign task to active CRM team members
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              width: '32px',
-              height: '32px',
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '12px',
+              backgroundColor: '#eff6ff',
+              color: '#2563eb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              border: '1px solid #bfdbfe'
+            }}>
+              <Plus size={22} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.01em' }}>
+                Create New Task
+              </h2>
+              <span style={{ fontSize: '12.5px', color: '#64748b' }}>
+                Quick basic task or assign work under a project
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            aria-label="Close modal"
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              cursor: 'pointer',
               color: '#64748b',
-              cursor: 'pointer'
+              padding: '6px',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s'
             }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#ffffff'}
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        {/* Form Body */}
-        <div style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
-          {/* Section: Task Info (Matching Screenshot 5) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', margin: '0 0 4px 0' }}>
-              Task Info
-            </h3>
+        {/* Modal Scrollable Body */}
+        <div style={{ padding: '22px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* 1. PROJECT / BASIC TASK SELECTOR (Custom vs Existing vs Basic) */}
+          <div style={{
+            backgroundColor: '#f8fafc',
+            padding: '14px 16px',
+            borderRadius: '14px',
+            border: '1px solid #e2e8f0'
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '10px' }}>
+              <Layers size={16} color="#2563eb" />
+              Task Type & Project Assignment:
+            </label>
 
-            {/* Title & Task Category */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter a task title (e.g. Bookmarking 20)"
-                  value={formData.title}
-                  onChange={e => handleChange('title', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13.5px',
-                    color: '#0f172a',
-                    outline: 'none'
-                  }}
-                />
-              </div>
+            {/* 3-Way Mode Switcher */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setProjectMode('basic')}
+                style={{
+                  padding: '9px 10px',
+                  borderRadius: '10px',
+                  border: projectMode === 'basic' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: projectMode === 'basic' ? '#eff6ff' : '#ffffff',
+                  color: projectMode === 'basic' ? '#1d4ed8' : '#64748b',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span>📌</span> Basic Task (No Project)
+              </button>
 
+              <button
+                type="button"
+                onClick={() => setProjectMode('existing_project')}
+                style={{
+                  padding: '9px 10px',
+                  borderRadius: '10px',
+                  border: projectMode === 'existing_project' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: projectMode === 'existing_project' ? '#eff6ff' : '#ffffff',
+                  color: projectMode === 'existing_project' ? '#1d4ed8' : '#64748b',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span>🏢</span> Existing Project ({projects.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProjectMode('custom_project')}
+                style={{
+                  padding: '9px 10px',
+                  borderRadius: '10px',
+                  border: projectMode === 'custom_project' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: projectMode === 'custom_project' ? '#eff6ff' : '#ffffff',
+                  color: projectMode === 'custom_project' ? '#1d4ed8' : '#64748b',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <span>✨</span> + Custom Project
+              </button>
+            </div>
+
+            {/* Mode-specific input container */}
+            {projectMode === 'existing_project' && (
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                  Task Category
-                </label>
                 <select
-                  value={formData.category}
-                  onChange={e => handleChange('category', e.target.value)}
+                  value={formData.projectId}
+                  onChange={(e) => handleChange('projectId', e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #2563eb',
                     fontSize: '13.5px',
+                    fontWeight: '600',
                     color: '#0f172a',
                     outline: 'none',
                     backgroundColor: '#ffffff'
                   }}
                 >
-                  {TASK_CATEGORIES.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
+                  {projects.length > 0 ? (
+                    projects.map(p => (
+                      <option key={p._id} value={p._id}>
+                        [{p.projectCode || 'PRJ'}] {p.name} {p.client ? `— ${p.client}` : ''}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No projects added yet — Will create as standalone</option>
+                  )}
                 </select>
               </div>
+            )}
+
+            {projectMode === 'custom_project' && (
+              <div>
+                <input
+                  type="text"
+                  value={formData.customProjectName}
+                  onChange={(e) => handleChange('customProjectName', e.target.value)}
+                  placeholder="Type Custom Project Name (e.g., Mobile App 2.0, Brand Revamp)..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #2563eb',
+                    fontSize: '13.5px',
+                    color: '#0f172a',
+                    outline: 'none',
+                    backgroundColor: '#ffffff'
+                  }}
+                />
+                <span style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                  ✨ This custom project will be created automatically and linked to this task.
+                </span>
+              </div>
+            )}
+
+            {projectMode === 'basic' && (
+              <div style={{
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px dashed #cbd5e1',
+                fontSize: '12.5px',
+                color: '#475569',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Zap size={15} color="#2563eb" />
+                <span>Basic / General standalone task — directly assigned without project dependency.</span>
+              </div>
+            )}
+          </div>
+
+          {/* 2. TASK TITLE & 1-CLICK QUICK PRESET CHIPS */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <label style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>
+                Task Title <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                Tip: Click quick chips below to auto-fill
+              </span>
             </div>
 
-            {/* Project Dropdown */}
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => handleChange('title', e.target.value)}
+              placeholder="e.g. Design Landing Page Hero Section or Fix API Latency"
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '14.5px',
+                fontWeight: '600',
+                color: '#0f172a',
+                outline: 'none',
+                transition: 'border-color 0.2s',
+                backgroundColor: '#ffffff'
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = '#2563eb'}
+              onBlur={e => e.currentTarget.style.borderColor = '#cbd5e1'}
+            />
+
+            {/* Quick 1-Click Preset Chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+              {QUICK_TASK_PRESETS.map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  style={{
+                    padding: '4px 9px',
+                    borderRadius: '7px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: formData.title === preset.title ? '#eff6ff' : '#f8fafc',
+                    color: formData.title === preset.title ? '#2563eb' : '#475569',
+                    borderColor: formData.title === preset.title ? '#bfdbfe' : '#e2e8f0',
+                    fontSize: '11.5px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.12s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = formData.title === preset.title ? '#eff6ff' : '#f8fafc'}
+                >
+                  <span>{preset.icon}</span>
+                  <span>{preset.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. ASSIGNEE & CATEGORY */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            {/* Assignee */}
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Project
-              </label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#334155' }}>
+                  Assign To Member
+                </label>
+                {currentUser && formData.assignedToId !== currentUser._id && (
+                  <button
+                    type="button"
+                    onClick={() => handleChange('assignedToId', currentUser._id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#2563eb',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      padding: 0
+                    }}
+                  >
+                    + Assign to Me
+                  </button>
+                )}
+              </div>
               <select
-                value={formData.projectId}
-                onChange={e => handleChange('projectId', e.target.value)}
+                value={formData.assignedToId}
+                onChange={(e) => handleChange('assignedToId', e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
+                  padding: '11px 12px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
                   fontSize: '13.5px',
                   color: '#0f172a',
                   outline: 'none',
                   backgroundColor: '#ffffff'
                 }}
               >
-                {projects.map(p => (
-                  <option key={p._id} value={p._id}>
-                    [{p.projectCode}] {p.name}
+                {employees.map(emp => (
+                  <option key={emp._id} value={emp._id}>
+                    {emp.name} — {emp.role || 'Team Member'} {emp._id === currentUser?._id ? '(You)' : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Start Date & Due Date */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={formData.startDate}
-                  onChange={e => handleChange('startDate', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13.5px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
+            {/* Category */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                Category
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) => handleChange('category', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '11px 12px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13.5px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  backgroundColor: '#ffffff'
+                }}
+              >
+                {TASK_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
-                    Due Date *
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.hasNoDueDate}
-                      onChange={e => handleChange('hasNoDueDate', e.target.checked)}
-                    />
-                    Without Due Date
-                  </label>
-                </div>
-                <input
-                  type="date"
-                  disabled={formData.hasNoDueDate}
-                  value={formData.hasNoDueDate ? '' : formData.dueDate}
-                  onChange={e => handleChange('dueDate', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '13.5px',
-                    outline: 'none',
-                    backgroundColor: formData.hasNoDueDate ? '#f1f5f9' : '#ffffff',
-                    cursor: formData.hasNoDueDate ? 'not-allowed' : 'auto'
-                  }}
-                />
+          {/* 4. PRIORITY & ESTIMATED HOURS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            {/* Priority Selector Pills */}
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                Priority Level
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {PRIORITIES.map(pri => (
+                  <button
+                    key={pri.id}
+                    type="button"
+                    onClick={() => handleChange('priority', pri.id)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 4px',
+                      borderRadius: '8px',
+                      border: formData.priority === pri.id ? `2px solid ${pri.color}` : '1px solid #e2e8f0',
+                      backgroundColor: formData.priority === pri.id ? pri.bg : '#ffffff',
+                      color: formData.priority === pri.id ? pri.color : '#64748b',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {pri.label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Assigned To (Any Team Member Across Organization) */}
+            {/* Estimated Duration (Hours Pills + Input) */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
-                  Assign To (Any Team Member) *
-                </label>
-                <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-                  Assigning as: <strong style={{ color: '#0f172a' }}>{currentUser?.name || 'Avinash'}</strong>
-                </span>
-              </div>
-
-              {/* Quick Search for Employee */}
-              <div style={{ marginBottom: '8px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                Estimated Duration (Hours)
+              </label>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {HOUR_PRESETS.map(h => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => handleChange('estimatedHours', h)}
+                    style={{
+                      padding: '7px 8px',
+                      borderRadius: '8px',
+                      border: Number(formData.estimatedHours) === h ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
+                      backgroundColor: Number(formData.estimatedHours) === h ? '#eff6ff' : '#ffffff',
+                      color: Number(formData.estimatedHours) === h ? '#2563eb' : '#64748b',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {h < 1 ? `${h * 60}m` : `${h}h`}
+                  </button>
+                ))}
                 <input
-                  type="text"
-                  placeholder="🔍 Search employee by name, designation, or department..."
-                  value={employeeSearch}
-                  onChange={e => setEmployeeSearch(e.target.value)}
+                  type="number"
+                  min="0.25"
+                  step="0.25"
+                  value={formData.estimatedHours}
+                  onChange={(e) => handleChange('estimatedHours', e.target.value)}
                   style={{
-                    width: '100%',
-                    padding: '8px 12px',
+                    width: '64px',
+                    padding: '6px 8px',
                     borderRadius: '8px',
                     border: '1px solid #cbd5e1',
                     fontSize: '12.5px',
+                    fontWeight: '600',
+                    color: '#0f172a',
                     outline: 'none',
-                    backgroundColor: '#ffffff'
-                  }}
-                />
-              </div>
-
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                gap: '10px',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                padding: '12px',
-                backgroundColor: '#f8fafc',
-                maxHeight: '170px',
-                overflowY: 'auto'
-              }}>
-                {filteredEmployees.map(emp => {
-                  const isSelected = formData.assignedToId === emp._id;
-                  const isSelf = emp._id === currentUser?._id || emp.isCurrentUser;
-                  return (
-                    <div
-                      key={emp._id}
-                      onClick={() => handleChange('assignedToId', emp._id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
-                        border: `1px solid ${isSelected ? '#3b82f6' : '#e2e8f0'}`,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <img
-                        src={emp.avatar}
-                        alt={emp.name}
-                        style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {emp.name}
-                          </span>
-                          {isSelf && (
-                            <span style={{ fontSize: '10px', color: '#2563eb', backgroundColor: '#dbeafe', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>
-                              You
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {emp.role}
-                        </div>
-                      </div>
-                      {isSelected && <Check size={16} color="#2563eb" />}
-                    </div>
-                  );
-                })}
-                {filteredEmployees.length === 0 && (
-                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '16px', color: '#94a3b8', fontSize: '13px' }}>
-                    No employees matching "{employeeSearch}"
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Description Editor Toolbar */}
-            <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Description
-              </label>
-              <div style={{ border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 12px',
-                  backgroundColor: '#f8fafc',
-                  borderBottom: '1px solid #e2e8f0',
-                  flexWrap: 'wrap'
-                }}>
-                  <select style={{ fontSize: '12px', padding: '3px 6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                    <option>Normal</option>
-                    <option>Heading</option>
-                  </select>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><List size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><ListOrdered size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Bold size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Italic size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Underline size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Strikethrough size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Image size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Link size={14} color="#64748b" /></button>
-                  <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><Table size={14} color="#64748b" /></button>
-                </div>
-                <textarea
-                  rows={4}
-                  placeholder="Enter detailed task instructions, URLs, deliverables, and acceptance criteria..."
-                  value={formData.description}
-                  onChange={e => handleChange('description', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px',
-                    border: 'none',
-                    outline: 'none',
-                    fontSize: '13.5px',
-                    resize: 'vertical',
-                    fontFamily: 'inherit'
+                    textAlign: 'center'
                   }}
                 />
               </div>
             </div>
           </div>
 
-          {/* Section: Other Details Accordion (Matching Screenshots 3 & 4) */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowOtherDetails(!showOtherDetails)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'none',
-                border: 'none',
-                color: '#0f172a',
-                fontSize: '15px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                padding: '4px 0'
-              }}
-            >
-              {showOtherDetails ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-              Other Details
-            </button>
+          {/* 5. DATES (Start & Due Date with Quick Presets) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            {/* Start Date */}
+            <div>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
+                Start Date
+              </label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => handleChange('startDate', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
+              />
+            </div>
 
-            {showOtherDetails && (
-              <div style={{
-                marginTop: '14px',
-                padding: '20px',
-                backgroundColor: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '18px'
-              }}>
-                {/* Row: Label, Milestones, Status */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                      Label
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Marketing, SEO, UI"
-                      value={formData.label}
-                      onChange={e => handleChange('label', e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        outline: 'none',
-                        backgroundColor: '#ffffff'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                      Milestones
-                    </label>
-                    <select
-                      value={formData.milestone}
-                      onChange={e => handleChange('milestone', e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        outline: 'none',
-                        backgroundColor: '#ffffff'
-                      }}
-                    >
-                      <option value="">-- None --</option>
-                      <option value="Milestone 1">Milestone 1 (Initial Setup)</option>
-                      <option value="Milestone 2">Milestone 2 (Execution Phase)</option>
-                      <option value="Milestone 3">Milestone 3 (Final Review & Delivery)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                      Status
-                    </label>
-                    <select
-                      value={formData.status}
-                      onChange={e => handleChange('status', e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        outline: 'none',
-                        backgroundColor: '#ffffff'
-                      }}
-                    >
-                      <option value="incomplete">🔴 Incomplete</option>
-                      <option value="in_progress">🔵 In Progress</option>
-                      <option value="under_review">🟣 Under Review</option>
-                      <option value="completed">🟢 Completed</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Priority */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                    Priority
-                  </label>
-                  <select
-                    value={formData.priority}
-                    onChange={e => handleChange('priority', e.target.value)}
+            {/* Due Date + Quick Presets */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <label style={{ fontSize: '12.5px', fontWeight: '600', color: '#475569' }}>
+                  Due Date
+                </label>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('dueDate', todayStr)}
                     style={{
-                      width: '100%',
-                      maxWidth: '240px',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '13px',
-                      outline: 'none',
-                      backgroundColor: '#ffffff'
+                      background: formData.dueDate === todayStr ? '#eff6ff' : '#f1f5f9',
+                      color: formData.dueDate === todayStr ? '#2563eb' : '#64748b',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
                     }}
                   >
-                    <option value="medium">🟡 Medium</option>
-                    <option value="high">🔴 High</option>
-                    <option value="urgent">🔥 Urgent</option>
-                    <option value="low">🟢 Low</option>
-                  </select>
-                </div>
-
-                {/* Checkboxes Grid (Matching Screenshot 4) */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                  gap: '14px',
-                  padding: '14px',
-                  backgroundColor: '#ffffff',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0'
-                }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.isPrivate}
-                      onChange={e => handleChange('isPrivate', e.target.checked)}
-                    />
-                    Make Private ❔
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.isBillable}
-                      onChange={e => handleChange('isBillable', e.target.checked)}
-                    />
-                    Billable ❔
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.hasTimeEstimate}
-                      onChange={e => handleChange('hasTimeEstimate', e.target.checked)}
-                    />
-                    Time estimate
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.isRepeat}
-                      onChange={e => handleChange('isRepeat', e.target.checked)}
-                    />
-                    Repeat
-                  </label>
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#475569', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.isDependent}
-                      onChange={e => handleChange('isDependent', e.target.checked)}
-                    />
-                    Task is dependent on another task
-                  </label>
-                </div>
-
-                {/* Estimated hours input if enabled */}
-                {formData.hasTimeEstimate && (
-                  <div style={{
-                    padding: '14px',
-                    backgroundColor: '#eff6ff',
-                    border: '1.5px solid #bfdbfe',
-                    borderRadius: '8px'
-                  }}>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e3a8a', marginBottom: '6px' }}>
-                      ⏱️ Target Time Allocation / Estimated Budget
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="200"
-                          step="0.5"
-                          value={formData.estimatedHours}
-                          onChange={e => handleChange('estimatedHours', Number(e.target.value))}
-                          placeholder="e.g. 4"
-                          style={{
-                            width: '100px',
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            border: '1.5px solid #3b82f6',
-                            fontSize: '14px',
-                            fontWeight: '700',
-                            color: '#0f172a',
-                            outline: 'none',
-                            backgroundColor: '#ffffff'
-                          }}
-                        />
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Hours</span>
-                      </div>
-
-                      {/* Quick Hour Preset Chips */}
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                        {[1, 2, 4, 8, 16, 24].map(hrs => (
-                          <button
-                            key={hrs}
-                            type="button"
-                            onClick={() => handleChange('estimatedHours', hrs)}
-                            style={{
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              border: formData.estimatedHours === hrs ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
-                              backgroundColor: formData.estimatedHours === hrs ? '#dbeafe' : '#ffffff',
-                              color: formData.estimatedHours === hrs ? '#1e40af' : '#475569',
-                              fontSize: '11.5px',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {hrs}h {hrs === 8 ? '(1 Day)' : hrs === 16 ? '(2 Days)' : hrs === 24 ? '(3 Days)' : ''}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px' }}>
-                      Assignee will see a live progress bar comparing their logged time against this {formData.estimatedHours || 0}h budget.
-                    </div>
-                  </div>
-                )}
-
-                {/* Add File / Choose a file (Matching Screenshot 4) */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                    Add File
-                  </label>
-                  <div style={{
-                    border: '2px dashed #cbd5e1',
-                    borderRadius: '8px',
-                    padding: '24px',
-                    textAlign: 'center',
-                    backgroundColor: '#ffffff',
-                    cursor: 'pointer'
-                  }}>
-                    <UploadCloud size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-                    <div style={{ fontSize: '13.5px', color: '#64748b' }}>
-                      <span style={{ color: '#2563eb', fontWeight: '600' }}>Choose a file</span> or drag and drop here
-                    </div>
-                    <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '4px' }}>
-                      PDF, DOCX, PNG, JPG, ZIP up to 25MB
-                    </div>
-                  </div>
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('dueDate', getDateOffset(1))}
+                    style={{
+                      background: formData.dueDate === getDateOffset(1) ? '#eff6ff' : '#f1f5f9',
+                      color: formData.dueDate === getDateOffset(1) ? '#2563eb' : '#64748b',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Tomorrow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChange('dueDate', getDateOffset(3))}
+                    style={{
+                      background: formData.dueDate === getDateOffset(3) ? '#eff6ff' : '#f1f5f9',
+                      color: formData.dueDate === getDateOffset(3) ? '#2563eb' : '#64748b',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    +3 Days
+                  </button>
                 </div>
               </div>
-            )}
+              <input
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => handleChange('dueDate', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
+              />
+            </div>
           </div>
 
-          {/* Action Buttons (Matching Screenshot 4: Save, Save & Add More, Cancel) */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            paddingTop: '16px',
-            borderTop: '1px solid #f1f5f9'
-          }}>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => handleSave(false)}
+          {/* 6. DESCRIPTION / INSTRUCTIONS */}
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              Description & Work Notes
+            </label>
+            <textarea
+              rows={3}
+              value={formData.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+              placeholder="Write task details, key deliverables, guidelines, or links here..."
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                backgroundColor: '#0284c7',
-                color: '#ffffff',
-                border: 'none',
-                padding: '10px 22px',
-                borderRadius: '8px',
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #cbd5e1',
                 fontSize: '13.5px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                lineHeight: '1.5',
+                color: '#0f172a',
+                outline: 'none',
+                resize: 'vertical',
+                transition: 'border-color 0.2s',
+                fontFamily: 'inherit'
               }}
-            >
-              <Check size={16} />
-              {submitting ? 'Saving...' : 'Save'}
-            </button>
+              onFocus={e => e.currentTarget.style.borderColor = '#2563eb'}
+              onBlur={e => e.currentTarget.style.borderColor = '#cbd5e1'}
+            />
+          </div>
+        </div>
 
+        {/* Modal Footer Actions */}
+        <div style={{
+          padding: '16px 24px',
+          borderTop: '1px solid #f1f5f9',
+          backgroundColor: '#f8fafc',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '10px',
+          flexWrap: 'wrap'
+        }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: '#ffffff',
+              color: '#475569',
+              fontSize: '13.5px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            Cancel
+          </button>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
             <button
               type="button"
               disabled={submitting}
               onClick={() => handleSave(true)}
               style={{
-                backgroundColor: '#ffffff',
-                color: '#0284c7',
-                border: '1px solid #0284c7',
-                padding: '10px 20px',
-                borderRadius: '8px',
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1.5px solid #bfdbfe',
+                backgroundColor: '#eff6ff',
+                color: '#2563eb',
                 fontSize: '13.5px',
-                fontWeight: '600',
+                fontWeight: '700',
                 cursor: 'pointer'
               }}
             >
-              Save & Add More
+              Save & Add Another
             </button>
 
             <button
               type="button"
-              onClick={onClose}
+              disabled={submitting}
+              onClick={() => handleSave(false)}
               style={{
-                backgroundColor: '#ffffff',
-                color: '#64748b',
-                border: '1px solid #cbd5e1',
-                padding: '10px 18px',
-                borderRadius: '8px',
+                padding: '10px 22px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                color: '#ffffff',
                 fontSize: '13.5px',
-                fontWeight: '500',
-                cursor: 'pointer'
+                fontWeight: '700',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
-              Cancel
+              <CheckCircle2 size={16} />
+              {submitting ? 'Creating...' : 'Create Task'}
             </button>
           </div>
         </div>
@@ -818,3 +874,5 @@ export const AddTaskModal = ({ isOpen, onClose }) => {
     </div>
   );
 };
+
+export default AddTaskModal;

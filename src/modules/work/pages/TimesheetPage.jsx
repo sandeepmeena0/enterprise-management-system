@@ -71,44 +71,45 @@ export const TimesheetPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {/* Page Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '16px'
+        gap: '8px'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#64748b', marginBottom: '1px' }}>
             <span>Work</span>
             <span>•</span>
             <span style={{ color: '#0f172a', fontWeight: '600' }}>Timesheet</span>
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
             Timesheet & Time Tracking
           </h1>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={handleExportCSV}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
               backgroundColor: '#ffffff',
               color: '#475569',
               border: '1px solid #cbd5e1',
-              padding: '9px 16px',
-              borderRadius: '8px',
-              fontSize: '13.5px',
+              padding: '5px 12px',
+              borderRadius: '6px',
+              fontSize: '12px',
               fontWeight: '500',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              height: '30px'
             }}
           >
-            <Download size={15} /> Export
+            <Download size={13} /> Export
           </button>
 
           <button
@@ -116,22 +117,23 @@ export const TimesheetPage = () => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
               backgroundColor: '#0284c7',
               color: '#ffffff',
               border: 'none',
-              padding: '9px 20px',
-              borderRadius: '8px',
-              fontSize: '13.5px',
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '12px',
               fontWeight: '600',
               cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
-              transition: 'all 0.15s ease'
+              boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)',
+              transition: 'all 0.15s ease',
+              height: '30px'
             }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0369a1'}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = '#0284c7'}
           >
-            <Plus size={16} />
+            <Plus size={14} />
             Log Time
           </button>
         </div>
@@ -140,34 +142,35 @@ export const TimesheetPage = () => {
       {/* KPI Stats Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '16px'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '10px'
       }}>
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#eff6ff',
             color: '#2563eb',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <Clock size={22} />
+            <Clock size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Total Hours Logged</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Total Hours Logged</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', lineHeight: '1.1' }}>
               {totalHoursLogged} hrs
             </div>
           </div>
@@ -175,29 +178,30 @@ export const TimesheetPage = () => {
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#f0fdf4',
             color: '#16a34a',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <Zap size={22} />
+            <Zap size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Active Live Timers</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#16a34a', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Active Live Timers</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#16a34a', lineHeight: '1.1' }}>
               {activeSessionsCount}
             </div>
           </div>
@@ -205,29 +209,30 @@ export const TimesheetPage = () => {
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#f8fafc',
             color: '#64748b',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <Layers size={22} />
+            <Layers size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Tracked Sessions</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Tracked Sessions</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', lineHeight: '1.1' }}>
               {timesheets.length}
             </div>
           </div>
@@ -235,30 +240,31 @@ export const TimesheetPage = () => {
 
         <div style={{
           backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          padding: '20px',
+          borderRadius: '8px',
+          padding: '10px 14px',
           border: '1px solid #e2e8f0',
           display: 'flex',
           alignItems: 'center',
-          gap: '16px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          gap: '10px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
         }}>
           <div style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '10px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '6px',
             backgroundColor: '#faf5ff',
             color: '#9333ea',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <User size={22} />
+            <User size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '500' }}>Active Team Members</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#9333ea', lineHeight: '1.2' }}>
-              {uniqueEmployees || employees.length}
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '500' }}>Active Team Members</div>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#9333ea', lineHeight: '1.1' }}>
+              {uniqueEmployees}
             </div>
           </div>
         </div>

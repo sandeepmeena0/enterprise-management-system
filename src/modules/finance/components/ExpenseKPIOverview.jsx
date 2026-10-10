@@ -26,34 +26,34 @@ export const ExpenseKPIOverview = ({ expenses = [] }) => {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-      gap: '14px',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: '10px',
       marginBottom: '10px'
     }}>
       {/* Total Expenses */}
       <div style={cardStyle('#3b82f6', '#eff6ff')}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Total Company Expenses</span>
-          <div style={iconBadgeStyle('#2563eb', '#eff6ff')}><DollarSign size={16} /></div>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Total Expenses</span>
+          <div style={iconBadgeStyle('#2563eb', '#eff6ff')}><DollarSign size={15} /></div>
         </div>
-        <div style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginTop: '6px' }}>
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', marginTop: '4px', lineHeight: '1.1' }}>
           ₹{totalAmount.toLocaleString('en-IN')}
         </div>
-        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-          Across {expenses.length} recorded items
+        <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
+          {expenses.length} recorded items
         </div>
       </div>
 
       {/* Approved Expenses */}
       <div style={cardStyle('#10b981', '#f0fdf4')}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Approved Expenses</span>
-          <div style={iconBadgeStyle('#16a34a', '#dcfce7')}><CheckCircle2 size={16} /></div>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Approved</span>
+          <div style={iconBadgeStyle('#16a34a', '#dcfce7')}><CheckCircle2 size={15} /></div>
         </div>
-        <div style={{ fontSize: '20px', fontWeight: '800', color: '#16a34a', marginTop: '6px' }}>
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#16a34a', marginTop: '4px', lineHeight: '1.1' }}>
           ₹{approvedAmount.toLocaleString('en-IN')}
         </div>
-        <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '2px', fontWeight: '500' }}>
+        <div style={{ fontSize: '10.5px', color: '#16a34a', marginTop: '2px', fontWeight: '500' }}>
           {approvedCount} items cleared
         </div>
       </div>
@@ -61,27 +61,27 @@ export const ExpenseKPIOverview = ({ expenses = [] }) => {
       {/* Pending Expenses */}
       <div style={cardStyle('#f59e0b', '#fef3c7')}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Pending Review</span>
-          <div style={iconBadgeStyle('#d97706', '#fef3c7')}><Clock size={16} /></div>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Pending Review</span>
+          <div style={iconBadgeStyle('#d97706', '#fef3c7')}><Clock size={15} /></div>
         </div>
-        <div style={{ fontSize: '20px', fontWeight: '800', color: '#d97706', marginTop: '6px' }}>
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#d97706', marginTop: '4px', lineHeight: '1.1' }}>
           ₹{pendingAmount.toLocaleString('en-IN')}
         </div>
-        <div style={{ fontSize: '11px', color: '#d97706', marginTop: '2px', fontWeight: '500' }}>
-          {pendingCount} items waiting approval
+        <div style={{ fontSize: '10.5px', color: '#d97706', marginTop: '2px', fontWeight: '500' }}>
+          {pendingCount} items waiting
         </div>
       </div>
 
       {/* Rejected Expenses */}
       <div style={cardStyle('#ef4444', '#fee2e2')}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Rejected / Declined</span>
-          <div style={iconBadgeStyle('#dc2626', '#fee2e2')}><XCircle size={16} /></div>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Rejected</span>
+          <div style={iconBadgeStyle('#dc2626', '#fee2e2')}><XCircle size={15} /></div>
         </div>
-        <div style={{ fontSize: '20px', fontWeight: '800', color: '#dc2626', marginTop: '6px' }}>
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#dc2626', marginTop: '4px', lineHeight: '1.1' }}>
           ₹{rejectedAmount.toLocaleString('en-IN')}
         </div>
-        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+        <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
           Non-compliant requests
         </div>
       </div>
@@ -91,17 +91,17 @@ export const ExpenseKPIOverview = ({ expenses = [] }) => {
 
 const cardStyle = (borderColor, hoverBg) => ({
   backgroundColor: '#ffffff',
-  borderRadius: '12px',
+  borderRadius: '10px',
   border: '1px solid #e2e8f0',
-  borderLeft: `4px solid ${borderColor}`,
-  padding: '14px 18px',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+  borderLeft: `3px solid ${borderColor}`,
+  padding: '10px 14px',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
 });
 
 const iconBadgeStyle = (color, bg) => ({
-  width: '28px',
-  height: '28px',
-  borderRadius: '8px',
+  width: '26px',
+  height: '26px',
+  borderRadius: '6px',
   backgroundColor: bg,
   color: color,
   display: 'flex',

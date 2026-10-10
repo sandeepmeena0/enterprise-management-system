@@ -60,8 +60,8 @@ export const AddExpenseModal = ({ isOpen, onClose }) => {
         ...formData,
         price: Number(formData.price),
         amount: Number(formData.price),
-        employeeName: selectedEmployee?.name || 'Avinash',
-        paidBy: selectedEmployee?.name || 'Avinash',
+        employeeName: selectedEmployee?.name || currentUser?.name || 'Employee',
+        paidBy: selectedEmployee?.name || currentUser?.name || 'Employee',
         employeeAvatar: selectedEmployee?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'
       });
 

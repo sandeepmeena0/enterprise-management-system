@@ -15,9 +15,11 @@ import {
   CheckCircle2,
   Calendar,
   AlertTriangle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Bell
 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
+import { SnoozeTaskModal } from './SnoozeTaskModal';
 
 const STATUS_CONFIG = {
   incomplete: { label: 'Incomplete', color: '#dc2626', bg: '#fef2f2', dot: '#ef4444' },
@@ -34,11 +36,15 @@ export const TasksTable = ({ onSelectTask }) => {
     startTaskTimer,
     pauseTaskTimer,
     stopTaskTimer,
+    resumeSnoozedTask,
     isEmployeeOnLeave
   } = useWork();
 
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [snoozeTargetTask, setSnoozeTargetTask] = useState(null);
+  const [isSnoozeModalOpen, setIsSnoozeModalOpen] = useState(false);
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const toggleSelectAll = (e) => {
     if (e.target.checked) {
@@ -107,7 +113,7 @@ export const TasksTable = ({ onSelectTask }) => {
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '14px 16px', width: '36px' }}>
+              <th style={{ padding: '8px 10px', width: '30px' }}>
                 <input
                   type="checkbox"
                   onChange={toggleSelectAll}
@@ -115,37 +121,37 @@ export const TasksTable = ({ onSelectTask }) => {
                   style={{ cursor: 'pointer' }}
                 />
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Code
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Timer
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Task
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Completed On
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Start Date
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Due Date
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Estimated Time
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                Estimated
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Hours Logged
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                Logged
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Assigned To
               </th>
-              <th style={{ padding: '14px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Status
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right' }}>
+              <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'right', whiteSpace: 'nowrap' }}>
                 Action
               </th>
             </tr>
@@ -175,7 +181,7 @@ export const TasksTable = ({ onSelectTask }) => {
                   }}
                 >
                   {/* Checkbox */}
-                  <td style={{ padding: '16px' }}>
+                  <td style={{ padding: '7px 10px' }}>
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -185,25 +191,25 @@ export const TasksTable = ({ onSelectTask }) => {
                     />
                   </td>
 
-                  {/* Code (e.g. CPC-0) */}
-                  <td style={{ padding: '16px 14px', fontSize: '13px', fontWeight: '600', color: '#475569' }}>
+                  {/* Code (e.g. TSK-1) */}
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', fontWeight: '700', color: '#475569', whiteSpace: 'nowrap' }}>
                     {task.taskCode || 'TSK-1'}
                   </td>
 
-                  {/* Timer Pill with Controls (Matching Screenshot 2) */}
-                  <td style={{ padding: '16px 14px', whiteSpace: 'nowrap' }}>
+                  {/* Timer Pill with Controls */}
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                     {task.timerRunning ? (
                       <div style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px',
+                        gap: '4px',
                         backgroundColor: '#0284c7',
                         color: '#ffffff',
-                        padding: '4px 10px',
-                        borderRadius: '20px',
-                        fontSize: '12px',
+                        padding: '2px 8px',
+                        borderRadius: '14px',
+                        fontSize: '11px',
                         fontWeight: '700',
-                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.4)'
+                        boxShadow: '0 2px 4px rgba(2, 132, 199, 0.3)'
                       }}>
                         {/* Pause button */}
                         <button
@@ -213,11 +219,11 @@ export const TasksTable = ({ onSelectTask }) => {
                             pauseTaskTimer(task._id);
                           }}
                           style={{
-                            background: 'rgba(255,255,255,0.2)',
+                            background: 'rgba(255,255,255,0.25)',
                             border: 'none',
                             borderRadius: '50%',
-                            width: '20px',
-                            height: '20px',
+                            width: '16px',
+                            height: '16px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -225,7 +231,7 @@ export const TasksTable = ({ onSelectTask }) => {
                             cursor: 'pointer'
                           }}
                         >
-                          <Pause size={10} fill="#ffffff" />
+                          <Pause size={8} fill="#ffffff" />
                         </button>
 
                         {/* Stop & Log button */}
@@ -236,11 +242,11 @@ export const TasksTable = ({ onSelectTask }) => {
                             stopTaskTimer(task._id);
                           }}
                           style={{
-                            background: 'rgba(255,255,255,0.2)',
+                            background: 'rgba(255,255,255,0.25)',
                             border: 'none',
                             borderRadius: '50%',
-                            width: '20px',
-                            height: '20px',
+                            width: '16px',
+                            height: '16px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -248,12 +254,53 @@ export const TasksTable = ({ onSelectTask }) => {
                             cursor: 'pointer'
                           }}
                         >
-                          <Square size={9} fill="#ffffff" />
+                          <Square size={7} fill="#ffffff" />
                         </button>
 
-                        <span style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}>
+                        <span style={{ fontFamily: 'monospace', letterSpacing: '0.02em', fontSize: '11px' }}>
                           ⏱️ {task.hoursLoggedText || '02:17:21'}
                         </span>
+                      </div>
+                    ) : task.snoozed ? (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          backgroundColor: '#faf5ff',
+                          color: '#7e22ce',
+                          border: '1px solid #e9d5ff',
+                          padding: '2px 7px',
+                          borderRadius: '12px',
+                          fontSize: '10.5px',
+                          fontWeight: '700'
+                        }} title={task.reminderNote ? `Note: ${task.reminderNote}` : 'CRM Reminder Active'}>
+                          <Bell size={10} />
+                          <span>Remind: {new Date(task.remindAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </span>
+                        <button
+                          title="Resume task timer now"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            resumeSnoozedTask(task._id);
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '2px',
+                            backgroundColor: '#7e22ce',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '2px 6px',
+                            borderRadius: '8px',
+                            fontSize: '10px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Play size={8} fill="#fff" />
+                          Resume
+                        </button>
                       </div>
                     ) : (
                       <button
@@ -265,13 +312,13 @@ export const TasksTable = ({ onSelectTask }) => {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
+                          gap: '4px',
                           backgroundColor: '#f1f5f9',
                           color: '#475569',
                           border: '1px solid #cbd5e1',
-                          padding: '4px 10px',
-                          borderRadius: '16px',
-                          fontSize: '12px',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
                           fontWeight: '600',
                           cursor: 'pointer',
                           transition: 'all 0.15s ease'
@@ -287,63 +334,70 @@ export const TasksTable = ({ onSelectTask }) => {
                           e.currentTarget.style.borderColor = '#cbd5e1';
                         }}
                       >
-                        <Play size={11} fill="#475569" />
+                        <Play size={9} fill="#475569" />
                         <span>Start</span>
                       </button>
                     )}
                   </td>
 
                   {/* Task Name & Project Name subtitle */}
-                  <td style={{ padding: '16px' }}>
-                    <div style={{ fontSize: '13.5px', fontWeight: '600', color: '#0f172a' }}>
+                  <td style={{ padding: '7px 12px', minWidth: '180px' }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: '600', color: '#0f172a', lineHeight: '1.25' }}>
                       {task.title}
                     </div>
-                    <div style={{ fontSize: '11.5px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginTop: '2px', letterSpacing: '0.02em' }}>
+                    <div style={{ fontSize: '10.5px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginTop: '1px', letterSpacing: '0.02em' }}>
                       {task.projectName || 'General Work'}
                     </div>
                   </td>
 
                   {/* Completed On */}
-                  <td style={{ padding: '16px 14px', fontSize: '13px', color: '#64748b' }}>
-                    {task.completedOn || '—'}
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                    {task.completedOn ? (
+                      task.completedOn === todayStr ? (
+                        <span style={{ color: '#16a34a', fontWeight: '700', backgroundColor: '#f0fdf4', padding: '1px 6px', borderRadius: '4px' }}>
+                          Today ✅
+                        </span>
+                      ) : task.completedOn
+                    ) : '—'}
                   </td>
 
                   {/* Start Date */}
-                  <td style={{ padding: '16px 14px', fontSize: '13px', color: '#0f172a' }}>
-                    {task.startDate === '2026-09-25' ? 'Today' : task.startDate}
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                    {task.startDate === todayStr ? 'Today' : (task.startDate || '—')}
                   </td>
 
                   {/* Due Date */}
-                  <td style={{ padding: '16px 14px', fontSize: '13px', color: '#0f172a' }}>
-                    {task.hasNoDueDate ? 'No Due Date' : (task.dueDate === '2026-09-25' ? 'Today' : task.dueDate)}
+                  <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                    {task.hasNoDueDate ? 'No Due Date' : (task.dueDate === todayStr ? <span style={{ color: '#ea580c', fontWeight: '700' }}>Today</span> : (task.dueDate || '—'))}
                   </td>
 
                   {/* Estimated Time */}
-                  <td style={{ padding: '16px 14px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
+                      gap: '3px',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
                       backgroundColor: '#eff6ff',
                       color: '#1d4ed8',
                       fontWeight: '700',
-                      fontSize: '12px',
-                      border: '1px solid #dbeafe'
+                      fontSize: '11px',
+                      border: '1px solid #dbeafe',
+                      whiteSpace: 'nowrap'
                     }}>
                       ⏱️ {task.estimatedHours ? `${task.estimatedHours}h 00m` : '0h (Open)'}
                     </span>
                   </td>
 
                   {/* Hours Logged with Visual Progress Bar */}
-                  <td style={{ padding: '16px 14px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '110px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: '95px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: '700', color: '#0f172a' }}>
                         <span>{task.hoursLogged ? `${task.hoursLogged}h` : (task.hoursLoggedText || '0s')}</span>
                         {task.estimatedHours > 0 && (
                           <span style={{
-                            fontSize: '10.5px',
+                            fontSize: '9.5px',
                             fontWeight: '800',
                             color: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#dc2626' : '#16a34a'
                           }}>
@@ -354,16 +408,16 @@ export const TasksTable = ({ onSelectTask }) => {
                       {task.estimatedHours > 0 && (
                         <div style={{
                           width: '100%',
-                          height: '5px',
+                          height: '4px',
                           backgroundColor: '#e2e8f0',
-                          borderRadius: '3px',
+                          borderRadius: '2px',
                           overflow: 'hidden'
                         }}>
                           <div style={{
                             height: '100%',
                             width: `${Math.min(100, Math.round(((Number(task.hoursLogged) || 0) / Number(task.estimatedHours)) * 100))}%`,
                             backgroundColor: (Number(task.hoursLogged) || 0) > Number(task.estimatedHours) ? '#ef4444' : '#2563eb',
-                            borderRadius: '3px',
+                            borderRadius: '2px',
                             transition: 'width 0.3s ease'
                           }} />
                         </div>
@@ -372,29 +426,29 @@ export const TasksTable = ({ onSelectTask }) => {
                   </td>
 
                   {/* Assigned To (Avatar + Name + Smart Leave Badge + Assigner info) */}
-                  <td style={{ padding: '16px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <img
                         src={task.assignedToAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                         alt={task.assignedToName}
-                        style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                        style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
                       />
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>
+                        <div style={{ fontSize: '11.5px', fontWeight: '600', color: '#0f172a', lineHeight: '1.2' }}>
                           {task.assignedToName || 'Unassigned'}
                         </div>
                         {task.assignedBy && task.assignedBy !== task.assignedToName && (
-                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>
                             By {task.assignedBy}
                           </div>
                         )}
                         {isOnLeave && (
                           <span style={{
-                            fontSize: '10px',
+                            fontSize: '9px',
                             color: '#d97706',
                             backgroundColor: '#fef3c7',
                             padding: '1px 4px',
-                            borderRadius: '4px',
+                            borderRadius: '3px',
                             fontWeight: '600'
                           }}>
                             🌴 On Leave
@@ -405,21 +459,22 @@ export const TasksTable = ({ onSelectTask }) => {
                   </td>
 
                   {/* Status Dropdown */}
-                  <td style={{ padding: '16px 14px' }}>
+                  <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                     <select
                       value={task.status}
                       onClick={e => e.stopPropagation()}
                       onChange={(e) => changeTaskStatus(task._id, e.target.value)}
                       style={{
-                        padding: '4px 8px',
-                        borderRadius: '16px',
-                        fontSize: '12px',
+                        padding: '2px 6px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
                         fontWeight: '600',
                         backgroundColor: status.bg,
                         color: status.color,
                         border: `1px solid ${status.dot}33`,
                         outline: 'none',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        height: '24px'
                       }}
                     >
                       <option value="incomplete">🔴 Incomplete</option>
@@ -430,7 +485,7 @@ export const TasksTable = ({ onSelectTask }) => {
                   </td>
 
                   {/* Action Dropdown Menu */}
-                  <td style={{ padding: '16px 16px', textAlign: 'right', position: 'relative' }}>
+                  <td style={{ padding: '7px 10px', textAlign: 'right', position: 'relative' }}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -440,15 +495,15 @@ export const TasksTable = ({ onSelectTask }) => {
                         background: 'transparent',
                         border: 'none',
                         color: '#64748b',
-                        padding: '6px',
-                        borderRadius: '6px',
+                        padding: '4px',
+                        borderRadius: '4px',
                         cursor: 'pointer',
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center'
                       }}
                     >
-                      <MoreVertical size={16} />
+                      <MoreVertical size={14} />
                     </button>
 
                     {isMenuOpen && (
@@ -456,15 +511,15 @@ export const TasksTable = ({ onSelectTask }) => {
                         onClick={e => e.stopPropagation()}
                         style={{
                           position: 'absolute',
-                          right: '16px',
-                          top: '40px',
+                          right: '10px',
+                          top: '32px',
                           backgroundColor: '#ffffff',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
                           border: '1px solid #e2e8f0',
-                          padding: '6px',
+                          padding: '4px',
                           zIndex: 50,
-                          minWidth: '150px',
+                          minWidth: '140px',
                           textAlign: 'left'
                         }}
                       >
@@ -476,9 +531,9 @@ export const TasksTable = ({ onSelectTask }) => {
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 12px',
-                            fontSize: '12.5px',
+                            gap: '6px',
+                            padding: '6px 10px',
+                            fontSize: '11.5px',
                             color: '#334155',
                             cursor: 'pointer',
                             borderRadius: '4px'
@@ -486,16 +541,37 @@ export const TasksTable = ({ onSelectTask }) => {
                           onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f1f5f9'}
                           onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <Eye size={14} color="#3b82f6" /> View Details
+                          <Eye size={13} color="#3b82f6" /> View Details
+                        </div>
+                        <div
+                          onClick={() => {
+                            setSnoozeTargetTask(task);
+                            setIsSnoozeModalOpen(true);
+                            setActiveMenuId(null);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 10px',
+                            fontSize: '11.5px',
+                            color: '#7e22ce',
+                            cursor: 'pointer',
+                            borderRadius: '4px'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#faf5ff'}
+                          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <Bell size={13} color="#9333ea" /> Do Later & Remind ⏰
                         </div>
                         <div
                           onClick={(e) => handleDelete(task._id, e)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '8px',
-                            padding: '8px 12px',
-                            fontSize: '12.5px',
+                            gap: '6px',
+                            padding: '6px 10px',
+                            fontSize: '11.5px',
                             color: '#ef4444',
                             cursor: 'pointer',
                             borderRadius: '4px'
@@ -503,7 +579,7 @@ export const TasksTable = ({ onSelectTask }) => {
                           onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
                           onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          <Trash2 size={14} /> Delete Task
+                          <Trash2 size={13} /> Delete Task
                         </div>
                       </div>
                     )}
@@ -515,7 +591,7 @@ export const TasksTable = ({ onSelectTask }) => {
         </table>
       </div>
 
-      {/* Table Footer & Pagination (Matching Screenshot 2) */}
+      {/* Table Footer & Pagination */}
       <div style={{
         padding: '14px 20px',
         backgroundColor: '#ffffff',
@@ -594,6 +670,12 @@ export const TasksTable = ({ onSelectTask }) => {
           </div>
         </div>
       </div>
+
+      <SnoozeTaskModal
+        isOpen={isSnoozeModalOpen}
+        onClose={() => setIsSnoozeModalOpen(false)}
+        task={snoozeTargetTask}
+      />
     </div>
   );
 };

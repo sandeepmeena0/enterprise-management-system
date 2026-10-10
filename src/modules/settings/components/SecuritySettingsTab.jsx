@@ -192,7 +192,7 @@ export const SecuritySettingsTab = () => {
               Setup Using Email
             </h4>
             <p style={{ fontSize: '12.5px', color: '#64748b', margin: 0, lineHeight: '1.4' }}>
-              Enabling this feature will send code on your email account <strong>{currentUser?.email || 'avinash@novainfinityindia.com'}</strong> for log in.
+              Enabling this feature will send code on your email account <strong>{currentUser?.email || 'user@company.com'}</strong> for log in.
             </p>
           </div>
         </div>

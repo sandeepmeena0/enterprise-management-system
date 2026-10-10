@@ -111,109 +111,176 @@ export const ExpensesPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       
-      {/* Top Breadcrumb & Live Header Matching Screenshot 1 */}
+      {/* Header Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
-            <span style={{ fontWeight: '700', color: '#0f172a' }}>Expenses</span>
-            <span>Home • Expenses</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <DollarSign size={17} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Finance & Expense Management</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#16a34a', fontWeight: '700' }}>
+                {filteredExpenses.length} Records
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Track vouchers, claims, bills, vendor payouts & reimbursement statuses
+            </p>
           </div>
         </div>
 
-        {/* Live Work Clock */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 14px',
-          backgroundColor: '#ffffff',
-          borderRadius: '20px',
-          border: '1px solid #e2e8f0',
-          fontSize: '13px',
-          fontWeight: '700',
-          color: '#0f172a',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-          <span>02:18:56</span>
-          <span style={{ color: '#ef4444' }}>●</span>
-          <span style={{ color: '#3b82f6' }}>●</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setIsImportOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 12px',
+              borderRadius: '7px',
+              backgroundColor: '#ffffff',
+              color: '#475569',
+              border: '1px solid #cbd5e1',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            <Upload size={13} />
+            Import
+          </button>
+          <button
+            onClick={handleExport}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 12px',
+              borderRadius: '7px',
+              backgroundColor: '#ffffff',
+              color: '#2563eb',
+              border: '1px solid #cbd5e1',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            <Download size={13} />
+            Export CSV
+          </button>
+          <button
+            onClick={() => setIsAddOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '7px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
+            }}
+          >
+            <Plus size={14} />
+            Add Expense
+          </button>
         </div>
       </div>
 
       {/* KPI Overview Cards */}
       <ExpenseKPIOverview expenses={expenses} />
 
-      {/* Filter and Search Bar Matching Screenshot 1 */}
+      {/* Filter and Search Bar */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
-        padding: '14px 18px',
+        padding: '8px 12px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '14px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        gap: '10px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           
           {/* Duration */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span style={{ fontWeight: '600' }}>Duration</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontWeight: '600' }}>Duration:</span>
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '8px',
+              gap: '4px',
+              padding: '0 8px',
+              height: '30px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#f8fafc',
-              fontSize: '12.5px'
+              fontSize: '11.5px'
             }}>
               <input
                 type="date"
                 value={startDateFilter}
                 onChange={e => setStartDateFilter(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#334155' }}
+                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '11.5px', color: '#334155' }}
               />
-              <span>To</span>
+              <span style={{ color: '#94a3b8' }}>to</span>
               <input
                 type="date"
                 value={endDateFilter}
                 onChange={e => setEndDateFilter(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#334155' }}
+                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '11.5px', color: '#334155' }}
               />
             </div>
           </div>
 
           {/* Status Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span style={{ fontWeight: '600' }}>Status</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontWeight: '600' }}>Status:</span>
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
               style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
+                height: '30px',
+                padding: '0 8px',
+                borderRadius: '6px',
                 border: '1px solid #cbd5e1',
                 backgroundColor: '#ffffff',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 color: '#0f172a',
                 outline: 'none',
                 cursor: 'pointer'
               }}
             >
-              <option value="all">All</option>
+              <option value="all">All Statuses</option>
               <option value="approved">Approved</option>
               <option value="pending">Pending</option>
               <option value="rejected">Rejected</option>
@@ -224,23 +291,24 @@ export const ExpensesPage = () => {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            borderRadius: '8px',
+            gap: '6px',
+            padding: '0 10px',
+            height: '30px',
+            borderRadius: '6px',
             border: '1px solid #cbd5e1',
             backgroundColor: '#ffffff',
             minWidth: '220px'
           }}>
-            <Search size={15} color="#94a3b8" />
+            <Search size={13} color="#94a3b8" />
             <input
               type="text"
-              placeholder="Start typing to search"
+              placeholder="Search item, vendor, employee..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
                 border: 'none',
                 outline: 'none',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 width: '100%',
                 backgroundColor: 'transparent',
                 color: '#0f172a'
@@ -249,121 +317,35 @@ export const ExpensesPage = () => {
           </div>
         </div>
 
-        {/* Filters Toggle Button */}
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'transparent',
-            border: 'none',
-            color: '#475569',
-            fontSize: '13px',
-            fontWeight: '600',
-            cursor: 'pointer'
-          }}
-        >
-          <Filter size={15} />
-          Filters
-        </button>
+        {selectedIds.length > 0 && (
+          <span style={{ fontSize: '11.5px', color: '#2563eb', fontWeight: '700' }}>
+            {selectedIds.length} expenses selected
+          </span>
+        )}
       </div>
 
-      {/* Action Bar Matching Screenshot 1 (+ Add Expense, Import, Export) */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          
-          {/* + Add Expense Button */}
-          <button
-            onClick={() => setIsAddOpen(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              backgroundColor: '#1e293b',
-              color: '#ffffff',
-              border: 'none',
-              fontSize: '13px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-            }}
-          >
-            <Plus size={16} />
-            Add Expense
-          </button>
-
-          {/* Import Button */}
-          <button
-            onClick={() => setIsImportOpen(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '6px',
-              backgroundColor: '#ffffff',
-              color: '#2563eb',
-              border: '1px solid #cbd5e1',
-              fontSize: '13px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            <Upload size={15} />
-            Import
-          </button>
-
-          {/* Export Button */}
-          <button
-            onClick={handleExport}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '6px',
-              backgroundColor: '#ffffff',
-              color: '#2563eb',
-              border: '1px solid #cbd5e1',
-              fontSize: '13px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-          >
-            <Download size={15} />
-            Export
-          </button>
-        </div>
-      </div>
-
-      {/* Expenses Table Matching Screenshot 1 Layout */}
+      {/* Expenses Table */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
         overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{
                 backgroundColor: '#f8fafc',
                 borderBottom: '1px solid #e2e8f0',
                 color: '#64748b',
-                fontWeight: '600',
+                fontWeight: '700',
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
                 textAlign: 'left'
               }}>
-                <th style={{ padding: '12px 14px', width: '40px' }}>
+                <th style={{ padding: '8px 12px', width: '36px', whiteSpace: 'nowrap' }}>
                   <input
                     type="checkbox"
                     checked={filteredExpenses.length > 0 && selectedIds.length === filteredExpenses.length}
@@ -371,22 +353,22 @@ export const ExpensesPage = () => {
                     style={{ accentColor: '#2563eb', cursor: 'pointer' }}
                   />
                 </th>
-                <th style={{ padding: '12px 14px', width: '70px' }}>Id</th>
-                <th style={{ padding: '12px 14px' }}>Item Name</th>
-                <th style={{ padding: '12px 14px' }}>Price</th>
-                <th style={{ padding: '12px 14px' }}>Employees</th>
-                <th style={{ padding: '12px 14px' }}>Purchased From</th>
-                <th style={{ padding: '12px 14px' }}>Purchase Date</th>
-                <th style={{ padding: '12px 14px' }}>Status</th>
-                <th style={{ padding: '12px 14px', textAlign: 'center', width: '80px' }}>Action</th>
+                <th style={{ padding: '8px 12px', width: '60px', whiteSpace: 'nowrap' }}>Id</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Item & Category</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Amount</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Claimed By</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Vendor / Merchant</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Purchase Date</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Status</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center', width: '80px', whiteSpace: 'nowrap' }}>Action</th>
               </tr>
             </thead>
 
             <tbody>
               {filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '500' }}>No data available in table</div>
+                  <td colSpan={9} style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500' }}>No expense records found</div>
                   </td>
                 </tr>
               ) : (
@@ -400,7 +382,7 @@ export const ExpensesPage = () => {
                     }}
                   >
                     {/* Checkbox */}
-                    <td style={{ padding: '12px 14px' }}>
+                    <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(exp._id)}
@@ -410,86 +392,86 @@ export const ExpensesPage = () => {
                     </td>
 
                     {/* Id */}
-                    <td style={{ padding: '12px 14px', fontWeight: '600', color: '#64748b' }}>
+                    <td style={{ padding: '7px 12px', fontWeight: '600', color: '#64748b', whiteSpace: 'nowrap' }}>
                       {exp.idNumber || idx + 1}
                     </td>
 
                     {/* Item Name */}
-                    <td style={{ padding: '12px 14px' }}>
+                    <td style={{ padding: '7px 12px' }}>
                       <div
                         onClick={() => setSelectedExpense(exp)}
                         style={{ fontWeight: '700', color: '#0f172a', cursor: 'pointer' }}
                       >
                         {exp.itemName}
                       </div>
-                      <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                      <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '1px' }}>
                         {exp.category || 'Utilities & Office'}
                       </div>
                     </td>
 
                     {/* Price */}
-                    <td style={{ padding: '12px 14px', fontWeight: '800', color: '#0f172a' }}>
+                    <td style={{ padding: '7px 12px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
                       ₹{(exp.price || exp.amount || 0).toLocaleString('en-IN')}
                     </td>
 
                     {/* Employees / Paid By */}
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <img
                           src={exp.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                           alt={exp.employeeName || 'Employee'}
-                          style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover' }}
+                          style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                         />
                         <span style={{ fontWeight: '600', color: '#334155' }}>
-                          {exp.employeeName || exp.paidBy || 'Avinash'}
+                          {exp.employeeName || exp.paidBy || 'Employee'}
                         </span>
                       </div>
                     </td>
 
                     {/* Purchased From */}
-                    <td style={{ padding: '12px 14px', color: '#475569' }}>
+                    <td style={{ padding: '7px 12px', color: '#475569', whiteSpace: 'nowrap' }}>
                       {exp.purchasedFrom || '—'}
                     </td>
 
                     {/* Purchase Date */}
-                    <td style={{ padding: '12px 14px', color: '#64748b' }}>
+                    <td style={{ padding: '7px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>
                       {exp.purchaseDate || exp.date || '25-09-2026'}
                     </td>
 
                     {/* Status */}
-                    <td style={{ padding: '12px 14px' }}>
+                    <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                       <span style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        padding: '3px 10px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
+                        gap: '3px',
+                        padding: '2px 7px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
                         fontWeight: '700',
                         backgroundColor: exp.status === 'approved' ? '#dcfce7' : exp.status === 'pending' ? '#fef3c7' : '#fee2e2',
                         color: exp.status === 'approved' ? '#15803d' : exp.status === 'pending' ? '#b45309' : '#b91c1c',
                         textTransform: 'capitalize'
                       }}>
-                        {exp.status === 'approved' && <CheckCircle2 size={13} />}
-                        {exp.status === 'pending' && <Clock size={13} />}
-                        {exp.status === 'rejected' && <XCircle size={13} />}
+                        {exp.status === 'approved' && <CheckCircle2 size={12} />}
+                        {exp.status === 'pending' && <Clock size={12} />}
+                        {exp.status === 'rejected' && <XCircle size={12} />}
                         {exp.status}
                       </span>
                     </td>
 
                     {/* Actions */}
-                    <td style={{ padding: '12px 14px', textAlign: 'center', position: 'relative' }}>
+                    <td style={{ padding: '7px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <button
                         onClick={() => setSelectedExpense(exp)}
                         style={{
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '6px',
-                          padding: '4px 8px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '5px',
+                          padding: '3px 8px',
                           cursor: 'pointer',
                           color: '#2563eb',
-                          fontSize: '12px',
-                          fontWeight: '600'
+                          fontSize: '11.5px',
+                          fontWeight: '700'
                         }}
                       >
                         View
@@ -502,26 +484,26 @@ export const ExpensesPage = () => {
           </table>
         </div>
 
-        {/* Table Footer / Pagination Matching Screenshot 1 */}
+        {/* Table Footer / Pagination */}
         <div style={{
-          padding: '14px 18px',
+          padding: '8px 12px',
           borderTop: '1px solid #f1f5f9',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          fontSize: '12.5px',
+          fontSize: '11.5px',
           color: '#64748b',
           flexWrap: 'wrap',
-          gap: '12px'
+          gap: '8px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span>Show</span>
             <select style={{
-              padding: '3px 8px',
+              padding: '2px 6px',
               borderRadius: '4px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#ffffff',
-              fontSize: '12px'
+              fontSize: '11.5px'
             }}>
               <option value="25">25</option>
               <option value="50">50</option>
@@ -534,29 +516,29 @@ export const ExpensesPage = () => {
             Showing 1 to {filteredExpenses.length} of {expenses.length} entries
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button
               disabled
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '3px 8px',
+                borderRadius: '4px',
                 border: '1px solid #e2e8f0',
                 backgroundColor: '#f8fafc',
                 color: '#94a3b8',
-                fontSize: '12px',
+                fontSize: '11.5px',
                 cursor: 'not-allowed'
               }}
             >
-              Previous
+              Prev
             </button>
             <button
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #e2e8f0',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                border: '1px solid #2563eb',
                 backgroundColor: '#2563eb',
                 color: '#ffffff',
-                fontSize: '12px',
+                fontSize: '11.5px',
                 fontWeight: '700',
                 cursor: 'pointer'
               }}
@@ -566,12 +548,12 @@ export const ExpensesPage = () => {
             <button
               disabled
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '3px 8px',
+                borderRadius: '4px',
                 border: '1px solid #e2e8f0',
                 backgroundColor: '#f8fafc',
                 color: '#94a3b8',
-                fontSize: '12px',
+                fontSize: '11.5px',
                 cursor: 'not-allowed'
               }}
             >

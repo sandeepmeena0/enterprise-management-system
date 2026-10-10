@@ -19,17 +19,21 @@ import {
   CheckCircle2,
   X,
   Repeat,
-  Bell
+  Bell,
+  Heart,
+  Award
 } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useHR } from '../../hr/context/HRContext';
 import { useWork } from '../../work/context/WorkContext';
+import { useToast } from '../../../shared/context/ToastContext';
 import { AddEventModal } from '../../../shared/components/modals/AddEventModal';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const CalendarPage = () => {
-  const { events, deleteEvent, computedBirthdays } = useCRM();
+  const { addToast } = useToast();
+  const { events, deleteEvent, computedBirthdays, computedAnniversaries } = useCRM();
   const { holidays, currentUser, employees } = useHR();
   const { tasks } = useWork();
 
@@ -52,7 +56,7 @@ export const CalendarPage = () => {
   ];
 
   // =========================================================================
-  // COMBINE ALL EVENTS + AUTOMATIC BIRTHDAYS + HOLIDAYS + MEETINGS
+  // COMBINE ALL EVENTS + AUTOMATIC BIRTHDAYS + WORK ANNIVERSARIES + HOLIDAYS + TASKS
   // =========================================================================
   const allEvents = useMemo(() => {
     // 1. Base User & Company Events
@@ -78,28 +82,52 @@ export const CalendarPage = () => {
       endDate: b.eventDate || new Date().toISOString().split('T')[0],
       time: 'All Day',
       type: 'Birthday',
+      employeeName: b.name,
+      employeeAvatar: b.avatar,
+      employeeRole: b.role,
       location: 'Company Wide Celebration',
-      description: `${b.name || 'Team Member'} (${b.role || 'Colleague'}) celebrates their birthday! 🎂🎉`,
+      description: `🎂 Happy Birthday to ${b.name || 'Team Member'} (${b.role || 'Colleague'})! Wishing continued joy and success. 🎉`,
       isRecurring: true,
       color: '#d97706',
       bgColor: '#fef3c7'
     }));
 
-    // 3. Official Public Holidays
+    // 3. Dynamic Automatic Work Anniversaries calculated from Employee Joining Date
+    const dynamicAnniversaryEvents = (computedAnniversaries || []).map(a => ({
+      _id: `anniv_cal_${a.employeeId || Math.random()}`,
+      title: `🌟 ${a.serviceYearsText} Work Anniversary: ${a.name || 'Team Member'}`,
+      date: a.eventDate || new Date().toISOString().split('T')[0],
+      endDate: a.eventDate || new Date().toISOString().split('T')[0],
+      time: 'All Day',
+      type: 'Work Anniversary',
+      employeeName: a.name,
+      employeeAvatar: a.avatar,
+      employeeRole: a.role,
+      serviceYearsText: a.serviceYearsText,
+      serviceYears: a.serviceYears,
+      location: 'Inforag Corporate Milestone',
+      description: `🌟 Milestone Celebration: ${a.name} (${a.role}) completes ${a.serviceYearsText} year${a.serviceYears > 1 ? 's' : ''} of dedicated service at Inforag! Thank you for being a vital pillar of our success. 💼🎉`,
+      isRecurring: true,
+      color: '#7c3aed',
+      bgColor: '#f5f3ff'
+    }));
+
+    // 4. Official Public & Company Holidays (Genuine National, Gazetted, and Company Offs)
     const holidayEvents = (holidays || []).map(h => ({
       _id: `hol_cal_${h._id || Math.random()}`,
-      title: `🏖️ ${h.holidayName || 'Public Holiday'}`,
+      title: `🏖️ ${h.name || h.holidayName || h.title || 'Public Holiday'}`,
       date: h.date || new Date().toISOString().split('T')[0],
       endDate: h.date || new Date().toISOString().split('T')[0],
       time: 'All Day',
-      type: 'Holiday',
-      location: 'All Offices Closed',
-      description: h.occasion || 'Mandatory Public Holiday',
-      color: '#16a34a',
-      bgColor: '#f0fdf4'
+      type: h.type || 'Public Holiday',
+      location: h.type === 'Company Holiday' ? 'Company Special Off' : 'National / Gazetted Holiday',
+      description: h.description || `${h.name || 'Holiday'} - Official Holiday across all Inforag offices.`,
+      isRecurring: !!h.isRecurringYearly,
+      color: h.type === 'National Holiday' ? '#d97706' : (h.type === 'Company Holiday' ? '#0284c7' : '#16a34a'),
+      bgColor: h.type === 'National Holiday' ? '#fef3c7' : (h.type === 'Company Holiday' ? '#e0f2fe' : '#f0fdf4')
     }));
 
-    // 4. Tasks Due Dates
+    // 5. Tasks Due Dates
     const taskEvents = (tasks || []).filter(t => t?.dueDate).map(t => ({
       _id: `tsk_cal_${t._id || Math.random()}`,
       title: `📌 Due: ${t.title || 'Assigned Task'}`,
@@ -113,8 +141,8 @@ export const CalendarPage = () => {
       bgColor: '#ecfeff'
     }));
 
-    return [...baseEvents, ...dynamicBirthdayEvents, ...holidayEvents, ...taskEvents];
-  }, [events, computedBirthdays, holidays, tasks]);
+    return [...baseEvents, ...dynamicBirthdayEvents, ...dynamicAnniversaryEvents, ...holidayEvents, ...taskEvents];
+  }, [events, computedBirthdays, computedAnniversaries, holidays, tasks]);
 
   // Filter events
   const filteredEvents = useMemo(() => {
@@ -198,75 +226,101 @@ export const CalendarPage = () => {
   const selectedEmployee = employees.find(e => e._id === selectedEmployeeId) || currentUser;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       
-      {/* Header Matching Screenshot 3 */}
+      {/* Header Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
-            <span style={{ fontWeight: '700', color: '#0f172a' }}>Events</span>
-            <span>Home • Events</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <CalendarIcon size={17} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Company Calendar & Schedules</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: '700' }}>
+                {filteredEvents.length} Events & Birthdays
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Synchronized view of meetings, birthdays, work anniversaries & holiday schedule
+            </p>
           </div>
         </div>
 
-        {/* Live Work Clock */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 14px',
-          backgroundColor: '#ffffff',
-          borderRadius: '20px',
-          border: '1px solid #e2e8f0',
-          fontSize: '13px',
-          fontWeight: '700',
-          color: '#0f172a',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-          <span>02:19:35</span>
-          <span style={{ color: '#ef4444' }}>●</span>
-          <span style={{ color: '#3b82f6' }}>●</span>
-        </div>
+        <button
+          onClick={() => setIsAddEventOpen(true)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 14px',
+            borderRadius: '7px',
+            backgroundColor: '#2563eb',
+            color: '#ffffff',
+            border: 'none',
+            fontSize: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
+          }}
+        >
+          <Plus size={14} />
+          Create Event
+        </button>
       </div>
 
-      {/* Filter and Top Navigation Bar Matching Screenshot 3 */}
+      {/* Filter and Top Navigation Bar */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
-        padding: '14px 18px',
+        padding: '8px 12px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '14px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        gap: '10px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           
           {/* Employee Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span style={{ fontWeight: '600' }}>Employee</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontWeight: '600' }}>Employee:</span>
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '5px 10px',
-              borderRadius: '8px',
+              padding: '0 8px',
+              height: '30px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#f8fafc'
             }}>
               <img
                 src={selectedEmployee?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
                 alt={selectedEmployee?.name}
-                style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }}
+                style={{ width: '18px', height: '18px', borderRadius: '50%', objectFit: 'cover' }}
               />
               <select
                 value={selectedEmployeeId}
@@ -275,7 +329,7 @@ export const CalendarPage = () => {
                   border: 'none',
                   background: 'transparent',
                   outline: 'none',
-                  fontSize: '12.5px',
+                  fontSize: '12px',
                   fontWeight: '600',
                   color: '#0f172a',
                   cursor: 'pointer'
@@ -291,23 +345,24 @@ export const CalendarPage = () => {
           </div>
 
           {/* Client Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span style={{ fontWeight: '600' }}>Client</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontWeight: '600' }}>Client:</span>
             <select
               value={clientFilter}
               onChange={e => setClientFilter(e.target.value)}
               style={{
-                padding: '5px 10px',
-                borderRadius: '8px',
+                height: '30px',
+                padding: '0 8px',
+                borderRadius: '6px',
                 border: '1px solid #cbd5e1',
                 backgroundColor: '#ffffff',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 color: '#0f172a',
                 outline: 'none',
                 cursor: 'pointer'
               }}
             >
-              <option value="all">All</option>
+              <option value="all">All Clients</option>
               <option value="enterprise">Enterprise Clients</option>
               <option value="internal">Internal Team</option>
             </select>
@@ -317,23 +372,24 @@ export const CalendarPage = () => {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            borderRadius: '8px',
+            gap: '6px',
+            padding: '0 10px',
+            height: '30px',
+            borderRadius: '6px',
             border: '1px solid #cbd5e1',
             backgroundColor: '#ffffff',
             minWidth: '220px'
           }}>
-            <Search size={15} color="#94a3b8" />
+            <Search size={13} color="#94a3b8" />
             <input
               type="text"
-              placeholder="Start typing to search"
+              placeholder="Search event, milestone, birthday..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
                 border: 'none',
                 outline: 'none',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 width: '100%',
                 backgroundColor: 'transparent',
                 color: '#0f172a'
@@ -341,28 +397,6 @@ export const CalendarPage = () => {
             />
           </div>
         </div>
-
-        {/* Add Event Button */}
-        <button
-          onClick={() => setIsAddEventOpen(true)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            backgroundColor: '#2563eb',
-            color: '#ffffff',
-            border: 'none',
-            fontSize: '13px',
-            fontWeight: '700',
-            cursor: 'pointer',
-            boxShadow: '0 2px 4px rgba(37,99,235,0.3)'
-          }}
-        >
-          <Plus size={16} />
-          Create Event
-        </button>
       </div>
 
       {/* Calendar Viewport Matching Screenshot 3 */}
@@ -770,6 +804,45 @@ export const CalendarPage = () => {
               {selectedEvent.title}
             </h3>
 
+            {/* Employee Profile Preview for Birthdays & Anniversaries */}
+            {(selectedEvent.type === 'Birthday' || selectedEvent.type === 'Work Anniversary') && selectedEvent.employeeName && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 14px',
+                backgroundColor: selectedEvent.bgColor,
+                borderRadius: '10px',
+                border: `1px solid ${selectedEvent.color}30`,
+                marginBottom: '16px'
+              }}>
+                <img
+                  src={selectedEvent.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
+                  alt={selectedEvent.employeeName}
+                  style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', border: `2px solid ${selectedEvent.color}` }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a' }}>
+                    {selectedEvent.employeeName}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b' }}>
+                    {selectedEvent.employeeRole || 'Colleague'}
+                  </div>
+                </div>
+                <span style={{
+                  fontSize: '11.5px',
+                  fontWeight: '700',
+                  color: selectedEvent.color,
+                  backgroundColor: '#ffffff',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}>
+                  {selectedEvent.type === 'Work Anniversary' ? `${selectedEvent.serviceYearsText || '1st'} Year Milestone` : 'Birthday'}
+                </span>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#475569', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <CalendarIcon size={16} color="#2563eb" />
@@ -786,7 +859,7 @@ export const CalendarPage = () => {
               {selectedEvent.isRecurring && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: '600' }}>
                   <Repeat size={15} />
-                  <span>Yearly Recurring Event (Appears every year automatically)</span>
+                  <span>Annual Recurring Event (Automatically repeats every year)</span>
                 </div>
               )}
             </div>
@@ -806,6 +879,52 @@ export const CalendarPage = () => {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              {selectedEvent.type === 'Work Anniversary' && (
+                <button
+                  onClick={() => {
+                    addToast(`🎉 Work Anniversary congratulations sent to ${selectedEvent.employeeName || 'Colleague'}!`, 'success');
+                    setSelectedEvent(null);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#7c3aed',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Award size={14} /> Send Congratulations 🌟
+                </button>
+              )}
+              {selectedEvent.type === 'Birthday' && (
+                <button
+                  onClick={() => {
+                    addToast(`🎂 Birthday wishes sent to ${selectedEvent.employeeName || 'Colleague'}!`, 'success');
+                    setSelectedEvent(null);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#d97706',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Heart size={14} /> Send Birthday Wishes 🎉
+                </button>
+              )}
               <button
                 onClick={() => setSelectedEvent(null)}
                 style={{

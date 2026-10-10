@@ -70,6 +70,16 @@ export const hrService = {
 
   async getCurrentUser() {
     return fetchWithFallback(`${API_BASE}/employees/current`, { method: 'GET' }, async () => {
+      try {
+        const savedAuth = localStorage.getItem('ems_auth_session');
+        if (savedAuth) {
+          const authUser = JSON.parse(savedAuth);
+          const employees = getCollection(KEYS.EMPLOYEES) || [];
+          const matched = employees.find(e => e._id === authUser._id || e.id === authUser._id || e.email?.toLowerCase() === authUser.email?.toLowerCase());
+          if (matched) return { ...authUser, ...matched, isCurrentUser: true };
+          return authUser;
+        }
+      } catch (e) {}
       const employees = getCollection(KEYS.EMPLOYEES);
       return employees.find(e => e.isCurrentUser) || employees[0];
     });
@@ -210,10 +220,10 @@ export const hrService = {
     });
   },
 
-  async updateLeaveStatus(leaveId, status, approverName = 'HR Admin') {
+  async updateLeaveStatus(leaveId, status, approverName = 'HR Admin', rejectionReason = '') {
     return fetchWithFallback(`${API_BASE}/leaves/${leaveId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status, approvedBy: approverName })
+      body: JSON.stringify({ status, approvedBy: approverName, rejectionReason })
     }, async () => {
       const leaves = getCollection(KEYS.LEAVES);
       const index = leaves.findIndex(l => l._id === leaveId);
@@ -224,6 +234,8 @@ export const hrService = {
 
       targetLeave.status = status;
       targetLeave.approvedBy = status === 'approved' ? approverName : null;
+      targetLeave.rejectedBy = status === 'rejected' ? approverName : null;
+      targetLeave.rejectionReason = status === 'rejected' ? (rejectionReason || 'Declined by reviewer') : null;
       targetLeave.updatedAt = new Date().toISOString();
 
       leaves[index] = targetLeave;

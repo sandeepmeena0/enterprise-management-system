@@ -57,57 +57,82 @@ export const MessagesPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: 'calc(100vh - 120px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: 'calc(100vh - 110px)' }}>
       
-      {/* Header Matching Screenshot 4 */}
+      {/* Header Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
-            <span style={{ fontWeight: '700', color: '#0f172a' }}>Messages</span>
-            <span>Home • Messages</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <MessageSquare size={17} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Team Chat & Direct Messages</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#16a34a', fontWeight: '700' }}>
+                Online
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Real-time collaboration, direct messages, project group threads & attachments
+            </p>
           </div>
         </div>
 
-        {/* Live Work Clock */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 14px',
-          backgroundColor: '#ffffff',
-          borderRadius: '20px',
-          border: '1px solid #e2e8f0',
-          fontSize: '13px',
-          fontWeight: '700',
-          color: '#0f172a',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-          <span>02:19:51</span>
-          <span style={{ color: '#ef4444' }}>●</span>
-          <span style={{ color: '#3b82f6' }}>●</span>
-        </div>
+        <button
+          onClick={() => setIsNewConvOpen(true)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 14px',
+            borderRadius: '7px',
+            backgroundColor: '#2563eb',
+            color: '#ffffff',
+            border: 'none',
+            fontSize: '12px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
+          }}
+        >
+          <Plus size={14} />
+          New Chat
+        </button>
       </div>
 
       {/* Main Chat Layout Container */}
       <div style={{
         flex: 1,
         display: 'grid',
-        gridTemplateColumns: '320px 1fr',
+        gridTemplateColumns: '290px 1fr',
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
         overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
         
-        {/* Left Sidebar: Contact Search & Conversation List Matching Screenshot 4 */}
+        {/* Left Sidebar: Contact Search & Conversation List */}
         <div style={{
           borderRight: '1px solid #f1f5f9',
           display: 'flex',
@@ -116,17 +141,18 @@ export const MessagesPage = () => {
         }}>
           
           {/* Search Bar */}
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '8px 12px',
-              borderRadius: '8px',
+              gap: '6px',
+              padding: '0 8px',
+              height: '30px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#f8fafc'
             }}>
-              <Search size={15} color="#94a3b8" />
+              <Search size={13} color="#94a3b8" />
               <input
                 type="text"
                 placeholder="Type to search contact"

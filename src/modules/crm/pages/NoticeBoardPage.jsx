@@ -92,84 +92,131 @@ export const NoticeBoardPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       
-      {/* Header Matching Screenshot 5 */}
+      {/* Header Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
-            <span style={{ fontWeight: '700', color: '#0f172a' }}>Notice Board</span>
-            <span>Home • Notice Board</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <BellRing size={17} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Company Notice Board</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#f1f5f9', color: '#475569', fontWeight: '700' }}>
+                {filteredNotices.length} Active Notices
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Official circulars, company policies & urgent announcements
+            </p>
           </div>
         </div>
 
-        {/* Live Work Clock */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 14px',
-          backgroundColor: '#ffffff',
-          borderRadius: '20px',
-          border: '1px solid #e2e8f0',
-          fontSize: '13px',
-          fontWeight: '700',
-          color: '#0f172a',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-          <span>02:19:55</span>
-          <span style={{ color: '#ef4444' }}>●</span>
-          <span style={{ color: '#3b82f6' }}>●</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={handleExport}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 12px',
+              borderRadius: '7px',
+              backgroundColor: '#ffffff',
+              color: '#2563eb',
+              border: '1px solid #cbd5e1',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            <Download size={13} />
+            Export CSV
+          </button>
+          <button
+            onClick={() => setIsAddOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '7px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
+            }}
+          >
+            <Plus size={14} />
+            Publish Notice
+          </button>
         </div>
       </div>
 
-      {/* Filter and Top Navigation Bar Matching Screenshot 5 */}
+      {/* Filter and Top Navigation Bar */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
-        padding: '14px 18px',
+        padding: '8px 12px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '14px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        gap: '10px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           
           {/* Duration */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
-            <span style={{ fontWeight: '600' }}>Duration</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontWeight: '600' }}>Duration:</span>
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '8px',
+              gap: '4px',
+              padding: '0 8px',
+              height: '30px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#f8fafc',
-              fontSize: '12.5px'
+              fontSize: '11.5px'
             }}>
               <input
                 type="date"
                 value={startDateFilter}
                 onChange={e => setStartDateFilter(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#334155' }}
+                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '11.5px', color: '#334155' }}
               />
-              <span>To</span>
+              <span style={{ color: '#94a3b8' }}>to</span>
               <input
                 type="date"
                 value={endDateFilter}
                 onChange={e => setEndDateFilter(e.target.value)}
-                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#334155' }}
+                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '11.5px', color: '#334155' }}
               />
             </div>
           </div>
@@ -178,23 +225,24 @@ export const NoticeBoardPage = () => {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 12px',
-            borderRadius: '8px',
+            gap: '6px',
+            padding: '0 10px',
+            height: '30px',
+            borderRadius: '6px',
             border: '1px solid #cbd5e1',
             backgroundColor: '#ffffff',
-            minWidth: '240px'
+            minWidth: '220px'
           }}>
-            <Search size={15} color="#94a3b8" />
+            <Search size={13} color="#94a3b8" />
             <input
               type="text"
-              placeholder="Start typing to search"
+              placeholder="Search notice topic, audience..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
                 border: 'none',
                 outline: 'none',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 width: '100%',
                 backgroundColor: 'transparent',
                 color: '#0f172a'
@@ -203,73 +251,35 @@ export const NoticeBoardPage = () => {
           </div>
         </div>
 
-        {/* Action Buttons: Export & + Add Notice */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={() => setIsAddOpen(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              backgroundColor: '#2563eb',
-              color: '#ffffff',
-              border: 'none',
-              fontSize: '13px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(37,99,235,0.3)'
-            }}
-          >
-            <Plus size={16} />
-            Publish Notice
-          </button>
-        </div>
+        {selectedIds.length > 0 && (
+          <span style={{ fontSize: '11.5px', color: '#2563eb', fontWeight: '700' }}>
+            {selectedIds.length} notices selected
+          </span>
+        )}
       </div>
 
-      {/* Action Bar with Export Button Matching Screenshot 5 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <button
-          onClick={handleExport}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '7px 14px',
-            borderRadius: '6px',
-            backgroundColor: '#ffffff',
-            color: '#2563eb',
-            border: '1px solid #cbd5e1',
-            fontSize: '13px',
-            fontWeight: '600',
-            cursor: 'pointer'
-          }}
-        >
-          <Download size={15} />
-          Export
-        </button>
-      </div>
-
-      {/* Notice Board Table Matching Screenshot 5 */}
+      {/* Notice Board Table */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
         overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{
                 backgroundColor: '#f8fafc',
                 borderBottom: '1px solid #e2e8f0',
                 color: '#64748b',
-                fontWeight: '600',
+                fontWeight: '700',
+                fontSize: '11px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
                 textAlign: 'left'
               }}>
-                <th style={{ padding: '12px 14px', width: '40px' }}>
+                <th style={{ padding: '8px 12px', width: '36px', whiteSpace: 'nowrap' }}>
                   <input
                     type="checkbox"
                     checked={filteredNotices.length > 0 && selectedIds.length === filteredNotices.length}
@@ -277,18 +287,18 @@ export const NoticeBoardPage = () => {
                     style={{ accentColor: '#2563eb', cursor: 'pointer' }}
                   />
                 </th>
-                <th style={{ padding: '12px 14px' }}>Notice</th>
-                <th style={{ padding: '12px 14px', width: '140px' }}>Date</th>
-                <th style={{ padding: '12px 14px', width: '180px' }}>To</th>
-                <th style={{ padding: '12px 14px', textAlign: 'center', width: '100px' }}>Action</th>
+                <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>Notice Title & Content</th>
+                <th style={{ padding: '8px 12px', width: '120px', whiteSpace: 'nowrap' }}>Date</th>
+                <th style={{ padding: '8px 12px', width: '150px', whiteSpace: 'nowrap' }}>Target Audience</th>
+                <th style={{ padding: '8px 12px', textAlign: 'center', width: '90px', whiteSpace: 'nowrap' }}>Action</th>
               </tr>
             </thead>
 
             <tbody>
               {filteredNotices.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '500' }}>No data available in table</div>
+                  <td colSpan={5} style={{ padding: '36px', textAlign: 'center', color: '#64748b' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '500' }}>No notices found</div>
                   </td>
                 </tr>
               ) : (
@@ -302,7 +312,7 @@ export const NoticeBoardPage = () => {
                     }}
                   >
                     {/* Checkbox */}
-                    <td style={{ padding: '12px 14px' }}>
+                    <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(notice._id)}
@@ -312,17 +322,17 @@ export const NoticeBoardPage = () => {
                     </td>
 
                     {/* Notice Subject & Preview */}
-                    <td style={{ padding: '12px 14px' }}>
+                    <td style={{ padding: '7px 12px' }}>
                       <div
                         onClick={() => setSelectedNotice(notice)}
-                        style={{ fontWeight: '700', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                        style={{ fontWeight: '700', color: '#0f172a', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
                       >
                         {notice.title}
                         {notice.isImportant && (
                           <span style={{
-                            padding: '2px 6px',
+                            padding: '1px 5px',
                             borderRadius: '4px',
-                            fontSize: '10.5px',
+                            fontSize: '10px',
                             fontWeight: '700',
                             backgroundColor: '#fee2e2',
                             color: '#b91c1c'
@@ -331,24 +341,24 @@ export const NoticeBoardPage = () => {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '3px', maxWidth: '600px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px', maxWidth: '600px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {notice.description || notice.shortDescription || notice.fullContent}
                       </div>
                     </td>
 
                     {/* Date */}
-                    <td style={{ padding: '12px 14px', color: '#64748b', fontWeight: '500' }}>
+                    <td style={{ padding: '7px 12px', color: '#64748b', fontWeight: '500', whiteSpace: 'nowrap' }}>
                       {notice.date}
                     </td>
 
                     {/* To */}
-                    <td style={{ padding: '12px 14px' }}>
+                    <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                       <span style={{
-                        padding: '3px 8px',
-                        borderRadius: '6px',
+                        padding: '2px 7px',
+                        borderRadius: '4px',
                         backgroundColor: '#f1f5f9',
                         color: '#334155',
-                        fontSize: '12px',
+                        fontSize: '11px',
                         fontWeight: '600'
                       }}>
                         {notice.to || notice.targetAudience || 'All Employees'}
@@ -356,17 +366,17 @@ export const NoticeBoardPage = () => {
                     </td>
 
                     {/* Action */}
-                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                    <td style={{ padding: '7px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <button
                         onClick={() => setSelectedNotice(notice)}
                         style={{
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '6px',
-                          padding: '4px 10px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '5px',
+                          padding: '3px 8px',
                           cursor: 'pointer',
                           color: '#2563eb',
-                          fontSize: '12px',
+                          fontSize: '11.5px',
                           fontWeight: '700'
                         }}
                       >
@@ -380,26 +390,26 @@ export const NoticeBoardPage = () => {
           </table>
         </div>
 
-        {/* Footer Pagination Matching Screenshot 5 */}
+        {/* Footer Pagination */}
         <div style={{
-          padding: '14px 18px',
+          padding: '8px 12px',
           borderTop: '1px solid #f1f5f9',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          fontSize: '12.5px',
+          fontSize: '11.5px',
           color: '#64748b',
           flexWrap: 'wrap',
-          gap: '12px'
+          gap: '8px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span>Show</span>
             <select style={{
-              padding: '3px 8px',
+              padding: '2px 6px',
               borderRadius: '4px',
               border: '1px solid #cbd5e1',
               backgroundColor: '#ffffff',
-              fontSize: '12px'
+              fontSize: '11.5px'
             }}>
               <option value="25">25</option>
               <option value="50">50</option>
@@ -412,29 +422,29 @@ export const NoticeBoardPage = () => {
             Showing 1 to {filteredNotices.length} of {notices.length} entries
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <button
               disabled
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '3px 8px',
+                borderRadius: '4px',
                 border: '1px solid #e2e8f0',
                 backgroundColor: '#f8fafc',
                 color: '#94a3b8',
-                fontSize: '12px',
+                fontSize: '11.5px',
                 cursor: 'not-allowed'
               }}
             >
-              Previous
+              Prev
             </button>
             <button
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #e2e8f0',
+                padding: '3px 8px',
+                borderRadius: '4px',
+                border: '1px solid #2563eb',
                 backgroundColor: '#2563eb',
                 color: '#ffffff',
-                fontSize: '12px',
+                fontSize: '11.5px',
                 fontWeight: '700',
                 cursor: 'pointer'
               }}
@@ -444,12 +454,12 @@ export const NoticeBoardPage = () => {
             <button
               disabled
               style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
+                padding: '3px 8px',
+                borderRadius: '4px',
                 border: '1px solid #e2e8f0',
                 backgroundColor: '#f8fafc',
                 color: '#94a3b8',
-                fontSize: '12px',
+                fontSize: '11.5px',
                 cursor: 'not-allowed'
               }}
             >

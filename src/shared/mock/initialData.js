@@ -219,7 +219,7 @@ export const INITIAL_HOLIDAYS = [
     date: '2026-01-01',
     dayOfWeek: 'Thursday',
     type: 'National Holiday',
-    description: 'First day of the year 2026 celebration',
+    description: 'First day of the year 2026 celebration across all offices',
     isRecurringYearly: true
   },
   {
@@ -228,7 +228,7 @@ export const INITIAL_HOLIDAYS = [
     date: '2026-01-26',
     dayOfWeek: 'Monday',
     type: 'National Holiday',
-    description: '77th Republic Day of India',
+    description: '77th Republic Day of India - National Flag Hoisting and Celebration',
     isRecurringYearly: true
   },
   {
@@ -237,7 +237,7 @@ export const INITIAL_HOLIDAYS = [
     date: '2026-02-17',
     dayOfWeek: 'Tuesday',
     type: 'Gazetted Holiday',
-    description: 'Traditional celebration of Maha Shivratri',
+    description: 'Traditional celebration and night vigil of Maha Shivratri',
     isRecurringYearly: false
   },
   {
@@ -246,52 +246,178 @@ export const INITIAL_HOLIDAYS = [
     date: '2026-03-04',
     dayOfWeek: 'Wednesday',
     type: 'Gazetted Holiday',
-    description: 'Spring festival of colors and joy',
+    description: 'Spring festival of colors, warmth, and brotherhood',
     isRecurringYearly: false
   },
   {
     _id: 'hol_005',
-    name: 'Independence Day',
-    date: '2026-08-15',
+    name: 'Eid-ul-Fitr',
+    date: '2026-03-21',
     dayOfWeek: 'Saturday',
-    type: 'National Holiday',
-    description: 'Celebration of Indian Independence',
-    isRecurringYearly: true
-  },
-  {
-    _id: 'hol_006',
-    name: 'Gandhi Jayanti',
-    date: '2026-10-02',
-    dayOfWeek: 'Friday',
-    type: 'National Holiday',
-    description: 'Birth anniversary of Mahatma Gandhi',
-    isRecurringYearly: true
-  },
-  {
-    _id: 'hol_007',
-    name: 'Dussehra (Vijayadashami)',
-    date: '2026-10-20',
-    dayOfWeek: 'Tuesday',
     type: 'Gazetted Holiday',
-    description: 'Victory of good over evil festival',
+    description: 'Islamic festival marking the end of Ramadan',
     isRecurringYearly: false
   },
   {
-    _id: 'hol_008',
-    name: 'Diwali (Deepavali)',
-    date: '2026-11-08',
-    dayOfWeek: 'Sunday',
+    _id: 'hol_006',
+    name: 'Good Friday',
+    date: '2026-04-03',
+    dayOfWeek: 'Friday',
     type: 'Gazetted Holiday',
-    description: 'Festival of Lights',
+    description: 'Christian holy day commemorating the crucifixion of Jesus Christ',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_007',
+    name: 'Dr. B.R. Ambedkar Jayanti',
+    date: '2026-04-14',
+    dayOfWeek: 'Tuesday',
+    type: 'Gazetted Holiday',
+    description: 'Birth anniversary of Babasaheb Dr. B.R. Ambedkar',
+    isRecurringYearly: true
+  },
+  {
+    _id: 'hol_008',
+    name: 'Mahavir Jayanti',
+    date: '2026-04-30',
+    dayOfWeek: 'Thursday',
+    type: 'Gazetted Holiday',
+    description: 'Birth anniversary of Lord Mahavira, 24th Tirthankara of Jainism',
     isRecurringYearly: false
   },
   {
     _id: 'hol_009',
-    name: 'Christmas',
+    name: 'Buddha Purnima',
+    date: '2026-05-02',
+    dayOfWeek: 'Saturday',
+    type: 'Gazetted Holiday',
+    description: 'Celebration of the birth, enlightenment, and death of Gautama Buddha',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_010',
+    name: 'Eid-ul-Adha (Bakrid)',
+    date: '2026-05-28',
+    dayOfWeek: 'Thursday',
+    type: 'Gazetted Holiday',
+    description: 'Feast of the Sacrifice observed by Muslims worldwide',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_011',
+    name: 'Muharram',
+    date: '2026-06-26',
+    dayOfWeek: 'Friday',
+    type: 'Gazetted Holiday',
+    description: 'Day of Ashura commemorating historic martyrdom',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_012',
+    name: 'Independence Day',
+    date: '2026-08-15',
+    dayOfWeek: 'Saturday',
+    type: 'National Holiday',
+    description: 'Celebration of Indian Independence and national freedom',
+    isRecurringYearly: true
+  },
+  {
+    _id: 'hol_013',
+    name: 'Raksha Bandhan',
+    date: '2026-08-28',
+    dayOfWeek: 'Friday',
+    type: 'Restricted / Optional Holiday',
+    description: 'Traditional festival celebrating the bond between brothers and sisters',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_014',
+    name: 'Janmashtami',
+    date: '2026-09-04',
+    dayOfWeek: 'Friday',
+    type: 'Gazetted Holiday',
+    description: 'Birth celebration of Lord Krishna',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_015',
+    name: 'Milad-un-Nabi (Id-e-Milad)',
+    date: '2026-09-05',
+    dayOfWeek: 'Saturday',
+    type: 'Gazetted Holiday',
+    description: 'Observance of the birthday of the Islamic Prophet Muhammad',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_016',
+    name: 'Mahatma Gandhi Jayanti',
+    date: '2026-10-02',
+    dayOfWeek: 'Friday',
+    type: 'National Holiday',
+    description: 'Birth anniversary of Father of the Nation, Mahatma Gandhi',
+    isRecurringYearly: true
+  },
+  {
+    _id: 'hol_017',
+    name: 'Dussehra (Vijayadashami)',
+    date: '2026-10-20',
+    dayOfWeek: 'Tuesday',
+    type: 'Gazetted Holiday',
+    description: 'Celebration of victory of truth and good over evil',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_018',
+    name: 'Diwali (Deepavali)',
+    date: '2026-11-08',
+    dayOfWeek: 'Sunday',
+    type: 'Gazetted Holiday',
+    description: 'Auspicious Festival of Lights and Prosperity',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_019',
+    name: 'Govardhan Puja',
+    date: '2026-11-09',
+    dayOfWeek: 'Monday',
+    type: 'Gazetted Holiday',
+    description: 'Day dedicated to Lord Krishna and Govardhan Hill',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_020',
+    name: 'Bhai Dooj',
+    date: '2026-11-10',
+    dayOfWeek: 'Tuesday',
+    type: 'Restricted / Optional Holiday',
+    description: 'Festivity honoring the bond of siblings',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_021',
+    name: 'Guru Nanak Jayanti',
+    date: '2026-11-24',
+    dayOfWeek: 'Tuesday',
+    type: 'Gazetted Holiday',
+    description: 'Birth anniversary of Guru Nanak Dev Ji, founder of Sikhism',
+    isRecurringYearly: false
+  },
+  {
+    _id: 'hol_022',
+    name: 'Christmas Day',
     date: '2026-12-25',
     dayOfWeek: 'Friday',
     type: 'National Holiday',
-    description: 'Christmas celebration',
+    description: 'Joyous Christmas celebration and year-end holidays',
+    isRecurringYearly: true
+  },
+  {
+    _id: 'hol_023',
+    name: 'Inforag Annual Foundation Day',
+    date: '2026-10-15',
+    dayOfWeek: 'Thursday',
+    type: 'Company Holiday',
+    description: 'Official Inforag Corporate Foundation Day & Annual Townhall Off',
     isRecurringYearly: true
   }
 ];

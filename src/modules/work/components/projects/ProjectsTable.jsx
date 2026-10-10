@@ -80,37 +80,37 @@ export const ProjectsTable = ({ onSelectProject }) => {
   return (
     <div style={{
       backgroundColor: '#ffffff',
-      borderRadius: '12px',
+      borderRadius: '10px',
       border: '1px solid #e2e8f0',
       overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+      boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
     }}>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
           <thead>
-            <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '14px 20px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Project Name
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Client
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Department
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Timeline
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Status
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Progress
               </th>
-              <th style={{ padding: '14px 16px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
                 Members
               </th>
-              <th style={{ padding: '14px 20px', fontSize: '12px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>
+              <th style={{ padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                 Actions
               </th>
             </tr>
@@ -133,25 +133,25 @@ export const ProjectsTable = ({ onSelectProject }) => {
                   onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   {/* Project Name & Short Code */}
-                  <td style={{ padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{
-                        padding: '4px 8px',
+                        padding: '2px 6px',
                         backgroundColor: '#eff6ff',
                         color: '#2563eb',
-                        borderRadius: '6px',
-                        fontSize: '11.5px',
+                        borderRadius: '4px',
+                        fontSize: '10.5px',
                         fontWeight: '700',
-                        letterSpacing: '0.04em',
+                        letterSpacing: '0.02em',
                         border: '1px solid #bfdbfe'
                       }}>
                         {proj.projectCode || 'PRJ'}
                       </span>
                       <div>
-                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
                           {proj.name}
                         </div>
-                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        <div style={{ fontSize: '10.5px', color: '#64748b' }}>
                           {proj.category || 'General'}
                         </div>
                       </div>
@@ -159,19 +159,19 @@ export const ProjectsTable = ({ onSelectProject }) => {
                   </td>
 
                   {/* Client */}
-                  <td style={{ padding: '16px' }}>
-                    <div style={{ fontSize: '13.5px', color: '#334155', fontWeight: '500' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '12px', color: '#334155', fontWeight: '500' }}>
                       {proj.client || 'Internal'}
                     </div>
                   </td>
 
                   {/* Department */}
-                  <td style={{ padding: '16px' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                     <span style={{
-                      padding: '3px 8px',
+                      padding: '2px 7px',
                       backgroundColor: '#f1f5f9',
-                      borderRadius: '6px',
-                      fontSize: '12px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
                       color: '#475569',
                       fontWeight: '500'
                     }}>
@@ -180,31 +180,31 @@ export const ProjectsTable = ({ onSelectProject }) => {
                   </td>
 
                   {/* Start Date & Deadline */}
-                  <td style={{ padding: '16px' }}>
-                    <div style={{ fontSize: '12.5px', color: '#334155' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: '11.5px', color: '#334155' }}>
                       {proj.startDate}
                     </div>
-                    <div style={{ fontSize: '11.5px', color: proj.hasNoDeadline ? '#94a3b8' : '#ef4444', marginTop: '2px' }}>
+                    <div style={{ fontSize: '10.5px', color: proj.hasNoDeadline ? '#94a3b8' : '#ef4444' }}>
                       {proj.hasNoDeadline ? 'No deadline' : `Due: ${proj.deadline || 'Ongoing'}`}
                     </div>
                   </td>
 
                   {/* Status Badge with colored dot */}
-                  <td style={{ padding: '16px' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px',
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: '600',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
                       backgroundColor: status.bg,
                       color: status.color
                     }}>
                       <span style={{
-                        width: '6px',
-                        height: '6px',
+                        width: '5px',
+                        height: '5px',
                         borderRadius: '50%',
                         backgroundColor: status.dot
                       }} />
@@ -213,11 +213,11 @@ export const ProjectsTable = ({ onSelectProject }) => {
                   </td>
 
                   {/* Progress Bar */}
-                  <td style={{ padding: '16px', minWidth: '120px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <td style={{ padding: '7px 12px', minWidth: '100px', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <div style={{
                         flex: 1,
-                        height: '6px',
+                        height: '5px',
                         backgroundColor: '#e2e8f0',
                         borderRadius: '3px',
                         overflow: 'hidden'
@@ -230,14 +230,14 @@ export const ProjectsTable = ({ onSelectProject }) => {
                           transition: 'width 0.3s ease'
                         }} />
                       </div>
-                      <span style={{ fontSize: '12px', fontWeight: '600', color: '#475569', minWidth: '32px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: '#475569', minWidth: '28px' }}>
                         {proj.progress || 0}%
                       </span>
                     </div>
                   </td>
 
                   {/* Assigned Members (Stacked Avatars) */}
-                  <td style={{ padding: '16px' }}>
+                  <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                       {proj.membersList && proj.membersList.length > 0 ? (
                         proj.membersList.slice(0, 3).map((m, idx) => (
@@ -247,33 +247,33 @@ export const ProjectsTable = ({ onSelectProject }) => {
                             alt={m.name}
                             title={`${m.name} (${m.role})`}
                             style={{
-                              width: '28px',
-                              height: '28px',
+                              width: '22px',
+                              height: '22px',
                               borderRadius: '50%',
                               objectFit: 'cover',
-                              border: '2px solid #ffffff',
-                              marginLeft: idx > 0 ? '-8px' : '0',
+                              border: '1.5px solid #ffffff',
+                              marginLeft: idx > 0 ? '-6px' : '0',
                               boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
                             }}
                           />
                         ))
                       ) : (
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>Unassigned</span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Unassigned</span>
                       )}
                       {proj.membersList && proj.membersList.length > 3 && (
                         <div style={{
-                          width: '28px',
-                          height: '28px',
+                          width: '22px',
+                          height: '22px',
                           borderRadius: '50%',
                           backgroundColor: '#e2e8f0',
-                          border: '2px solid #ffffff',
+                          border: '1.5px solid #ffffff',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: '11px',
-                          fontWeight: '600',
+                          fontSize: '10px',
+                          fontWeight: '700',
                           color: '#475569',
-                          marginLeft: '-8px'
+                          marginLeft: '-6px'
                         }}>
                           +{proj.membersList.length - 3}
                         </div>

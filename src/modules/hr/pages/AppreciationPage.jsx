@@ -16,11 +16,14 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { useHR } from '../context/HRContext';
+import { useAuth } from '../../../shared/context/AuthContext';
 import { DateRangePicker } from '../components/common/DateRangePicker';
 import { AddAppreciationModal } from '../components/appreciation/AddAppreciationModal';
 
 export const AppreciationPage = () => {
-  const { appreciations, employees, searchQuery, setSearchQuery, deleteAppreciation } = useHR();
+  const { currentUser: authUser } = useAuth();
+  const { appreciations, employees, currentUser: hrUser, searchQuery, setSearchQuery, deleteAppreciation } = useHR();
+  const currentUser = authUser || hrUser;
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState('table'); // 'table', 'cards'
@@ -43,7 +46,7 @@ export const AppreciationPage = () => {
     }
   });
   const sortedPerformers = Object.entries(awardCounts).sort((a, b) => b[1] - a[1]);
-  const topPerformerName = sortedPerformers[0] ? sortedPerformers[0][0] : (employees[0]?.name || 'Avinash');
+  const topPerformerName = sortedPerformers[0] ? sortedPerformers[0][0] : (employees[0]?.name || 'Top Performer');
   const topPerformerAwardsCount = sortedPerformers[0] ? sortedPerformers[0][1] : 0;
 
   // Exact reward points / cash distributed calculation
@@ -122,18 +125,86 @@ export const AppreciationPage = () => {
   };
 
   return (
-    <div className="animate-fade-in">
-      {/* Page Title & Breadcrumb (Matches Screenshot 4) */}
-      <div className="page-header-container">
-        <div className="page-title-group">
-          <h1 className="page-title">Employee Appreciation & Awards</h1>
-          <div className="page-breadcrumb">
-            <span>Home</span>
-            <ChevronRight size={13} />
-            <span>HR</span>
-            <ChevronRight size={13} />
-            <span>Appreciation</span>
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Header Bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#fef3c7',
+            color: '#d97706',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Trophy size={17} />
           </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Employee Appreciation & Awards</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#b45309', fontWeight: '700' }}>
+                {totalAppreciationsCount} Total Awards
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Recognize top performers, peer milestones, rewards & spot awards
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={handleExportCSV}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '6px 12px',
+              borderRadius: '7px',
+              backgroundColor: '#ffffff',
+              color: '#2563eb',
+              border: '1px solid #cbd5e1',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            <Download size={13} />
+            Export CSV
+          </button>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '7px',
+              backgroundColor: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
+            }}
+          >
+            <Plus size={14} />
+            Give Award
+          </button>
         </div>
       </div>
 
@@ -142,16 +213,15 @@ export const AppreciationPage = () => {
         {/* 1. Total Appreciation Count */}
         <div className="kpi-card">
           <div className="kpi-header">
-            <span className="kpi-title">Total Appreciation Count</span>
+            <span className="kpi-title">Total Awards</span>
             <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}>
-              <Trophy size={18} />
+              <Trophy size={16} />
             </div>
           </div>
           <div className="kpi-value" style={{ color: '#d97706' }}>
-            {totalAppreciationsCount} <span style={{ fontSize: '15px', fontWeight: '500', color: '#64748b' }}>Awards</span>
+            {totalAppreciationsCount} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Awards</span>
           </div>
           <div className="kpi-subtext" style={{ color: '#d97706' }}>
-            <Sparkles size={13} />
             <span>Peer & leadership recognitions</span>
           </div>
         </div>
@@ -161,11 +231,11 @@ export const AppreciationPage = () => {
           <div className="kpi-header">
             <span className="kpi-title">Awarded This Month</span>
             <div className="kpi-icon-wrap" style={{ background: '#eff6ff', color: '#2563eb' }}>
-              <Award size={18} />
+              <Award size={16} />
             </div>
           </div>
           <div className="kpi-value" style={{ color: '#2563eb' }}>
-            {thisMonthAppreciations.length} <span style={{ fontSize: '15px', fontWeight: '500', color: '#64748b' }}>Badges</span>
+            {thisMonthAppreciations.length} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Badges</span>
           </div>
           <div className="kpi-subtext" style={{ color: '#2563eb' }}>
             <span>{currentMonthName} cycle</span>
@@ -177,14 +247,14 @@ export const AppreciationPage = () => {
           <div className="kpi-header">
             <span className="kpi-title">Star Performer</span>
             <div className="kpi-icon-wrap" style={{ background: '#fdf4ff', color: '#c026d3' }}>
-              <Star size={18} />
+              <Star size={16} />
             </div>
           </div>
-          <div className="kpi-value" style={{ color: '#0f172a', fontSize: '20px' }}>
+          <div className="kpi-value" style={{ color: '#0f172a', fontSize: '17px' }}>
             {topPerformerName}
           </div>
           <div className="kpi-subtext" style={{ color: '#c026d3' }}>
-            <span>{topPerformerAwardsCount > 0 ? `${topPerformerAwardsCount} appreciation award${topPerformerAwardsCount > 1 ? 's' : ''}` : 'Top recognized team member'}</span>
+            <span>{topPerformerAwardsCount > 0 ? `${topPerformerAwardsCount} appreciation award${topPerformerAwardsCount > 1 ? 's' : ''}` : 'Top recognized member'}</span>
           </div>
         </div>
 
@@ -193,11 +263,11 @@ export const AppreciationPage = () => {
           <div className="kpi-header">
             <span className="kpi-title">Rewards Distributed</span>
             <div className="kpi-icon-wrap" style={{ background: '#dcfce7', color: '#16a34a' }}>
-              <Gift size={18} />
+              <Gift size={16} />
             </div>
           </div>
           <div className="kpi-value" style={{ color: '#16a34a' }}>
-            ₹{totalRewardValue.toLocaleString('en-IN')} <span style={{ fontSize: '14px', fontWeight: '600', color: '#64748b' }}>Value</span>
+            ₹{totalRewardValue.toLocaleString('en-IN')} <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Value</span>
           </div>
           <div className="kpi-subtext" style={{ color: '#16a34a' }}>
             <span>{totalRewardsCount} rewarded bonus perks</span>
@@ -205,17 +275,37 @@ export const AppreciationPage = () => {
         </div>
       </div>
 
-      {/* Action Bar (Matches Screenshot 4) */}
-      <div className="action-bar-card">
-        <div className="filter-left-group">
+      {/* Action Bar (Search & Filters) */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        padding: '8px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '10px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Employee Filter */}
-          <div className="filter-item">
-            <span style={{ fontWeight: '600', color: '#475569' }}>Employee:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
+            <span style={{ fontWeight: '600' }}>Employee:</span>
             <select
               value={selectedEmployeeFilter}
               onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
-              className="filter-select"
-              style={{ minWidth: '160px' }}
+              style={{
+                height: '30px',
+                padding: '0 8px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                fontSize: '12px',
+                color: '#0f172a',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
             >
               <option value="all">All Employees</option>
               {employees.map(emp => (
@@ -225,55 +315,81 @@ export const AppreciationPage = () => {
           </div>
 
           {/* Search Bar */}
-          <div className="filter-input-wrap">
-            <Search size={15} className="filter-input-icon" />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '0 10px',
+            height: '30px',
+            borderRadius: '6px',
+            border: '1px solid #cbd5e1',
+            backgroundColor: '#f8fafc',
+            minWidth: '240px'
+          }}>
+            <Search size={13} color="#94a3b8" />
             <input
               type="text"
-              className="filter-input"
               placeholder="Search recipient, reason, citation..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ minWidth: '260px' }}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                outline: 'none',
+                fontSize: '12px',
+                width: '100%',
+                color: '#0f172a'
+              }}
             />
           </div>
         </div>
 
-        <div className="filter-right-group">
-          {/* Add Appreciation Button */}
+        {/* View Switcher Icons (Table / Cards Showcase) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#f1f5f9', padding: '2px', borderRadius: '6px' }}>
           <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="btn btn-primary"
+            onClick={() => setViewMode('table')}
+            style={{
+              height: '26px',
+              padding: '0 10px',
+              borderRadius: '4px',
+              border: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11.5px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              backgroundColor: viewMode === 'table' ? '#ffffff' : 'transparent',
+              color: viewMode === 'table' ? '#2563eb' : '#64748b',
+              boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+            }}
+            title="Table View"
           >
-            <Plus size={16} />
-            <span>Give Award</span>
+            <Award size={13} />
+            Table
           </button>
-
-          {/* Export Button */}
           <button
-            onClick={handleExportCSV}
-            className="btn btn-outline"
+            onClick={() => setViewMode('cards')}
+            style={{
+              height: '26px',
+              padding: '0 10px',
+              borderRadius: '4px',
+              border: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11.5px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              backgroundColor: viewMode === 'cards' ? '#ffffff' : 'transparent',
+              color: viewMode === 'cards' ? '#2563eb' : '#64748b',
+              boxShadow: viewMode === 'cards' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+            }}
+            title="Awards Showcase Gallery"
           >
-            <Download size={15} />
-            <span>Export</span>
+            <Trophy size={13} />
+            Gallery
           </button>
-
-          {/* View Switcher Icons (Table / Cards Showcase) */}
-          <div className="view-switch-group">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`view-switch-btn ${viewMode === 'table' ? 'active' : ''}`}
-              title="Table View"
-            >
-              <Award size={16} />
-            </button>
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`view-switch-btn ${viewMode === 'cards' ? 'active' : ''}`}
-              title="Awards Showcase Gallery"
-            >
-              <Trophy size={16} />
-            </button>
-          </div>
         </div>
       </div>
 
@@ -325,7 +441,7 @@ export const AppreciationPage = () => {
                           <div className="employee-name-group">
                             <span className="employee-name">
                               {item.givenToName}
-                              {item.givenToName === 'Avinash' && (
+                              {(item.givenToName === currentUser?.name || item.givenToId === currentUser?._id) && (
                                 <span className="its-you-pill">It's You</span>
                               )}
                             </span>
@@ -480,7 +596,7 @@ export const AppreciationPage = () => {
 
       {/* Cards Gallery Showcase View */}
       {viewMode === 'cards' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px', alignItems: 'start', marginBottom: '24px' }}>
           {filteredAppreciations.map(item => (
             <div
               key={item._id}

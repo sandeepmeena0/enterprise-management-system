@@ -261,34 +261,45 @@ export const LeadsPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '40px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingBottom: '30px' }}>
       
-      {/* Breadcrumb & Title Bar matching screenshot */}
+      {/* Header Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '10px',
+        backgroundColor: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{
-              fontSize: '22px',
-              fontWeight: '800',
-              color: '#0f172a',
-              margin: 0,
-              letterSpacing: '-0.02em'
-            }}>
-              Lead Contacts
-            </h1>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '500' }}>
-              Home • Lead Contacts
-            </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#e0f2fe',
+            color: '#0284c7',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Building size={17} />
           </div>
-          <p style={{ fontSize: '13px', color: '#64748b', margin: '4px 0 0 0' }}>
-            Manage prospective client leads, pipeline deal stages, track owners, import and export records.
-          </p>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>Lead Contacts & Deals</h1>
+              <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1', fontWeight: '700' }}>
+                {filteredLeads.length} Leads
+              </span>
+            </div>
+            <p style={{ margin: '1px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+              Manage prospective sales leads, pipeline stages, deals value & owners
+            </p>
+          </div>
         </div>
 
         {/* View Switcher: Table vs Kanban */}
@@ -296,8 +307,8 @@ export const LeadsPage = () => {
           display: 'flex',
           alignItems: 'center',
           backgroundColor: '#f1f5f9',
-          borderRadius: '10px',
-          padding: '3px',
+          borderRadius: '7px',
+          padding: '2px',
           border: '1px solid #e2e8f0'
         }}>
           <button
@@ -305,41 +316,39 @@ export const LeadsPage = () => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '7px',
+              gap: '4px',
+              padding: '4px 10px',
+              borderRadius: '5px',
               border: 'none',
-              fontSize: '12.5px',
-              fontWeight: '600',
+              fontSize: '11.5px',
+              fontWeight: '700',
               cursor: 'pointer',
               backgroundColor: viewMode === 'table' ? '#ffffff' : 'transparent',
-              color: viewMode === 'table' ? '#0f172a' : '#64748b',
-              boxShadow: viewMode === 'table' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              transition: 'all 0.15s ease'
+              color: viewMode === 'table' ? '#0284c7' : '#64748b',
+              boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
             }}
           >
-            <TableIcon size={14} />
-            Table View
+            <TableIcon size={13} />
+            Table
           </button>
           <button
             onClick={() => setViewMode('kanban')}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '7px',
+              gap: '4px',
+              padding: '4px 10px',
+              borderRadius: '5px',
               border: 'none',
-              fontSize: '12.5px',
-              fontWeight: '600',
+              fontSize: '11.5px',
+              fontWeight: '700',
               cursor: 'pointer',
               backgroundColor: viewMode === 'kanban' ? '#ffffff' : 'transparent',
-              color: viewMode === 'kanban' ? '#0f172a' : '#64748b',
-              boxShadow: viewMode === 'kanban' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              transition: 'all 0.15s ease'
+              color: viewMode === 'kanban' ? '#0284c7' : '#64748b',
+              boxShadow: viewMode === 'kanban' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
             }}
           >
-            <KanbanIcon size={14} />
+            <KanbanIcon size={13} />
             Pipeline Kanban
           </button>
         </div>
@@ -348,16 +357,16 @@ export const LeadsPage = () => {
       {/* KPI Overview Cards */}
       <LeadsKPIOverview leads={leads} />
 
-      {/* Main Filter & Action Bar matching screenshot */}
+      {/* Main Filter & Action Bar */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '14px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
-        padding: '16px 20px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+        padding: '8px 12px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '14px'
+        gap: '10px'
       }}>
         {/* Top Control Bar */}
         <div style={{
@@ -365,117 +374,94 @@ export const LeadsPage = () => {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '12px'
+          gap: '10px'
         }}>
           
           {/* Left Action Buttons: + Add Lead Contact, Import, Export */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Prominent Add Lead Contact Button */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <button
               onClick={() => setIsAddModalOpen(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '8px 16px',
+                gap: '5px',
+                padding: '6px 14px',
                 backgroundColor: '#0284c7',
                 color: '#ffffff',
                 border: 'none',
-                borderRadius: '8px',
-                fontSize: '13px',
+                borderRadius: '7px',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
-                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
-                transition: 'background-color 0.15s ease'
+                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.2)'
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#0369a1')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#0284c7')}
             >
-              <Plus size={16} strokeWidth={2.5} />
-              Add Lead Contact
+              <Plus size={14} strokeWidth={2.5} />
+              Add Lead
             </button>
 
-            {/* Import Button */}
             <button
               onClick={() => setIsImportModalOpen(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
+                gap: '5px',
+                padding: '6px 12px',
                 backgroundColor: '#ffffff',
                 color: '#334155',
                 border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                fontSize: '13px',
+                borderRadius: '7px',
+                fontSize: '12px',
                 fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#94a3b8';
-                e.currentTarget.style.backgroundColor = '#f8fafc';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = '#cbd5e1';
-                e.currentTarget.style.backgroundColor = '#ffffff';
+                cursor: 'pointer'
               }}
             >
-              <Upload size={14} color="#0284c7" />
+              <Upload size={13} color="#0284c7" />
               Import
             </button>
 
-            {/* Export Button */}
             <button
               onClick={() => handleExportCSV(false)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
+                gap: '5px',
+                padding: '6px 12px',
                 backgroundColor: '#ffffff',
                 color: '#334155',
                 border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                fontSize: '13px',
+                borderRadius: '7px',
+                fontSize: '12px',
                 fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#94a3b8';
-                e.currentTarget.style.backgroundColor = '#f8fafc';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = '#cbd5e1';
-                e.currentTarget.style.backgroundColor = '#ffffff';
+                cursor: 'pointer'
               }}
             >
-              <Download size={14} color="#0284c7" />
-              Export
+              <Download size={13} color="#0284c7" />
+              Export CSV
             </button>
           </div>
 
           {/* Right Filters Bar: Duration, Type, Search Input, Filter Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             
             {/* Duration / Date Range Selector */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              fontSize: '12.5px',
+              gap: '4px',
+              fontSize: '12px',
               color: '#64748b',
               fontWeight: '500'
             }}>
-              <span>Duration</span>
+              <span>Duration:</span>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '4px 8px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '0 8px',
+                height: '30px',
                 backgroundColor: '#f8fafc'
               }}>
                 <Calendar size={13} color="#94a3b8" />

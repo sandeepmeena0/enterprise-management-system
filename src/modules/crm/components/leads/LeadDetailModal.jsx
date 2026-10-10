@@ -279,7 +279,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onEdit }) => {
               )}
               <div>
                 <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase', display: 'block' }}>Created By</span>
-                <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{lead.createdByName || 'Avinash'}</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{lead.createdByName || 'Team Member'}</span>
                 <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>on {lead.createdDate || '09-12-2026'}</span>
               </div>
             </div>

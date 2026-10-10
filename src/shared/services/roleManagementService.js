@@ -14,99 +14,96 @@ const STORAGE_KEY_PROMOTIONS = 'EMS_PROMOTION_HISTORY';
 
 export const SYSTEM_ROLES = [
   {
-    id: 'super_admin',
-    name: 'Super Admin',
+    id: 'admin',
+    name: 'Admin',
+    badge: '👑 Admin',
     category: 'Executive Management',
     level: 1,
     isSystem: true,
-    canBeAssignedBy: ['super_admin', 'admin'],
+    canBeAssignedBy: ['admin', 'super_admin'],
     permissions: {
       createAdmins: true,
       manageRoles: true,
       manageEmployees: true,
       manageSalaries: true,
       approveLeaves: true,
+      manageHolidays: true,
       manageProjects: true,
+      manageLeads: true,
+      manageTickets: true,
       postNotices: true,
       viewFinancials: true
     },
-    description: 'Unrestricted master access to entire ERP, system configuration, and admin creation.'
+    description: 'Master unrestricted authority over entire system, RBAC role assignments, and company configuration.'
   },
   {
-    id: 'hr_manager',
-    name: 'HR Business Partner / Manager',
+    id: 'hr',
+    name: 'HR',
+    badge: '💼 HR',
     category: 'Human Resources',
     level: 2,
     isSystem: true,
-    canBeAssignedBy: ['super_admin', 'admin'],
+    canBeAssignedBy: ['admin', 'super_admin'],
     permissions: {
       createAdmins: false, // Strict Rule: HR cannot create Admins
-      manageRoles: true,
+      manageRoles: false,
       manageEmployees: true,
       manageSalaries: true,
       approveLeaves: true,
+      manageHolidays: true,
       manageProjects: false,
+      manageLeads: false,
+      manageTickets: true,
       postNotices: true,
       viewFinancials: true
     },
-    description: 'Workforce onboarding, leave approvals, salary appraisal, documentation, and non-admin promotions.'
+    description: 'Workforce onboarding, leave approvals, monthly attendance management, company holidays & payroll reporting.'
   },
   {
     id: 'team_leader',
-    name: 'Team Leader / Project Manager',
+    name: 'Team Leader',
+    badge: '🚀 Team Leader',
     category: 'Project Management',
     level: 3,
     isSystem: true,
-    canBeAssignedBy: ['super_admin', 'admin', 'hr_manager'],
+    canBeAssignedBy: ['admin', 'super_admin', 'hr'],
     permissions: {
       createAdmins: false,
       manageRoles: false,
       manageEmployees: false,
       manageSalaries: false,
       approveLeaves: true,
+      manageHolidays: false,
       manageProjects: true,
-      postNotices: false,
+      manageLeads: true,
+      manageTickets: true,
+      postNotices: true,
       viewFinancials: false
     },
-    description: 'Sprint planning, project assignment, task reviews, and squad timesheet oversight.'
+    description: 'Sprint planning, project creation, task delegation, team timesheet oversight & squad leave approvals.'
   },
   {
-    id: 'senior_executive',
-    name: 'Senior Specialist / Senior Developer / Lead Designer',
-    category: 'Core Workforce',
+    id: 'team_member',
+    name: 'Team Member',
+    badge: '👤 Team Member (Under TL)',
+    category: 'Core Workforce (Reports to TL)',
     level: 4,
     isSystem: true,
-    canBeAssignedBy: ['super_admin', 'admin', 'hr_manager'],
+    canBeAssignedBy: ['admin', 'super_admin', 'hr'],
     permissions: {
       createAdmins: false,
       manageRoles: false,
       manageEmployees: false,
       manageSalaries: false,
       approveLeaves: false,
+      manageHolidays: false,
       manageProjects: false,
+      manageLeads: false,
+      manageTickets: false,
       postNotices: false,
       viewFinancials: false
     },
-    description: 'Advanced technical/design execution, task logging, and personal payslips.'
-  },
-  {
-    id: 'junior_executive',
-    name: 'Junior Associate / Junior Engineer',
-    category: 'Entry Level',
-    level: 5,
-    isSystem: true,
-    canBeAssignedBy: ['super_admin', 'admin', 'hr_manager'],
-    permissions: {
-      createAdmins: false,
-      manageRoles: false,
-      manageEmployees: false,
-      manageSalaries: false,
-      approveLeaves: false,
-      manageProjects: false,
-      postNotices: false,
-      viewFinancials: false
-    },
-    description: 'Daily task logging, attendance check-in, and leave applications.'
+    description: 'TL (Team Leader) ke under regular employee: Assigned tasks execution, daily 8h 30m shift tracking, leave applications & personal payslips.'
   }
 ];
 

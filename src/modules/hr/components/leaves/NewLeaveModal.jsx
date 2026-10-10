@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
+import { UserCheck, ShieldAlert, Calendar, Clock, AlertCircle } from 'lucide-react';
 
 export const NewLeaveModal = ({ isOpen, onClose }) => {
   const { employees, currentUser, applyLeave } = useHR();
 
+  // Find a default manager/HR (first other person or admin)
+  const defaultApprover = employees.find(e => e._id !== (currentUser?._id || 'emp_001') && (e.role?.toLowerCase().includes('admin') || e.role?.toLowerCase().includes('hr') || e.role?.toLowerCase().includes('manager'))) || employees.find(e => e._id !== (currentUser?._id || 'emp_001')) || employees[0];
+
   const [formData, setFormData] = useState({
     employeeId: currentUser?._id || 'emp_001',
+    appliedToId: defaultApprover?._id || '',
     leaveType: 'Casual Leave',
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
@@ -17,8 +22,9 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
 
   const [submitting, setSubmitting] = useState(false);
 
-  const selectedEmp = employees.find(e => e._id === formData.employeeId) || currentUser;
-  
+  const selectedEmp = employees.find(e => e._id === formData.employeeId) || currentUser || employees[0];
+  const selectedApprover = employees.find(e => e._id === formData.appliedToId) || defaultApprover;
+
   // Real-time dynamic duration calculation
   const start = new Date(formData.startDate);
   const end = new Date(formData.endDate);
@@ -57,15 +63,20 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
       await applyLeave({
         employeeId: selectedEmp._id,
         employeeName: selectedEmp.name,
-        employeeAvatar: selectedEmp.avatar,
-        employeeRole: selectedEmp.role,
+        employeeAvatar: selectedEmp.avatar || '',
+        employeeRole: selectedEmp.role || 'Member',
+        appliedToId: selectedApprover?._id || '',
+        appliedToName: selectedApprover?.name || 'HR Admin',
+        appliedToRole: selectedApprover?.role || 'Administrator',
+        appliedToAvatar: selectedApprover?.avatar || '',
         leaveType: formData.leaveType,
         startDate: formData.startDate,
         endDate: formData.endDate,
         durationDays: calculatedDays,
         durationText: durationText,
-        reason: formData.reason,
-        isPaid: formData.isPaid
+        reason: formData.reason.trim(),
+        isPaid: formData.isPaid,
+        status: 'pending'
       });
 
       onClose();
@@ -81,38 +92,61 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
       isOpen={isOpen}
       onClose={onClose}
       title="Apply For Leave"
-      subtitle="Submit a new leave request for review and approval."
+      subtitle="Submit a new leave request. Your selected reviewer will receive a notification to accept or deny."
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {/* Employee Select */}
-        <div>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-            Employee
-          </label>
-          <select
-            value={formData.employeeId}
-            onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-            className="filter-select"
-            style={{ width: '100%', height: '40px' }}
-          >
-            {employees.map(emp => (
-              <option key={emp._id} value={emp._id}>
-                {emp.name} ({emp.role}) {emp.isCurrentUser ? "— It's You" : ''}
-              </option>
-            ))}
-          </select>
+        
+        {/* Applicant Employee & Approver Grid (2-Column) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          {/* Employee Applying */}
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              Applying Employee *
+            </label>
+            <select
+              value={formData.employeeId}
+              onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+              className="filter-select"
+              style={{ width: '100%', height: '42px', borderRadius: '8px' }}
+            >
+              {employees.map(emp => (
+                <option key={emp._id} value={emp._id}>
+                  {emp.name} ({emp.role}) {emp._id === currentUser?._id ? "— You" : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Send Request To (Approver / Manager) */}
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e40af', marginBottom: '6px' }}>
+              Send Request To (Approver / HR) *
+            </label>
+            <select
+              value={formData.appliedToId}
+              onChange={(e) => setFormData({ ...formData, appliedToId: e.target.value })}
+              className="filter-select"
+              style={{ width: '100%', height: '42px', borderRadius: '8px', border: '1.5px solid #3b82f6', background: '#eff6ff' }}
+            >
+              {employees.map(emp => (
+                <option key={emp._id} value={emp._id}>
+                  {emp.name} — {emp.role || 'Reviewer'}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Leave Type */}
         <div>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-            Leave Type
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+            Leave Type *
           </label>
           <select
             value={formData.leaveType}
             onChange={(e) => setFormData({ ...formData, leaveType: e.target.value })}
             className="filter-select"
-            style={{ width: '100%', height: '40px' }}
+            style={{ width: '100%', height: '40px', borderRadius: '8px' }}
           >
             <option value="Casual Leave">Casual Leave (CL)</option>
             <option value="Sick Leave">Sick Leave (SL)</option>
@@ -125,28 +159,28 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
         {/* Date Selection Grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-              From Date
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              From Date *
             </label>
             <input
               type="date"
               value={formData.startDate}
               onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
               className="filter-input"
-              style={{ width: '100%', height: '40px', paddingLeft: '12px' }}
+              style={{ width: '100%', height: '40px', paddingLeft: '12px', borderRadius: '8px' }}
               required
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-              To Date
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              To Date *
             </label>
             <input
               type="date"
               value={formData.endDate}
               onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
               className="filter-input"
-              style={{ width: '100%', height: '40px', paddingLeft: '12px' }}
+              style={{ width: '100%', height: '40px', paddingLeft: '12px', borderRadius: '8px' }}
               required
             />
           </div>
@@ -154,11 +188,11 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
 
         {/* Duration Type (Full Day / Half Day) */}
         <div>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
             Duration Mode
           </label>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: '500' }}>
               <input
                 type="radio"
                 name="durationType"
@@ -167,7 +201,7 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
               />
               Full Day(s)
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: '500' }}>
               <input
                 type="radio"
                 name="durationType"
@@ -176,7 +210,7 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
               />
               First Half
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', fontWeight: '500' }}>
               <input
                 type="radio"
                 name="durationType"
@@ -220,8 +254,8 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
 
         {/* Reason Text */}
         <div>
-          <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-            Reason for Leave
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+            Reason for Leave *
           </label>
           <textarea
             rows={3}
@@ -231,11 +265,12 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
             style={{
               width: '100%',
               padding: '10px 12px',
-              border: '1px solid #cbd5e1',
+              border: '1.5px solid #cbd5e1',
               borderRadius: '8px',
               fontSize: '13px',
               outline: 'none',
-              resize: 'vertical'
+              resize: 'vertical',
+              fontFamily: 'inherit'
             }}
             required
           />
@@ -249,17 +284,17 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
             checked={formData.isPaid}
             onChange={(e) => setFormData({ ...formData, isPaid: e.target.checked })}
           />
-          <label htmlFor="isPaidCheck" style={{ fontSize: '13px', color: '#334155', cursor: 'pointer' }}>
-            Paid Leave (Leave balance will be deducted)
+          <label htmlFor="isPaidCheck" style={{ fontSize: '13px', color: '#334155', cursor: 'pointer', fontWeight: '500' }}>
+            Paid Leave (Leave balance will be deducted upon approval)
           </label>
         </div>
 
         {/* Modal Buttons */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
-          <button type="button" onClick={onClose} className="btn btn-outline">
+          <button type="button" onClick={onClose} className="btn btn-outline" style={{ padding: '9px 18px', borderRadius: '8px' }}>
             Cancel
           </button>
-          <button type="submit" disabled={submitting} className="btn btn-primary">
+          <button type="submit" disabled={submitting} className="btn btn-primary" style={{ padding: '9px 22px', borderRadius: '8px', fontWeight: '700' }}>
             {submitting ? 'Submitting...' : 'Submit Request'}
           </button>
         </div>
@@ -267,3 +302,5 @@ export const NewLeaveModal = ({ isOpen, onClose }) => {
     </Modal>
   );
 };
+
+export default NewLeaveModal;

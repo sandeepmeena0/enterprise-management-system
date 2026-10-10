@@ -41,6 +41,7 @@ export const TaskDetailModal = ({ task, onClose }) => {
         assignedTo: newAssignee._id,
         assignedToId: newAssignee._id,
         assignedToName: newAssignee.name,
+        assignedToEmail: newAssignee.email || '',
         assignedToAvatar: newAssignee.avatar,
         assignedToRole: newAssignee.role
       });
@@ -386,7 +387,7 @@ export const TaskDetailModal = ({ task, onClose }) => {
                   style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
                 />
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{task.assignedBy || 'Avinash'}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>{task.assignedBy || 'Admin / Project Manager'}</div>
                   <div style={{ fontSize: '11px', color: '#64748b' }}>{task.assignedByRole || 'Assigner'}</div>
                 </div>
               </div>

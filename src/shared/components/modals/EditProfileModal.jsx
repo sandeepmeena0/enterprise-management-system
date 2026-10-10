@@ -14,6 +14,7 @@ import {
   Award
 } from 'lucide-react';
 import { useHR } from '../../../modules/hr/context/HRContext';
+import { useAuth } from '../../context/AuthContext';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../context/ToastContext';
 import { getRoles, canUserAssignRole, recordPromotion } from '../../services/roleManagementService';
@@ -27,7 +28,9 @@ const PRESET_AVATARS = [
 ];
 
 export const EditProfileModal = ({ isOpen, onClose, employee = null }) => {
-  const { currentUser, updateEmployee, employees } = useHR();
+  const { currentUser: authUser, setCurrentUser: setAuthCurrentUser } = useAuth();
+  const { currentUser: hrUser, updateEmployee, employees } = useHR();
+  const currentUser = authUser || hrUser;
   const { updateUserProfile } = useCRM();
   const { addToast } = useToast();
 
@@ -114,6 +117,14 @@ export const EditProfileModal = ({ isOpen, onClose, employee = null }) => {
         await updateEmployee(targetEmp._id, formData);
       } else {
         await updateUserProfile(formData);
+      }
+
+      // If user is editing their own active profile, sync Auth session immediately
+      if (!employee || employee._id === currentUser?._id || targetEmp?.isCurrentUser || targetEmp?._id === authUser?._id) {
+        const updatedAuthUser = { ...(authUser || currentUser), ...formData, isCurrentUser: true };
+        setAuthCurrentUser?.(updatedAuthUser);
+        localStorage.setItem('ems_auth_session', JSON.stringify(updatedAuthUser));
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
       }
 
       // If role was modified by Admin/HR, log into official Promotion history

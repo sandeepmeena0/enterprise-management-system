@@ -43,14 +43,14 @@ export const CRMProvider = ({ children }) => {
   const [conversations, setConversations] = useState(() => getCollection(KEYS.CONVERSATIONS));
   const [activeConversationId, setActiveConversationId] = useState('conv_1');
   const [wfhEmployees, setWfhEmployees] = useState(() => getCollection(KEYS.WFH));
-  const [weeklyTimeLogs, setWeeklyTimeLogs] = useState(() => getCollection(KEYS.WEEKLY_TIMELOGS));
+  const [storedWeeklyTimeLogs, setStoredWeeklyTimeLogs] = useState(() => getCollection(KEYS.WEEKLY_TIMELOGS));
   const [leads, setLeads] = useState(() => getCollection(KEYS.LEADS));
   const [emergencyContacts, setEmergencyContacts] = useState(() => getCollection(KEYS.EMERGENCY_CONTACTS));
   const [stickyNotes, setStickyNotes] = useState(() => getCollection(KEYS.STICKY_NOTES));
   const [userSettings, setUserSettings] = useState(() => {
     const saved = localStorage.getItem(KEYS.USER_SETTINGS);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (e) { }
     }
     return {
       salutation: 'Mr.',
@@ -89,9 +89,15 @@ export const CRMProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('ems_dark_mode', darkMode.toString());
     if (darkMode) {
+      document.documentElement.classList.add('dark-mode');
+      document.documentElement.setAttribute('data-theme', 'dark');
       document.body.classList.add('dark-mode');
+      document.body.setAttribute('data-theme', 'dark');
     } else {
+      document.documentElement.classList.remove('dark-mode');
+      document.documentElement.removeAttribute('data-theme');
       document.body.classList.remove('dark-mode');
+      document.body.removeAttribute('data-theme');
     }
   }, [darkMode]);
 
@@ -103,6 +109,8 @@ export const CRMProvider = ({ children }) => {
     });
   };
 
+  const [storageTick, setStorageTick] = useState(0);
+
   // Sync state with storage
   const syncWithStorage = () => {
     setExpenses(getCollection(KEYS.EXPENSES));
@@ -111,15 +119,16 @@ export const CRMProvider = ({ children }) => {
     setEvents((getCollection(KEYS.EVENTS) || []).map(normalizeEvent));
     setConversations(getCollection(KEYS.CONVERSATIONS));
     setWfhEmployees(getCollection(KEYS.WFH));
-    setWeeklyTimeLogs(getCollection(KEYS.WEEKLY_TIMELOGS));
+    setStoredWeeklyTimeLogs(getCollection(KEYS.WEEKLY_TIMELOGS));
     setLeads(getCollection(KEYS.LEADS));
     setEmergencyContacts(getCollection(KEYS.EMERGENCY_CONTACTS));
     setStickyNotes(getCollection(KEYS.STICKY_NOTES));
+    setStorageTick(prev => prev + 1);
   };
 
   useEffect(() => {
     const handleStorageUpdate = (e) => {
-      if (['ems_expenses', 'ems_tickets', 'ems_notices', 'ems_events', 'ems_conversations', 'ems_wfh', 'ems_leads', 'ems_emergency_contacts', 'ems_sticky_notes'].includes(e.detail?.key)) {
+      if (['ems_expenses', 'ems_tickets', 'ems_notices', 'ems_events', 'ems_conversations', 'ems_wfh', 'ems_leads', 'ems_emergency_contacts', 'ems_sticky_notes', 'ems_timesheets', 'ems_tasks', 'ems_attendance'].includes(e.detail?.key)) {
         syncWithStorage();
       }
     };
@@ -208,6 +217,202 @@ export const CRMProvider = ({ children }) => {
   }, [employees]);
 
   // =========================================================================
+  // 💼 AUTOMATIC WORK ANNIVERSARY ENGINE (Calculates directly from Employee joiningDate)
+  // =========================================================================
+  const computedAnniversaries = useMemo(() => {
+    if (!employees || employees.length === 0) return [];
+    const today = new Date();
+    const currentYear = today.getFullYear();
+
+    return employees
+      .filter(emp => emp.joiningDate || emp.joinDate)
+      .map(emp => {
+        let joinMonth = 0; // 0-indexed
+        let joinDay = 15;
+        let joinYear = 2023;
+        const joinStr = emp.joiningDate || emp.joinDate;
+
+        if (joinStr) {
+          const parts = joinStr.split(/[-/]/);
+          if (parts.length === 3) {
+            if (parts[0].length === 4) {
+              // YYYY-MM-DD
+              joinYear = parseInt(parts[0], 10);
+              joinMonth = parseInt(parts[1], 10) - 1;
+              joinDay = parseInt(parts[2], 10);
+            } else {
+              // DD-MM-YYYY
+              joinDay = parseInt(parts[0], 10);
+              joinMonth = parseInt(parts[1], 10) - 1;
+              joinYear = parseInt(parts[2], 10);
+            }
+          }
+        }
+
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const fullMonthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+        const serviceYears = Math.max(1, currentYear - joinYear);
+        const getOrdinal = (n) => {
+          const s = ['th', 'st', 'nd', 'rd'];
+          const v = n % 100;
+          return n + (s[(v - 20) % 10] || s[v] || s[0]);
+        };
+        const serviceYearsText = getOrdinal(serviceYears);
+
+        const annivThisYear = new Date(currentYear, joinMonth, joinDay);
+        const annivFormattedDate = `${joinDay.toString().padStart(2, '0')} ${monthNames[joinMonth]}`;
+        const annivEventDate = `${currentYear}-${(joinMonth + 1).toString().padStart(2, '0')}-${joinDay.toString().padStart(2, '0')}`;
+
+        const diffTime = annivThisYear.getTime() - today.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let daysRemainingText = '';
+        if (diffDays === 0) {
+          daysRemainingText = `Today! 🌟 ${serviceYearsText} Work Anniversary!`;
+        } else if (diffDays === 1) {
+          daysRemainingText = `Tomorrow 💼 (${serviceYearsText} Anniversary)`;
+        } else if (diffDays > 1 && diffDays <= 30) {
+          daysRemainingText = `${diffDays} days remaining`;
+        } else if (diffDays > 30) {
+          const monthsAhead = Math.round(diffDays / 30);
+          daysRemainingText = `${monthsAhead} month${monthsAhead > 1 ? 's' : ''} after`;
+        } else {
+          daysRemainingText = `Celebrated on ${annivFormattedDate}`;
+        }
+
+        return {
+          _id: `anniv_auto_${emp._id}`,
+          employeeId: emp._id,
+          name: emp.name,
+          role: emp.role,
+          department: emp.department,
+          avatar: emp.avatar,
+          joiningDate: joinStr,
+          serviceYears,
+          serviceYearsText,
+          anniversaryDate: annivFormattedDate,
+          eventDate: annivEventDate,
+          daysRemainingText,
+          diffDays,
+          fullMonth: fullMonthNames[joinMonth],
+          dayOfMonth: joinDay
+        };
+      })
+      .sort((a, b) => {
+        const aVal = a.diffDays >= 0 ? a.diffDays : a.diffDays + 365;
+        const bVal = b.diffDays >= 0 ? b.diffDays : b.diffDays + 365;
+        return aVal - bVal;
+      });
+  }, [employees]);
+
+  // =========================================================================
+  // ⏱️ DYNAMIC WEEKLY TIME LOGS & TASK ACTIVITY ENGINE (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
+  // =========================================================================
+  const computedWeeklyTimeLogs = useMemo(() => {
+    const timesheets = getCollection(KEYS.TIMESHEETS) || [];
+    const attendance = getCollection(KEYS.ATTENDANCE) || [];
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const todayDayIndex = today.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
+
+    // Calculate current week's Monday
+    const currentMonday = new Date(today);
+    const dayOffset = todayDayIndex === 0 ? -6 : 1 - todayDayIndex;
+    currentMonday.setDate(today.getDate() + dayOffset);
+    currentMonday.setHours(0, 0, 0, 0);
+
+    const dayMeta = [
+      { day: 'Monday', shortDay: 'Mo', offset: 0 },
+      { day: 'Tuesday', shortDay: 'Tu', offset: 1 },
+      { day: 'Wednesday', shortDay: 'We', offset: 2 },
+      { day: 'Thursday', shortDay: 'Th', offset: 3 },
+      { day: 'Friday', shortDay: 'Fr', offset: 4 },
+      { day: 'Saturday', shortDay: 'Sa', offset: 5 },
+      { day: 'Sunday', shortDay: 'Su', offset: 6, isSunday: true, isDayOff: true }
+    ];
+
+    return dayMeta.map(item => {
+      const dayDateObj = new Date(currentMonday);
+      dayDateObj.setDate(currentMonday.getDate() + item.offset);
+      const dateStr = dayDateObj.toISOString().split('T')[0];
+      const isCurrentDay = dateStr === todayStr;
+      const isPastDay = dayDateObj < new Date(today.setHours(0, 0, 0, 0));
+      const isFutureDay = dayDateObj > new Date(today.setHours(0, 0, 0, 0)) && !isCurrentDay;
+
+      // Special rule: Sunday is always an official Holiday / Day Off
+      if (item.isSunday) {
+        return {
+          day: 'Sunday',
+          shortDay: 'Su',
+          date: dateStr,
+          durationText: '0h 00m',
+          durationHours: 0,
+          loginTime: 'Sunday Off 🏖️',
+          logoutTime: 'Weekly Holiday',
+          breakDuration: '0m',
+          isSunday: true,
+          isDayOff: true,
+          isCurrentDay,
+          tasksWorked: []
+        };
+      }
+
+      // Find matching timesheet logs for this date
+      const matchingTimesheets = timesheets.filter(t => t.date === dateStr);
+      let taskSecondsSum = matchingTimesheets.reduce((acc, curr) => acc + (Number(curr.totalDurationSeconds) || 0), 0);
+
+      // Default baseline hours for past working days if no manual timesheets yet
+      let finalDurationText = '0h 00m';
+      let finalDurationHours = 0;
+
+      if (matchingTimesheets.length > 0) {
+        const hrs = Math.floor(taskSecondsSum / 3600);
+        const mins = Math.floor((taskSecondsSum % 3600) / 60);
+        finalDurationText = `${hrs}h ${String(mins).padStart(2, '0')}m`;
+        finalDurationHours = +(taskSecondsSum / 3600).toFixed(2);
+      } else if (isPastDay) {
+        // Representative past working hours
+        const mockDurations = [8.5, 7.5, 8.0, 7.8, 6.5, 4.0];
+        const pastH = mockDurations[item.offset] || 7.5;
+        const hrs = Math.floor(pastH);
+        const mins = Math.round((pastH % 1) * 60);
+        finalDurationText = `${hrs}h ${String(mins).padStart(2, '0')}m`;
+        finalDurationHours = pastH;
+      } else if (isCurrentDay) {
+        finalDurationText = taskSecondsSum > 0 ? `${Math.floor(taskSecondsSum / 3600)}h ${String(Math.floor((taskSecondsSum % 3600) / 60)).padStart(2, '0')}m` : 'Active';
+        finalDurationHours = taskSecondsSum > 0 ? +(taskSecondsSum / 3600).toFixed(2) : 0;
+      }
+
+      const attRecord = attendance.find(a => a.date === dateStr);
+
+      return {
+        day: item.day,
+        shortDay: item.shortDay,
+        date: dateStr,
+        durationText: finalDurationText,
+        durationHours: finalDurationHours,
+        loginTime: attRecord?.clockInTime || (isCurrentDay ? 'Active' : (isPastDay ? '09:15 AM' : 'Scheduled')),
+        logoutTime: attRecord?.clockOutTime || (isCurrentDay ? 'Active' : (isPastDay ? '06:30 PM' : 'Scheduled')),
+        isCurrentDay,
+        isFutureDay,
+        isCompleted: isPastDay,
+        tasksWorked: matchingTimesheets.map(t => ({
+          taskId: t.taskId,
+          taskCode: t.taskCode || 'TSK',
+          taskTitle: t.taskTitle || 'Assigned Work',
+          projectName: t.projectName || 'General Work',
+          durationText: t.totalDurationText || `${Math.floor((t.totalDurationSeconds || 0) / 60)}m`,
+          durationSeconds: t.totalDurationSeconds || 0,
+          startTime: t.startTime || '09:30 AM',
+          endTime: t.endTime || '06:00 PM',
+          memo: t.memo || 'Work session',
+          employeeName: t.employeeName || currentUser?.name || 'Employee'
+        }))
+      };
+    });
+  }, [currentUser, storageTick]);
+
   // 💰 FINANCE / EXPENSES MODULE
   // =========================================================================
   const createExpense = async (expenseData) => {
@@ -228,15 +433,15 @@ export const CRMProvider = ({ children }) => {
       purchasedFrom: expenseData.purchasedFrom || 'Vendor Partner',
       purchaseDate: expenseData.purchaseDate || expenseData.date || now.toISOString().split('T')[0],
       date: expenseData.purchaseDate || expenseData.date || now.toISOString().split('T')[0],
-      employeeId: selectedEmployee?._id || 'emp_001',
-      employeeName: selectedEmployee?.name || 'Avinash',
-      employeeAvatar: selectedEmployee?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
-      paidBy: selectedEmployee?.name || 'Avinash',
+      employeeId: selectedEmployee?._id || currentUser?._id || 'emp_001',
+      employeeName: selectedEmployee?.name || currentUser?.name || 'Employee',
+      employeeAvatar: selectedEmployee?.avatar || currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
+      paidBy: selectedEmployee?.name || currentUser?.name || 'Employee',
       status: expenseData.status || 'pending',
       description: expenseData.description || '',
       billAttachment: expenseData.billAttachment || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500',
       createdById: currentUser?._id || 'emp_001',
-      createdByName: currentUser?.name || 'Avinash',
+      createdByName: currentUser?.name || 'Employee',
       createdAt: now.toISOString(),
       ...expenseData
     };
@@ -309,14 +514,14 @@ export const CRMProvider = ({ children }) => {
         purchaseDate: item.purchaseDate || item.date || now.toISOString().split('T')[0],
         date: item.purchaseDate || item.date || now.toISOString().split('T')[0],
         employeeId: currentUser?._id || 'emp_001',
-        employeeName: item.employeeName || item.paidBy || currentUser?.name || 'Avinash',
+        employeeName: item.employeeName || item.paidBy || currentUser?.name || 'Employee',
         employeeAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
-        paidBy: item.paidBy || currentUser?.name || 'Avinash',
+        paidBy: item.paidBy || currentUser?.name || 'Employee',
         status: item.status || 'pending',
         description: item.description || 'Imported via CSV template',
         billAttachment: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500',
         createdById: currentUser?._id || 'emp_001',
-        createdByName: currentUser?.name || 'Avinash',
+        createdByName: currentUser?.name || 'Employee',
         createdAt: now.toISOString()
       };
     });
@@ -346,7 +551,7 @@ export const CRMProvider = ({ children }) => {
       attachment: ticketData.attachment || '',
       status: 'open',
       requestedById: currentUser?._id || 'emp_001',
-      requestedByName: currentUser?.name || 'Avinash',
+      requestedByName: currentUser?.name || 'Employee',
       requestedByAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
       assignedToId: ticketData.assignedToId || 'emp_005',
       assignedToName: ticketData.assignedToName || 'Amit Kumar (Admin / Support)',
@@ -383,11 +588,11 @@ export const CRMProvider = ({ children }) => {
     const currentList = getCollection(KEYS.TICKETS);
     const idx = currentList.findIndex(t => t._id === ticketId);
     if (idx !== -1) {
-      const isUserAdmin = currentUser?.role?.toLowerCase().includes('lead') || currentUser?.role?.toLowerCase().includes('director') || currentUser?.role?.toLowerCase().includes('manager');
+      const isUserAdmin = currentUser?.role?.toLowerCase().includes('lead') || currentUser?.role?.toLowerCase().includes('director') || currentUser?.role?.toLowerCase().includes('manager') || currentUser?.role?.toLowerCase().includes('admin');
       const newReply = {
         id: `rep_${Date.now()}`,
         senderId: currentUser?._id || 'emp_001',
-        senderName: currentUser?.name || 'Avinash',
+        senderName: currentUser?.name || 'Employee',
         senderAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
         message: messageText,
         timestamp: new Date().toISOString(),
@@ -521,7 +726,7 @@ export const CRMProvider = ({ children }) => {
     const newMsg = {
       id: `msg_${Date.now()}`,
       senderId: currentUser?._id || 'emp_001',
-      senderName: currentUser?.name || 'Avinash',
+      senderName: currentUser?.name || 'Employee',
       text: text.trim(),
       timestamp: timeStr,
       isOutgoing: true
@@ -587,7 +792,7 @@ export const CRMProvider = ({ children }) => {
         {
           id: `msg_init_${Date.now()}`,
           senderId: currentUser?._id || 'emp_001',
-          senderName: currentUser?.name || 'Avinash',
+          senderName: currentUser?.name || 'Employee',
           text: `Hi ${emp.name.split(' ')[0]}! Starting a new conversation.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isOutgoing: true
@@ -693,11 +898,11 @@ export const CRMProvider = ({ children }) => {
       phone: leadData.phone || '',
       leadType: leadData.leadType || 'Inbound Web',
       leadOwnerId: leadData.leadOwnerId || currentUser?._id || 'emp_001',
-      leadOwnerName: leadData.leadOwnerName || currentUser?.name || 'Avinash',
-      leadOwnerRole: leadData.leadOwnerRole || currentUser?.role || 'Digital Marketing Strategic',
+      leadOwnerName: leadData.leadOwnerName || currentUser?.name || 'Lead Owner',
+      leadOwnerRole: leadData.leadOwnerRole || currentUser?.role || 'Sales Lead',
       leadOwnerAvatar: leadData.leadOwnerAvatar || currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
       createdById: currentUser?._id || 'emp_001',
-      createdByName: currentUser?.name || 'Avinash',
+      createdByName: currentUser?.name || 'Employee',
       createdByRole: currentUser?.role || 'Senior',
       createdByAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
       startDate: leadData.startDate || now.toISOString().split('T')[0],
@@ -747,7 +952,7 @@ export const CRMProvider = ({ children }) => {
       saveCollection(KEYS.LEADS, currentList);
       setLeads([...currentList]);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEADS } }));
-      
+
       if (status === 'converted' && prevStatus !== 'converted') {
         addToast(`🎉 Awesome! Lead marked as Converted (Won Deal)!`, 'success');
       } else {
@@ -784,11 +989,11 @@ export const CRMProvider = ({ children }) => {
         phone: item.phone || item.phoneNumber || '',
         leadType: item.leadType || item.category || 'Inbound Web',
         leadOwnerId: item.leadOwnerId || currentUser?._id || 'emp_001',
-        leadOwnerName: item.leadOwnerName || currentUser?.name || 'Avinash',
-        leadOwnerRole: item.leadOwnerRole || currentUser?.role || 'Digital Marketing Strategic',
+        leadOwnerName: item.leadOwnerName || currentUser?.name || 'Lead Owner',
+        leadOwnerRole: item.leadOwnerRole || currentUser?.role || 'Sales Lead',
         leadOwnerAvatar: item.leadOwnerAvatar || currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
         createdById: currentUser?._id || 'emp_001',
-        createdByName: currentUser?.name || 'Avinash',
+        createdByName: currentUser?.name || 'Employee',
         createdByRole: currentUser?.role || 'Senior',
         createdByAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
         startDate: item.startDate || now.toISOString().split('T')[0],
@@ -953,6 +1158,8 @@ export const CRMProvider = ({ children }) => {
       deleteEvent,
       computedBirthdays,
       birthdays: computedBirthdays, // Auto-computed dynamic birthdays from employee DOB
+      computedAnniversaries,
+      anniversaries: computedAnniversaries, // Auto-computed work anniversaries from employee joiningDate
 
       conversations,
       activeConversationId,
@@ -990,7 +1197,8 @@ export const CRMProvider = ({ children }) => {
       updateUserSettings,
 
       wfhEmployees,
-      weeklyTimeLogs,
+      weeklyTimeLogs: computedWeeklyTimeLogs,
+      computedWeeklyTimeLogs,
       darkMode,
       toggleDarkMode,
       updateUserProfile

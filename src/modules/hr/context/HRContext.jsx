@@ -132,23 +132,29 @@ export const HRProvider = ({ children }) => {
     }
   };
 
-  const updateLeaveStatus = async (leaveId, status) => {
+  const updateLeaveStatus = async (leaveId, status, rejectionReason = '') => {
     try {
       const approver = currentUser?.name || 'HR Admin';
-      await hrService.updateLeaveStatus(leaveId, status, approver);
+      await hrService.updateLeaveStatus(leaveId, status, approver, rejectionReason);
 
       // Instant React memory update
       setLeaves(prev => (prev || []).map(l => {
         if (l._id === leaveId) {
-          return { ...l, status, approvedBy: status === 'approved' ? approver : null };
+          return {
+            ...l,
+            status,
+            approvedBy: status === 'approved' ? approver : null,
+            rejectedBy: status === 'rejected' ? approver : null,
+            rejectionReason: status === 'rejected' ? (rejectionReason || 'Declined by reviewer') : null
+          };
         }
         return l;
       }));
 
       addToast(
         status === 'approved'
-          ? `🎉 Leave approved successfully! Employee notified.`
-          : `Leave marked as ${status}`,
+          ? `🎉 Leave request approved successfully!`
+          : `Leave request has been denied.`,
         status === 'approved' ? 'success' : 'info'
       );
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_leaves' } }));

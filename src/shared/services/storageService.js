@@ -91,6 +91,18 @@ export const initStorage = () => {
   }
   if (!localStorage.getItem(KEYS.HOLIDAYS)) {
     localStorage.setItem(KEYS.HOLIDAYS, JSON.stringify(INITIAL_HOLIDAYS));
+  } else {
+    try {
+      const storedHolidays = JSON.parse(localStorage.getItem(KEYS.HOLIDAYS)) || [];
+      const storedIds = new Set(storedHolidays.map(h => h._id || h.name));
+      const missingHolidays = INITIAL_HOLIDAYS.filter(h => !storedIds.has(h._id) && !storedHolidays.some(sh => sh.name === h.name && sh.date === h.date));
+      if (missingHolidays.length > 0) {
+        const merged = [...storedHolidays, ...missingHolidays];
+        localStorage.setItem(KEYS.HOLIDAYS, JSON.stringify(merged));
+      }
+    } catch (e) {
+      console.error('Error syncing holiday database:', e);
+    }
   }
   if (!localStorage.getItem(KEYS.APPRECIATIONS)) {
     localStorage.setItem(KEYS.APPRECIATIONS, JSON.stringify(INITIAL_APPRECIATIONS));
@@ -160,4 +172,71 @@ export const saveCollection = (key, data) => {
   }
 };
 
+/**
+ * Clear all dummy tasks, projects, leads, tickets, leaves, expenses, and notices
+ * while preserving system user accounts so the user can enter fresh real data.
+ */
+export const clearAllDummyData = () => {
+  try {
+    saveCollection(KEYS.PROJECTS, []);
+    saveCollection(KEYS.TASKS, []);
+    saveCollection(KEYS.TIMESHEETS, []);
+    saveCollection(KEYS.TICKETS, []);
+    saveCollection(KEYS.NOTICES, []);
+    saveCollection(KEYS.LEADS, []);
+    saveCollection(KEYS.EXPENSES, []);
+    saveCollection(KEYS.LEAVES, []);
+    saveCollection(KEYS.WEEKLY_TIMELOGS, []);
+    
+    // Retain only primary admin, hr, and employee users or clear to clean roster
+    const primaryUsers = [
+      {
+        _id: 'emp_admin',
+        employeeCode: 'EMP-ADM-01',
+        name: 'Avinash Sharma',
+        email: 'admin@inforag.com',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120',
+        role: 'Administrator',
+        systemRole: 'admin',
+        department: 'Executive Management',
+        status: 'active',
+        isCurrentUser: true,
+        leaveBalance: { casual: 12, sick: 10, earned: 18, maternity: 0 }
+      },
+      {
+        _id: 'emp_hr',
+        employeeCode: 'EMP-HR-02',
+        name: 'Pooja Sharma',
+        email: 'hr@inforag.com',
+        avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120',
+        role: 'HR Manager',
+        systemRole: 'hr',
+        department: 'Human Resources',
+        status: 'active',
+        leaveBalance: { casual: 10, sick: 8, earned: 15, maternity: 0 }
+      },
+      {
+        _id: 'emp_employee',
+        employeeCode: 'EMP-DEV-03',
+        name: 'Rahul Verma',
+        email: 'employee@inforag.com',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120',
+        role: 'Senior Developer',
+        systemRole: 'team_member',
+        department: 'Engineering',
+        status: 'active',
+        leaveBalance: { casual: 8, sick: 6, earned: 12, maternity: 0 }
+      }
+    ];
+    saveCollection(KEYS.EMPLOYEES, primaryUsers);
+
+    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'all' } }));
+    return true;
+  } catch (err) {
+    console.error('Error clearing dummy data:', err);
+    return false;
+  }
+};
+
 export { KEYS };
+

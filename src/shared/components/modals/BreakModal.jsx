@@ -1,9 +1,11 @@
 /**
  * @file BreakModal.jsx
- * @description Enterprise Break Management & History Reminder Engine:
- * 1. Choose break categories with real-time timers.
- * 2. Active break monitoring with live ticking clock and overtime reminder alerts.
- * 3. Complete Break History Timeline Log tracking every break with start/end times and durations.
+ * @description Enterprise Break Management & Custom Duration Engine:
+ * 1. Employee self-decided break duration (presets + custom minute inputs + quick time pills).
+ * 2. Active break monitoring with live ticking clock, remaining countdown, and overtime reminder alerts.
+ * 3. Break extension controls (+5m, +10m).
+ * 4. Automatic task timer & shift work timer pausing while on break.
+ * 5. Complete Break History Timeline Log tracking every break with start/end times and durations.
  */
 
 import React, { useState } from 'react';
@@ -22,30 +24,37 @@ import {
   Calendar,
   CheckCircle2,
   TrendingUp,
-  Heart
+  Heart,
+  Plus
 } from 'lucide-react';
 import { useTimer } from '../../context/TimerContext';
 
-const BREAK_OPTIONS = [
-  { id: 'Lunch Break', label: 'Lunch Break', icon: Utensils, duration: '45-60 min', color: '#ea580c', bg: '#fff7ed', limitText: '45 min standard' },
-  { id: 'Tea / Coffee Break', label: 'Tea / Coffee Break', icon: Coffee, duration: '15-20 min', color: '#0284c7', bg: '#f0f9ff', limitText: '15 min standard' },
-  { id: 'Quick Rest / Stretch', label: 'Quick Rest / Stretch', icon: Clock, duration: '5-10 min', color: '#16a34a', bg: '#f0fdf4', limitText: '10 min standard' },
-  { id: 'Personal Break', label: 'Personal Break', icon: User, duration: '10-15 min', color: '#9333ea', bg: '#faf5ff', limitText: '15 min standard' },
-  { id: 'Wellness & Prayer', label: 'Wellness & Prayer', icon: Heart, duration: '15-20 min', color: '#db2777', bg: '#fdf2f8', limitText: '15 min standard' }
+const PRESET_BREAKS = [
+  { id: 'Tea / Coffee Break', label: 'Tea / Coffee Break', icon: Coffee, defaultMinutes: 15, color: '#0284c7', bg: '#f0f9ff' },
+  { id: 'Lunch Break', label: 'Lunch Break', icon: Utensils, defaultMinutes: 45, color: '#ea580c', bg: '#fff7ed' },
+  { id: 'Quick Rest / Stretch', label: 'Quick Rest / Stretch', icon: Clock, defaultMinutes: 10, color: '#16a34a', bg: '#f0fdf4' },
+  { id: 'Personal Break', label: 'Personal Break', icon: User, defaultMinutes: 15, color: '#9333ea', bg: '#faf5ff' },
+  { id: 'Wellness & Prayer', label: 'Wellness & Prayer', icon: Heart, defaultMinutes: 20, color: '#db2777', bg: '#fdf2f8' }
 ];
+
+const DURATION_PILLS = [5, 10, 15, 20, 30, 45, 60];
 
 export const BreakModal = ({ isOpen, onClose }) => {
   const {
     startBreak,
     isOnBreak,
     resumeFromBreak,
+    extendBreak,
     breakType,
+    customBreakLimitMinutes,
     currentBreakTimeString,
     currentBreakSeconds,
     breakStartTime,
     activeBreakLimit,
     activeBreakProgress,
     isBreakOverdue,
+    breakRemainingSeconds,
+    breakRemainingTimeString,
     breakHistory,
     breakDurationText,
     workDurationText,
@@ -54,12 +63,18 @@ export const BreakModal = ({ isOpen, onClose }) => {
   } = useTimer();
 
   const [activeTab, setActiveTab] = useState(isOnBreak ? 'active' : 'choose');
+  const [selectedType, setSelectedType] = useState('Tea / Coffee Break');
+  const [customMinutes, setCustomMinutes] = useState(15);
   const [breakNotes, setBreakNotes] = useState('');
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [customBreakTitle, setCustomBreakTitle] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSelectBreak = (type) => {
-    startBreak(type, breakNotes);
+  const handleStartBreak = () => {
+    const finalType = isCustomMode ? (customBreakTitle.trim() || 'Custom Break') : selectedType;
+    const finalMinutes = Number(customMinutes) > 0 ? Number(customMinutes) : 15;
+    startBreak(finalType, breakNotes, finalMinutes);
     setBreakNotes('');
     onClose();
   };
@@ -91,8 +106,8 @@ export const BreakModal = ({ isOpen, onClose }) => {
         backgroundColor: '#ffffff',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '560px',
-        maxHeight: '90vh',
+        maxWidth: '580px',
+        maxHeight: '92vh',
         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15)',
         border: '1px solid #e2e8f0',
         display: 'flex',
@@ -109,12 +124,12 @@ export const BreakModal = ({ isOpen, onClose }) => {
           backgroundColor: '#f8fafc'
         }}>
           <div>
-            <h2 style={{ fontSize: '16.5px', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Coffee size={20} color="#ea580c" />
-              <span>Break Management & Reminder Engine</span>
+              <span>Break Time & Duration Manager</span>
             </h2>
             <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>
-              Pause work clock, monitor break duration, and review your break history logs.
+              Choose your break time. Task and shift timers pause automatically during breaks.
             </p>
           </div>
           <button
@@ -164,7 +179,7 @@ export const BreakModal = ({ isOpen, onClose }) => {
             }}
           >
             <Coffee size={15} />
-            <span>{isOnBreak ? 'Active Break Timer' : 'Take a Break'}</span>
+            <span>{isOnBreak ? 'Active Break Status' : 'Take a Break'}</span>
           </button>
 
           <button
@@ -193,9 +208,9 @@ export const BreakModal = ({ isOpen, onClose }) => {
         </div>
 
         {/* Content Body */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
-          {/* TAB 1: Take / Monitor Break */}
+          {/* TAB 1: Take Break / Monitor Active Break */}
           {activeTab === 'choose' && (
             isOnBreak ? (
               /* Active Break Live Status */
@@ -207,45 +222,66 @@ export const BreakModal = ({ isOpen, onClose }) => {
                   border: isBreakOverdue ? '2px solid #f87171' : '1.5px solid #fde68a',
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  gap: '8px'
                 }}>
                   <div style={{
-                    width: '64px',
-                    height: '64px',
+                    width: '60px',
+                    height: '60px',
                     borderRadius: '50%',
                     backgroundColor: isBreakOverdue ? '#fee2e2' : '#fef3c7',
                     color: isBreakOverdue ? '#dc2626' : '#d97706',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: '12px'
+                    justifyContent: 'center'
                   }}>
-                    <Coffee size={32} />
+                    <Coffee size={30} />
                   </div>
 
-                  <span style={{ fontSize: '11px', fontWeight: '800', color: isBreakOverdue ? '#b91c1c' : '#b45309', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: '800', color: isBreakOverdue ? '#b91c1c' : '#b45309', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Break in Progress • Started at {breakStartTime || 'Recent'}
                   </span>
 
-                  <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: '4px 0 6px 0' }}>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: '0' }}>
                     {breakType}
                   </h3>
 
+                  {/* Chosen Target Info */}
+                  <div style={{ fontSize: '12.5px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>Target Duration: <strong>{customBreakLimitMinutes || 15} minutes</strong></span>
+                    <span>•</span>
+                    <span style={{ color: isBreakOverdue ? '#dc2626' : '#16a34a', fontWeight: '700' }}>
+                      {isBreakOverdue ? 'Overdue' : `${breakRemainingTimeString} remaining`}
+                    </span>
+                  </div>
+
                   {/* Live Break Timer */}
                   <div style={{
-                    fontSize: '32px',
+                    fontSize: '36px',
                     fontWeight: '800',
                     fontFamily: 'JetBrains Mono, monospace',
                     color: isBreakOverdue ? '#dc2626' : '#ea580c',
-                    letterSpacing: '0.05em'
+                    letterSpacing: '0.05em',
+                    margin: '6px 0'
                   }}>
                     {currentBreakTimeString}
                   </div>
 
-                  {/* Overtime Reminder Alert */}
+                  {/* Progress Bar */}
+                  <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${activeBreakProgress}%`,
+                      backgroundColor: isBreakOverdue ? '#ef4444' : '#f59e0b',
+                      borderRadius: '4px',
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+
+                  {/* Overtime Alert */}
                   {isBreakOverdue ? (
                     <div style={{
-                      marginTop: '12px',
+                      marginTop: '6px',
                       padding: '8px 14px',
                       borderRadius: '8px',
                       backgroundColor: '#fee2e2',
@@ -257,13 +293,50 @@ export const BreakModal = ({ isOpen, onClose }) => {
                       gap: '6px'
                     }}>
                       <AlertTriangle size={15} />
-                      <span>⚠️ Reminder: You have exceeded the typical {Math.floor(activeBreakLimit / 60)}m break duration.</span>
+                      <span>⚠️ You have passed your {customBreakLimitMinutes}m limit. Click Resume when ready!</span>
                     </div>
                   ) : (
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
-                      Recommended limit: {Math.floor(activeBreakLimit / 60)} mins
+                    <div style={{ fontSize: '11.5px', color: '#64748b' }}>
+                      ⏸️ Task & shift timers are paused.
                     </div>
                   )}
+
+                  {/* Extend Break Buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>Need more time?</span>
+                    <button
+                      type="button"
+                      onClick={() => extendBreak(5)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      +5 mins
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => extendBreak(10)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      +10 mins
+                    </button>
+                  </div>
                 </div>
 
                 <button
@@ -276,7 +349,7 @@ export const BreakModal = ({ isOpen, onClose }) => {
                     backgroundColor: '#16a34a',
                     color: '#ffffff',
                     border: 'none',
-                    padding: '12px 24px',
+                    padding: '13px 24px',
                     borderRadius: '10px',
                     fontSize: '14.5px',
                     fontWeight: '700',
@@ -293,83 +366,206 @@ export const BreakModal = ({ isOpen, onClose }) => {
                 </button>
               </div>
             ) : (
-              /* Select Break Option */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#334155' }}>
-                  Select Break Category
-                </span>
+              /* Configure & Start Break (Decide own time) */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                
+                {/* 1. Category Selection */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '8px' }}>
+                    1. Choose Break Category
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {PRESET_BREAKS.map(opt => {
+                      const Icon = opt.icon;
+                      const isSelected = !isCustomMode && selectedType === opt.id;
+                      return (
+                        <div
+                          key={opt.id}
+                          onClick={() => {
+                            setIsCustomMode(false);
+                            setSelectedType(opt.id);
+                            setCustomMinutes(opt.defaultMinutes);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            border: isSelected ? `2px solid ${opt.color}` : '1px solid #e2e8f0',
+                            backgroundColor: isSelected ? opt.bg : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            backgroundColor: opt.bg,
+                            color: opt.color,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            <Icon size={16} />
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '12.5px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {opt.label}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                              Default: {opt.defaultMinutes}m
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
 
-                {BREAK_OPTIONS.map(opt => {
-                  const Icon = opt.icon;
-                  return (
+                    {/* Custom Break Card */}
                     <div
-                      key={opt.id}
-                      onClick={() => handleSelectBreak(opt.id)}
+                      onClick={() => {
+                        setIsCustomMode(true);
+                        setCustomBreakTitle('Personal Break');
+                      }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '12px 16px',
+                        gap: '10px',
+                        padding: '10px 12px',
                         borderRadius: '10px',
-                        border: '1px solid #e2e8f0',
-                        backgroundColor: '#ffffff',
+                        border: isCustomMode ? '2px solid #2563eb' : '1px dashed #cbd5e1',
+                        backgroundColor: isCustomMode ? '#eff6ff' : '#f8fafc',
                         cursor: 'pointer',
                         transition: 'all 0.15s ease'
                       }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.backgroundColor = opt.bg;
-                        e.currentTarget.style.borderColor = opt.color;
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.backgroundColor = '#ffffff';
-                        e.currentTarget.style.borderColor = '#e2e8f0';
-                      }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                          width: '38px',
-                          height: '38px',
-                          borderRadius: '8px',
-                          backgroundColor: opt.bg,
-                          color: opt.color,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          <Icon size={18} />
+                      <div style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        backgroundColor: '#eff6ff',
+                        color: '#2563eb',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        <Plus size={16} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '12.5px', fontWeight: '700', color: '#0f172a' }}>
+                          Custom Break
                         </div>
-                        <div>
-                          <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#0f172a' }}>
-                            {opt.label}
-                          </div>
-                          <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                            Typical: {opt.duration} • <span style={{ color: opt.color, fontWeight: '600' }}>{opt.limitText}</span>
-                          </div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          Set own time & name
                         </div>
                       </div>
-                      <span style={{
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        color: opt.color,
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        backgroundColor: opt.bg,
-                        border: `1px solid ${opt.bg}`
-                      }}>
-                        Start Break →
-                      </span>
                     </div>
-                  );
-                })}
+                  </div>
+                </div>
 
-                {/* Optional Note */}
-                <div style={{ marginTop: '6px' }}>
+                {/* If Custom Mode, custom title input */}
+                {isCustomMode && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                      Break Reason / Title
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Doctor Visit, Quick Snack, Call with Family..."
+                      value={customBreakTitle}
+                      onChange={e => setCustomBreakTitle(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        border: '1.5px solid #3b82f6',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* 2. Employee Duration Selection (Decide Own Break Time) */}
+                <div style={{
+                  padding: '14px',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <label style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                      2. How much break time do you need?
+                    </label>
+                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '6px' }}>
+                      {customMinutes} Minutes Chosen
+                    </span>
+                  </div>
+
+                  {/* Quick Pills */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {DURATION_PILLS.map(mins => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setCustomMinutes(mins)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: Number(customMinutes) === mins ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                          backgroundColor: Number(customMinutes) === mins ? '#0284c7' : '#ffffff',
+                          color: Number(customMinutes) === mins ? '#ffffff' : '#334155',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {mins} min
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Or Manual Number Input */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>Or enter exact minutes:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="180"
+                      value={customMinutes}
+                      onChange={e => setCustomMinutes(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      style={{
+                        width: '80px',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        color: '#0f172a',
+                        textAlign: 'center',
+                        outline: 'none',
+                        backgroundColor: '#ffffff'
+                      }}
+                    />
+                    <span style={{ fontSize: '12.5px', color: '#475569', fontWeight: '600' }}>Minutes</span>
+                  </div>
+                </div>
+
+                {/* 3. Optional Quick Note */}
+                <div>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
                     Quick Note (Optional)
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Grabbing coffee with engineering lead..."
+                    placeholder="e.g. Taking quick tea break, will return in 15 mins..."
                     value={breakNotes}
                     onChange={e => setBreakNotes(e.target.value)}
                     style={{
@@ -381,6 +577,37 @@ export const BreakModal = ({ isOpen, onClose }) => {
                       outline: 'none'
                     }}
                   />
+                </div>
+
+                {/* Start Break Button */}
+                <button
+                  type="button"
+                  onClick={handleStartBreak}
+                  style={{
+                    backgroundColor: '#ea580c',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '12px 20px',
+                    borderRadius: '10px',
+                    fontSize: '14.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    boxShadow: '0 3px 10px rgba(234, 88, 12, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = '#c2410c'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = '#ea580c'}
+                >
+                  <Coffee size={17} />
+                  <span>Start Break ({customMinutes} min) ☕</span>
+                </button>
+
+                <div style={{ fontSize: '11.5px', color: '#94a3b8', textAlign: 'center' }}>
+                  ℹ️ Active task timer and working shift timer will pause automatically.
                 </div>
               </div>
             )
@@ -464,7 +691,7 @@ export const BreakModal = ({ isOpen, onClose }) => {
                           </div>
                           <div>
                             <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                              {item.type}
+                              {item.type} {item.targetMinutes ? `(${item.targetMinutes}m target)` : ''}
                             </div>
                             <div style={{ fontSize: '11px', color: '#64748b' }}>
                               {item.startTime} ➔ {item.endTime} ({item.durationText})

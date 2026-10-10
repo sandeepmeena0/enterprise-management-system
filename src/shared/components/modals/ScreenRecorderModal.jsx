@@ -57,7 +57,7 @@ export const ScreenRecorderModal = ({
     
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-    const filename = `EMS_ScreenRecording_${timestamp}.webm`;
+    const filename = `EMS_CRM_WindowRecording_${timestamp}.webm`;
 
     const a = document.createElement('a');
     a.href = videoUrl || URL.createObjectURL(videoBlob);
@@ -67,7 +67,7 @@ export const ScreenRecorderModal = ({
     document.body.removeChild(a);
 
     setIsSaved(true);
-    addToast(`Recording downloaded successfully: ${filename}`, 'success');
+    addToast(`CRM recording downloaded successfully: ${filename}`, 'success');
   };
 
   const handleDiscard = () => {
@@ -140,10 +140,10 @@ export const ScreenRecorderModal = ({
             </div>
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: 0 }}>
-                Screen Recording Complete
+                CRM Window Recording Complete 🎥
               </h3>
               <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>
-                Preview your video and choose whether to save/download or discard
+                Preview your direct CRM window capture and choose whether to download or discard
               </p>
             </div>
           </div>

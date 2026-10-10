@@ -1,50 +1,56 @@
 /**
  * @file AddLeadModal.jsx
- * @description Modal form for registering a new CRM Lead with team assignment and auto-populated Created By metadata.
+ * @description Clean, easy-to-write, and responsive modal for creating and managing CRM Leads.
  */
 
 import React, { useState } from 'react';
 import {
   X,
+  Users2,
+  DollarSign,
   User,
   Building,
   Mail,
   Phone,
-  Calendar,
-  DollarSign,
-  Briefcase,
-  Layers,
-  Sparkles,
-  Check,
-  Flame,
-  FileText,
-  UserCheck
+  CheckCircle2,
+  Plus
 } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useHR } from '../../../hr/context/HRContext';
+import { useToast } from '../../../../shared/context/ToastContext';
+
+const LEAD_STAGES = [
+  { id: 'new', label: 'New Lead' },
+  { id: 'contacted', label: 'Contacted' },
+  { id: 'qualified', label: 'Qualified' },
+  { id: 'proposal', label: 'Proposal Sent' },
+  { id: 'won', label: 'Won / Closed' }
+];
+
+const LEAD_SOURCES = [
+  'Website Inquiry',
+  'LinkedIn',
+  'Referral / Partner',
+  'Cold Outreach',
+  'Google Ads',
+  'Direct Call'
+];
 
 export const AddLeadModal = ({ isOpen, onClose }) => {
   const { createLead } = useCRM();
   const { employees, currentUser } = useHR();
-
-  const now = new Date().toISOString().split('T')[0];
-  const targetEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const { addToast } = useToast();
 
   const [formData, setFormData] = useState({
     name: '',
     companyName: '',
-    contactPerson: '',
     email: '',
     phone: '',
-    leadType: 'Enterprise',
-    client: '',
-    leadOwnerId: currentUser?._id || employees[0]?._id || 'emp_001',
-    startDate: now,
-    endDate: targetEnd,
-    status: 'new',
-    priority: 'medium',
-    leadSource: 'Website Inquiry',
     dealValue: '',
+    currency: 'INR',
+    status: 'new',
+    leadSource: 'Website Inquiry',
+    assignedToId: currentUser?._id || employees[0]?._id || '',
     notes: ''
   });
 
@@ -57,49 +63,40 @@ export const AddLeadModal = ({ isOpen, onClose }) => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.name.trim() || !formData.email.trim()) {
-      alert('Please provide at least a Lead Name and Work Email');
+    if (e) e.preventDefault();
+    if (!formData.name.trim()) {
+      addToast('Please enter the contact person or lead name', 'error');
       return;
     }
 
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-      const selectedOwner = employees.find(e => e._id === formData.leadOwnerId) || currentUser;
+      const selectedAssignee = employees.find(e => e._id === formData.assignedToId) || currentUser;
 
       await createLead({
-        ...formData,
-        contactPerson: formData.contactPerson || formData.name,
-        companyName: formData.companyName || formData.client || 'Enterprise Client',
-        client: formData.client || formData.companyName || 'Enterprise Client',
-        leadOwnerId: selectedOwner?._id || 'emp_001',
-        leadOwnerName: selectedOwner?.name || 'Avinash',
-        leadOwnerRole: selectedOwner?.role || 'Senior Director',
-        leadOwnerAvatar: selectedOwner?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
-        dealValue: Number(formData.dealValue) || 0
+        name: formData.name.trim(),
+        contactPerson: formData.name.trim(),
+        companyName: formData.companyName.trim() || 'Direct Client',
+        client: formData.companyName.trim() || 'Direct Client',
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        dealValue: Number(formData.dealValue) || 0,
+        currency: formData.currency,
+        status: formData.status,
+        leadSource: formData.leadSource,
+        notes: formData.notes.trim(),
+        leadOwnerId: selectedAssignee?._id || 'emp_admin',
+        leadOwnerName: selectedAssignee?.name || 'Team Member',
+        leadOwnerRole: selectedAssignee?.role || 'Administrator',
+        leadOwnerAvatar: selectedAssignee?.avatar || '',
+        createdAt: new Date().toISOString()
       });
 
-      // Reset form
-      setFormData({
-        name: '',
-        companyName: '',
-        contactPerson: '',
-        email: '',
-        phone: '',
-        leadType: 'Enterprise',
-        client: '',
-        leadOwnerId: currentUser?._id || 'emp_001',
-        startDate: now,
-        endDate: targetEnd,
-        status: 'new',
-        priority: 'medium',
-        leadSource: 'Website Inquiry',
-        dealValue: '',
-        notes: ''
-      });
+      addToast(`Lead "${formData.name}" added to pipeline!`, 'success');
       onClose();
     } catch (err) {
-      console.error('Error creating lead:', err);
+      console.error(err);
+      addToast('Failed to create lead', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -118,349 +115,311 @@ export const AddLeadModal = ({ isOpen, onClose }) => {
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 1000,
-      padding: '20px'
+      padding: '16px'
     }}>
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
+        borderRadius: '20px',
         width: '100%',
-        maxWidth: '680px',
-        maxHeight: '90vh',
-        overflowY: 'auto',
+        maxWidth: '700px',
+        maxHeight: '92vh',
+        display: 'flex',
+        flexDirection: 'column',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         border: '1px solid #e2e8f0',
-        display: 'flex',
-        flexDirection: 'column'
+        overflow: 'hidden'
       }}>
         {/* Header */}
         <div style={{
-          padding: '20px 24px',
+          padding: '18px 24px',
           borderBottom: '1px solid #f1f5f9',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          backgroundColor: '#f8fafc',
-          borderTopLeftRadius: '16px',
-          borderTopRightRadius: '16px'
+          backgroundColor: '#f8fafc'
         }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                backgroundColor: '#eff6ff',
-                color: '#2563eb',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Sparkles size={18} />
-              </div>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Add New Lead
-              </h2>
-            </div>
-            <p style={{ fontSize: '12.5px', color: '#64748b', margin: '4px 0 0 40px' }}>
-              Register a new client prospect, assign team owner, and set pipeline parameters
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              width: '32px',
-              height: '32px',
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              backgroundColor: '#eff6ff',
+              color: '#2563eb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#64748b',
-              cursor: 'pointer'
+              border: '1px solid #bfdbfe'
+            }}>
+              <Users2 size={20} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Add New CRM Lead
+              </h2>
+              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                Capture new client prospect and deal opportunity
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: '#94a3b8',
+              padding: '6px',
+              borderRadius: '8px'
             }}
           >
-            <X size={16} />
+            <X size={20} />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* Row 1: Lead Name & Company Name */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        <form onSubmit={handleSubmit} style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {/* Contact Name & Company */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Lead / Deal Name *
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '6px' }}>
+                Contact Person / Lead Name <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input
                 type="text"
-                required
-                placeholder="e.g. Uli Kuenzel or Cloud ERP Deal"
                 value={formData.name}
-                onChange={e => handleChange('name', e.target.value)}
-                style={inputStyle}
+                onChange={(e) => handleChange('name', e.target.value)}
+                placeholder="e.g. Vikram Singhania"
+                autoFocus
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '14px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  backgroundColor: '#ffffff'
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = '#2563eb'}
+                onBlur={e => e.currentTarget.style.borderColor = '#cbd5e1'}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Company / Client Name *
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                Company Name
               </label>
               <input
                 type="text"
-                placeholder="e.g. Kuenzel Digital GmbH"
                 value={formData.companyName}
-                onChange={e => {
-                  handleChange('companyName', e.target.value);
-                  handleChange('client', e.target.value);
+                onChange={(e) => handleChange('companyName', e.target.value)}
+                placeholder="e.g. Apex Global Solutions"
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '14px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  backgroundColor: '#ffffff'
                 }}
-                style={inputStyle}
               />
             </div>
           </div>
 
-          {/* Row 2: Contact Person, Work Email & Phone */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+          {/* Email & Phone */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Contact Person
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Uli Kuenzel"
-                value={formData.contactPerson}
-                onChange={e => handleChange('contactPerson', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Work Email *
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                Email Address
               </label>
               <input
                 type="email"
-                required
-                placeholder="client@company.com"
                 value={formData.email}
-                onChange={e => handleChange('email', e.target.value)}
-                style={inputStyle}
+                onChange={(e) => handleChange('email', e.target.value)}
+                placeholder="e.g. vikram@apexsolutions.com"
+                style={{
+                  width: '100%',
+                  padding: '11px 12px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13.5px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  backgroundColor: '#ffffff'
+                }}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                 Phone Number
               </label>
               <input
                 type="tel"
-                placeholder="+49 170 555 4321"
                 value={formData.phone}
-                onChange={e => handleChange('phone', e.target.value)}
-                style={inputStyle}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                placeholder="e.g. +91 98765 43210"
+                style={{
+                  width: '100%',
+                  padding: '11px 12px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13.5px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  backgroundColor: '#ffffff'
+                }}
               />
             </div>
           </div>
 
-          {/* Row 3: Lead Owner (Selectable from team) & Created By (Auto recorded) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          {/* Deal Value, Stage & Lead Source */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Lead Owner (CRM Team Member) *
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
+                Deal Value (INR ₹)
+              </label>
+              <input
+                type="number"
+                value={formData.dealValue}
+                onChange={(e) => handleChange('dealValue', e.target.value)}
+                placeholder="100000"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
+                Pipeline Stage
               </label>
               <select
-                value={formData.leadOwnerId}
-                onChange={e => handleChange('leadOwnerId', e.target.value)}
-                style={selectStyle}
+                value={formData.status}
+                onChange={(e) => handleChange('status', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
               >
-                {employees.map(emp => (
-                  <option key={emp._id} value={emp._id}>
-                    {emp.name} — {emp.role} ({emp.department})
-                  </option>
+                {LEAD_STAGES.map(s => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
                 ))}
               </select>
             </div>
 
-            {/* Created By — Automatically recorded info badge */}
             <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Created By (Auto Recorded)
-              </label>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 12px',
-                backgroundColor: '#f1f5f9',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0'
-              }}>
-                <UserCheck size={16} color="#16a34a" />
-                <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                  {currentUser?.name || 'Avinash'}
-                </span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>
-                  ({currentUser?.role || 'Logged-in User'})
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Row 4: Lead Type, Status, Priority, Deal Value */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Lead Type / Category
-              </label>
-              <select
-                value={formData.leadType}
-                onChange={e => handleChange('leadType', e.target.value)}
-                style={selectStyle}
-              >
-                <option value="Enterprise">Enterprise</option>
-                <option value="Inbound Web">Inbound Web</option>
-                <option value="Referral">Referral</option>
-                <option value="Outbound Sales">Outbound Sales</option>
-                <option value="Partner">Partner</option>
-                <option value="Cold Campaign">Cold Campaign</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Lead Status
-              </label>
-              <select
-                value={formData.status}
-                onChange={e => handleChange('status', e.target.value)}
-                style={selectStyle}
-              >
-                <option value="new">New Inquiry</option>
-                <option value="active">Active Contact</option>
-                <option value="in_progress">In Progress</option>
-                <option value="negotiation">In Negotiation</option>
-                <option value="converted">Converted (Won)</option>
-                <option value="lost">Lost</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Priority Level
-              </label>
-              <select
-                value={formData.priority}
-                onChange={e => handleChange('priority', e.target.value)}
-                style={selectStyle}
-              >
-                <option value="urgent">⚡ Urgent</option>
-                <option value="high">🔥 High</option>
-                <option value="medium">⚖️ Medium</option>
-                <option value="low">💤 Low</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Deal Value (₹)
-              </label>
-              <input
-                type="number"
-                placeholder="e.g. 500000"
-                value={formData.dealValue}
-                onChange={e => handleChange('dealValue', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-
-          {/* Row 5: Start Date, Target End Date & Lead Source */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Start / Inquiry Date
-              </label>
-              <input
-                type="date"
-                value={formData.startDate}
-                onChange={e => handleChange('startDate', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                Target Close / Deadline
-              </label>
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={e => handleChange('endDate', e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#475569', marginBottom: '4px' }}>
                 Lead Source
               </label>
               <select
                 value={formData.leadSource}
-                onChange={e => handleChange('leadSource', e.target.value)}
-                style={selectStyle}
+                onChange={(e) => handleChange('leadSource', e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
               >
-                <option value="Website Inquiry">Website Inquiry</option>
-                <option value="LinkedIn Campaign">LinkedIn Campaign</option>
-                <option value="Executive Referral">Executive Referral</option>
-                <option value="Cold Outreach">Cold Outreach</option>
-                <option value="Trade Show / Conference">Trade Show / Conference</option>
-                <option value="Google Search Ads">Google Search Ads</option>
-                <option value="Strategic Partnership">Strategic Partnership</option>
+                {LEAD_SOURCES.map(src => (
+                  <option key={src} value={src}>{src}</option>
+                ))}
               </select>
             </div>
           </div>
 
-          {/* Row 6: Description & Requirements */}
+          {/* Assigned Owner */}
           <div>
-            <label style={{ display: 'block', fontSize: '12.5px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-              Notes & Deal Requirements
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              Assign Lead Owner
+            </label>
+            <select
+              value={formData.assignedToId}
+              onChange={(e) => handleChange('assignedToId', e.target.value)}
+              style={{
+                width: '100%',
+                padding: '11px 12px',
+                borderRadius: '10px',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '13.5px',
+                color: '#0f172a',
+                outline: 'none',
+                backgroundColor: '#ffffff'
+              }}
+            >
+              {employees.map(emp => (
+                <option key={emp._id} value={emp._id}>
+                  {emp.name} — {emp.role}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+              Lead Requirements & Notes
             </label>
             <textarea
               rows={3}
-              placeholder="Enter client requirements, budget details, communication history, or meeting notes..."
               value={formData.notes}
-              onChange={e => handleChange('notes', e.target.value)}
+              onChange={(e) => handleChange('notes', e.target.value)}
+              placeholder="Enter client background, initial discussion notes, key decision makers..."
               style={{
-                ...inputStyle,
-                height: 'auto',
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '13.5px',
+                lineHeight: '1.5',
+                color: '#0f172a',
+                outline: 'none',
                 resize: 'vertical',
                 fontFamily: 'inherit'
               }}
+              onFocus={e => e.currentTarget.style.borderColor = '#2563eb'}
+              onBlur={e => e.currentTarget.style.borderColor = '#cbd5e1'}
             />
           </div>
 
           {/* Footer Actions */}
           <div style={{
+            paddingTop: '16px',
+            borderTop: '1px solid #f1f5f9',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            gap: '10px',
-            paddingTop: '16px',
-            borderTop: '1px solid #f1f5f9',
-            marginTop: '4px'
+            gap: '10px'
           }}>
             <button
               type="button"
               onClick={onClose}
-              disabled={submitting}
               style={{
-                padding: '9px 18px',
-                borderRadius: '8px',
+                padding: '10px 18px',
+                borderRadius: '10px',
                 border: '1px solid #cbd5e1',
                 backgroundColor: '#ffffff',
                 color: '#475569',
-                fontSize: '13px',
+                fontSize: '13.5px',
                 fontWeight: '600',
                 cursor: 'pointer'
               }}
@@ -472,22 +431,22 @@ export const AddLeadModal = ({ isOpen, onClose }) => {
               type="submit"
               disabled={submitting}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 22px',
-                borderRadius: '8px',
+                padding: '10px 22px',
+                borderRadius: '10px',
                 border: 'none',
-                backgroundColor: '#2563eb',
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
                 color: '#ffffff',
-                fontSize: '13px',
+                fontSize: '13.5px',
                 fontWeight: '700',
                 cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(37,99,235,0.35)'
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
-              <Check size={16} />
-              {submitting ? 'Saving Lead...' : 'Create Lead'}
+              <CheckCircle2 size={16} />
+              {submitting ? 'Adding Lead...' : 'Add Lead'}
             </button>
           </div>
         </form>
@@ -496,27 +455,4 @@ export const AddLeadModal = ({ isOpen, onClose }) => {
   );
 };
 
-const inputStyle = {
-  width: '100%',
-  height: '38px',
-  padding: '0 12px',
-  borderRadius: '8px',
-  border: '1px solid #cbd5e1',
-  fontSize: '13px',
-  outline: 'none',
-  backgroundColor: '#ffffff',
-  color: '#0f172a'
-};
-
-const selectStyle = {
-  width: '100%',
-  height: '38px',
-  padding: '0 10px',
-  borderRadius: '8px',
-  border: '1px solid #cbd5e1',
-  fontSize: '13px',
-  outline: 'none',
-  backgroundColor: '#ffffff',
-  color: '#0f172a',
-  cursor: 'pointer'
-};
+export default AddLeadModal;

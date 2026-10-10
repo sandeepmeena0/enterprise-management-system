@@ -99,9 +99,9 @@ export const LeadsKPIOverview = ({ leads = [] }) => {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: '14px',
-      marginBottom: '20px'
+      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+      gap: '10px',
+      marginBottom: '12px'
     }}>
       {kpis.map((kpi, idx) => {
         const Icon = kpi.icon;
@@ -110,27 +110,26 @@ export const LeadsKPIOverview = ({ leads = [] }) => {
             key={idx}
             style={{
               backgroundColor: '#ffffff',
-              borderRadius: '12px',
-              padding: '16px 18px',
+              borderRadius: '10px',
+              padding: '10px 14px',
               border: '1px solid #e2e8f0',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'space-between',
-              gap: '10px',
+              gap: '6px',
               position: 'relative',
-              overflow: 'hidden',
-              transition: 'transform 0.15s, box-shadow 0.15s'
+              overflow: 'hidden'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '12.5px', fontWeight: '600', color: '#64748b' }}>
+              <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
                 {kpi.title}
               </span>
               <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
                 backgroundColor: kpi.bgColor,
                 color: kpi.color,
                 display: 'flex',
@@ -138,15 +137,15 @@ export const LeadsKPIOverview = ({ leads = [] }) => {
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Icon size={16} />
+                <Icon size={14} />
               </div>
             </div>
 
             <div>
-              <div style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1 }}>
+              <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
                 {kpi.value}
               </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px', fontWeight: '500' }}>
+              <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '3px', fontWeight: '500' }}>
                 {kpi.subtext}
               </div>
             </div>

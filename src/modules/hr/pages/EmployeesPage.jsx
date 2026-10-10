@@ -109,7 +109,7 @@ export const EmployeesPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', paddingBottom: '30px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingBottom: '24px' }}>
       
       {/* ── Page Header & Quick RBAC Bar ── */}
       <div style={{
@@ -117,58 +117,58 @@ export const EmployeesPage = () => {
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '16px',
+        gap: '10px',
         backgroundColor: '#ffffff',
-        padding: '20px 24px',
-        borderRadius: '16px',
+        padding: '12px 16px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              backgroundColor: '#eff6ff',
-              color: '#2563eb',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Users size={20} />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Employees & Role Management
-              </h1>
-              <p style={{ fontSize: '12.5px', color: '#64748b', margin: '2px 0 0 0' }}>
-                Total {employees?.length || 0} active employees. Change employee roles, promote posts, or edit full profiles.
-              </p>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            backgroundColor: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Users size={17} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', margin: 0, lineHeight: '1.2' }}>
+              Employees & Role Management
+            </h1>
+            <p style={{ fontSize: '11.5px', color: '#64748b', margin: '2px 0 0 0' }}>
+              Total <strong style={{ color: '#2563eb' }}>{employees?.length || 0}</strong> active employees • Manage roles, promotions & profiles.
+            </p>
           </div>
         </div>
 
         {/* Header Action Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={() => navigate('/settings')}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '9px 14px',
-              borderRadius: '8px',
+              gap: '5px',
+              padding: '6px 11px',
+              borderRadius: '6px',
               backgroundColor: '#f8fafc',
               color: '#334155',
               border: '1px solid #cbd5e1',
-              fontSize: '13px',
+              fontSize: '12px',
               fontWeight: '600',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              height: '30px'
             }}
             title="Configure RBAC Roles & Custom Designations"
           >
-            <ShieldCheck size={16} color="#2563eb" />
+            <ShieldCheck size={14} color="#2563eb" />
             <span>Roles & RBAC Matrix</span>
           </button>
 
@@ -177,91 +177,92 @@ export const EmployeesPage = () => {
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '6px',
-              padding: '9px 16px',
-              borderRadius: '8px',
+              gap: '5px',
+              padding: '6px 12px',
+              borderRadius: '6px',
               backgroundColor: '#2563eb',
               color: '#ffffff',
               border: 'none',
-              fontSize: '13px',
+              fontSize: '12px',
               fontWeight: '700',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(37,99,235,0.25)'
+              height: '30px',
+              boxShadow: '0 1px 3px rgba(37,99,235,0.2)'
             }}
           >
-            <Plus size={16} />
+            <Plus size={14} />
             <span>Add New Employee</span>
           </button>
         </div>
       </div>
 
-      {/* ── Security Rule Explanation Card ── */}
+      {/* ── Security Rule Explanation Card (Compact) ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-        gap: '14px'
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: '10px'
       }}>
         <div style={{
-          padding: '14px 18px',
-          borderRadius: '12px',
+          padding: '8px 12px',
+          borderRadius: '8px',
           backgroundColor: '#eff6ff',
           border: '1px solid #bfdbfe',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px'
+          gap: '8px'
         }}>
-          <div style={{ fontSize: '22px' }}>👑</div>
+          <span style={{ fontSize: '15px' }}>👑</span>
           <div>
-            <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e3a8a' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>
               Super Admin Authority
             </div>
-            <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '2px' }}>
+            <div style={{ fontSize: '11px', color: '#2563eb', lineHeight: '1.2' }}>
               Can assign any role, create <strong>New Admins</strong>, HRs, Team Leads, or Custom Roles.
             </div>
           </div>
         </div>
 
         <div style={{
-          padding: '14px 18px',
-          borderRadius: '12px',
+          padding: '8px 12px',
+          borderRadius: '8px',
           backgroundColor: '#fef3c7',
           border: '1px solid #fde68a',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px'
+          gap: '8px'
         }}>
-          <div style={{ fontSize: '22px' }}>💼</div>
+          <span style={{ fontSize: '15px' }}>💼</span>
           <div>
-            <div style={{ fontSize: '13px', fontWeight: '800', color: '#92400e' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#92400e' }}>
               HR Manager Role Assignment
             </div>
-            <div style={{ fontSize: '12px', color: '#b45309', marginTop: '2px' }}>
-              Can promote Team Leads, Seniors, Juniors & Custom Roles, but <strong>CANNOT create Admins</strong>.
+            <div style={{ fontSize: '11px', color: '#b45309', lineHeight: '1.2' }}>
+              Can promote Team Leads, Seniors, Juniors & Custom Roles (cannot create Admins).
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Filters & Search Bar ── */}
+      {/* ── Filters & Search Bar (Compact) ── */}
       <div style={{
         backgroundColor: '#ffffff',
-        padding: '16px 20px',
-        borderRadius: '14px',
+        padding: '10px 14px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '280px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '260px' }}>
           <div style={{
             position: 'relative',
             flex: 1,
             display: 'flex',
             alignItems: 'center'
           }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
+            <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
             <input
               type="text"
               placeholder="Search by name, role, email, employee ID..."
@@ -269,13 +270,14 @@ export const EmployeesPage = () => {
               onChange={e => setSearch(e.target.value)}
               style={{
                 width: '100%',
-                height: '38px',
-                paddingLeft: '36px',
-                paddingRight: '12px',
-                borderRadius: '8px',
+                height: '30px',
+                paddingLeft: '30px',
+                paddingRight: '10px',
+                borderRadius: '6px',
                 border: '1px solid #cbd5e1',
-                fontSize: '13px',
-                outline: 'none'
+                fontSize: '12px',
+                outline: 'none',
+                backgroundColor: '#f8fafc'
               }}
             />
           </div>
@@ -284,11 +286,11 @@ export const EmployeesPage = () => {
             value={selectedDept}
             onChange={e => setSelectedDept(e.target.value)}
             style={{
-              height: '38px',
-              padding: '0 12px',
-              borderRadius: '8px',
+              height: '30px',
+              padding: '0 8px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
-              fontSize: '13px',
+              fontSize: '12px',
               backgroundColor: '#ffffff',
               outline: 'none'
             }}
@@ -303,11 +305,11 @@ export const EmployeesPage = () => {
             value={selectedRoleFilter}
             onChange={e => setSelectedRoleFilter(e.target.value)}
             style={{
-              height: '38px',
-              padding: '0 12px',
-              borderRadius: '8px',
+              height: '30px',
+              padding: '0 8px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
-              fontSize: '13px',
+              fontSize: '12px',
               backgroundColor: '#ffffff',
               outline: 'none'
             }}
@@ -320,36 +322,36 @@ export const EmployeesPage = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>
             Showing {filteredEmployees.length} of {employees.length} employees
           </span>
         </div>
       </div>
 
-      {/* ── Employee Directory Table ── */}
+      {/* ── Employee Directory Table (Compact Rows & Zero Wrapping) ── */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '14px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
         overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div className="table-responsive">
-          <table className="crm-table" style={{ width: '100%', margin: 0 }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                <th style={{ padding: '14px 18px', textAlign: 'left', fontSize: '12px', color: '#475569', fontWeight: '700' }}>Employee Details</th>
-                <th style={{ padding: '14px 18px', textAlign: 'left', fontSize: '12px', color: '#475569', fontWeight: '700' }}>Employee ID</th>
-                <th style={{ padding: '14px 18px', textAlign: 'left', fontSize: '12px', color: '#475569', fontWeight: '700' }}>Designation / Current Role</th>
-                <th style={{ padding: '14px 18px', textAlign: 'left', fontSize: '12px', color: '#475569', fontWeight: '700' }}>Department</th>
-                <th style={{ padding: '14px 18px', textAlign: 'left', fontSize: '12px', color: '#475569', fontWeight: '700' }}>Joining Date</th>
-                <th style={{ padding: '14px 18px', textAlign: 'right', fontSize: '12px', color: '#475569', fontWeight: '700' }}>Actions & Role Change</th>
+                <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Employee Details</th>
+                <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Employee ID</th>
+                <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Designation / Current Role</th>
+                <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Department</th>
+                <th style={{ padding: '8px 10px', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Joining Date</th>
+                <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Actions & Role Change</th>
               </tr>
             </thead>
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#64748b', fontSize: '13.5px' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: '#64748b', fontSize: '12px' }}>
                     No employees matching search criteria.
                   </td>
                 </tr>
@@ -357,46 +359,54 @@ export const EmployeesPage = () => {
                 filteredEmployees.map(emp => {
                   const badge = getRoleBadgeStyle(emp.role);
                   return (
-                    <tr key={emp._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px 18px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <tr
+                      key={emp._id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <img
                             src={emp.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(emp.name)}`}
                             alt={emp.name}
-                            style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #e2e8f0' }}
+                            style={{ width: '26px', height: '26px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #e2e8f0' }}
                           />
                           <div>
-                            <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', lineHeight: '1.2' }}>
                               <span>{emp.name}</span>
                               {emp.isCurrentUser && (
-                                <span style={{ fontSize: '9.5px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: '700' }}>
+                                <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: '700' }}>
                                   You
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '1px' }}>
+                            <div style={{ fontSize: '10.5px', color: '#64748b' }}>
                               {emp.email}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      <td style={{ padding: '14px 18px', fontWeight: '700', color: '#1e293b', fontSize: '13px' }}>
+                      <td style={{ padding: '7px 10px', fontWeight: '700', color: '#1e293b', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
                         {emp.employeeCode || '—'}
                       </td>
 
                       {/* Current Role with distinct badge */}
-                      <td style={{ padding: '14px 18px' }}>
+                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                         <span style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '5px',
-                          padding: '4px 10px',
-                          borderRadius: '8px',
+                          gap: '4px',
+                          padding: '2px 7px',
+                          borderRadius: '5px',
                           backgroundColor: badge.bg,
                           border: `1px solid ${badge.border}`,
                           color: badge.color,
-                          fontSize: '12px',
+                          fontSize: '11px',
                           fontWeight: '700'
                         }}>
                           <span>{badge.icon}</span>
@@ -404,47 +414,47 @@ export const EmployeesPage = () => {
                         </span>
                       </td>
 
-                      <td style={{ padding: '14px 18px' }}>
+                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                         <span style={{
                           backgroundColor: '#f1f5f9',
                           color: '#334155',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '11.5px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
                           fontWeight: '600'
                         }}>
                           {emp.department || 'Engineering'}
                         </span>
                       </td>
 
-                      <td style={{ padding: '14px 18px', fontSize: '12.5px', color: '#64748b' }}>
+                      <td style={{ padding: '7px 10px', fontSize: '11.5px', color: '#64748b', whiteSpace: 'nowrap' }}>
                         {emp.joiningDate || '2023-01-15'}
                       </td>
 
                       {/* Actions: Direct Role Change & Profile Edit */}
-                      <td style={{ padding: '14px 18px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                           {/* Button 1: Revise Compensation (Hike / Reduction) */}
                           <button
                             onClick={() => setSelectedSalaryEmp(emp)}
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '4px',
-                              padding: '6px 10px',
-                              borderRadius: '7px',
+                              gap: '3px',
+                              padding: '3px 7px',
+                              borderRadius: '5px',
                               backgroundColor: '#f0fdf4',
                               color: '#15803d',
-                              border: '1.5px solid #bbf7d0',
-                              fontSize: '12px',
+                              border: '1px solid #bbf7d0',
+                              fontSize: '11px',
                               fontWeight: '700',
                               cursor: 'pointer',
-                              boxShadow: '0 1px 2px rgba(22,163,74,0.08)'
+                              height: '24px'
                             }}
                             title="Revise Compensation (Hike 📈 or Deduction 📉)"
                           >
-                            <ArrowUpDown size={12} color="#16a34a" />
-                            <span>Revise Salary</span>
+                            <ArrowUpDown size={11} color="#16a34a" />
+                            <span>Salary</span>
                           </button>
 
                           {/* Button 2: Direct Role & Post Change (Promote Modal) */}
@@ -453,21 +463,21 @@ export const EmployeesPage = () => {
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '5px',
-                              padding: '6px 12px',
-                              borderRadius: '7px',
+                              gap: '3px',
+                              padding: '3px 8px',
+                              borderRadius: '5px',
                               backgroundColor: '#eff6ff',
                               color: '#1d4ed8',
-                              border: '1.5px solid #bfdbfe',
-                              fontSize: '12px',
+                              border: '1px solid #bfdbfe',
+                              fontSize: '11px',
                               fontWeight: '700',
                               cursor: 'pointer',
-                              boxShadow: '0 1px 2px rgba(37,99,235,0.08)'
+                              height: '24px'
                             }}
                             title="Promote or Change Post (Admin & HR)"
                           >
-                            <Award size={13} />
-                            <span>Change Role</span>
+                            <Award size={11} />
+                            <span>Role</span>
                           </button>
 
                           {/* Button 3: Full Profile & Role Edit */}
@@ -476,20 +486,21 @@ export const EmployeesPage = () => {
                             style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '5px',
-                              padding: '6px 10px',
-                              borderRadius: '7px',
+                              gap: '3px',
+                              padding: '3px 7px',
+                              borderRadius: '5px',
                               backgroundColor: '#f8fafc',
                               color: '#334155',
                               border: '1px solid #cbd5e1',
-                              fontSize: '12px',
+                              fontSize: '11px',
                               fontWeight: '600',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              height: '24px'
                             }}
                             title="Edit Full Profile & Designation"
                           >
-                            <User size={13} color="#0284c7" />
-                            <span>Edit Profile</span>
+                            <User size={11} color="#0284c7" />
+                            <span>Edit</span>
                           </button>
 
                           {!emp.isCurrentUser && (
@@ -501,9 +512,9 @@ export const EmployeesPage = () => {
                                 }
                               }}
                               style={{
-                                width: '30px',
-                                height: '30px',
-                                borderRadius: '6px',
+                                width: '24px',
+                                height: '24px',
+                                borderRadius: '5px',
                                 border: '1px solid #fee2e2',
                                 backgroundColor: '#fef2f2',
                                 color: '#dc2626',
@@ -514,7 +525,7 @@ export const EmployeesPage = () => {
                               }}
                               title="Delete Employee"
                             >
-                              <Trash2 size={13} />
+                              <Trash2 size={11} />
                             </button>
                           )}
                         </div>

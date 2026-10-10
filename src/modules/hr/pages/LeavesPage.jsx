@@ -20,20 +20,24 @@ import {
   Trash2
 } from 'lucide-react';
 import { useHR } from '../context/HRContext';
+import { useAuth } from '../../../shared/context/AuthContext';
 import { DateRangePicker } from '../components/common/DateRangePicker';
 import { NewLeaveModal } from '../components/leaves/NewLeaveModal';
 import { LeaveDetailModal } from '../components/leaves/LeaveDetailModal';
+import { canApproveLeaves } from '../../../shared/utils/permissionUtils';
 
 export const LeavesPage = () => {
+  const { currentUser: authUser } = useAuth();
   const {
     leaves,
     employees,
-    currentUser,
+    currentUser: hrUser,
     searchQuery,
     setSearchQuery,
     updateLeaveStatus,
     deleteLeave
   } = useHR();
+  const currentUser = authUser || hrUser;
 
   const [isNewLeaveOpen, setIsNewLeaveOpen] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState(null);
@@ -457,6 +461,7 @@ export const LeavesPage = () => {
                   <th>Duration</th>
                   <th>Leave Status</th>
                   <th>Leave Type</th>
+                  <th>Reviewer / Approver</th>
                   <th>Paid</th>
                   <th>Reason</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
@@ -491,7 +496,7 @@ export const LeavesPage = () => {
                           <div className="employee-name-group">
                             <span className="employee-name">
                               {leave.employeeName}
-                              {leave.employeeName === 'Avinash' && (
+                              {(leave.employeeName === currentUser?.name || leave.employeeId === currentUser?._id) && (
                                 <span className="its-you-pill">It's You</span>
                               )}
                             </span>
@@ -523,13 +528,30 @@ export const LeavesPage = () => {
                       {/* Leave Status */}
                       <td>
                         <span className={`badge badge-${leave.status}`}>
-                          {leave.status}
+                          {leave.status === 'approved' ? '✓ Approved' : (leave.status === 'rejected' ? '✕ Denied' : '⏳ Pending')}
                         </span>
                       </td>
 
                       {/* Leave Type */}
                       <td style={{ fontWeight: '500', color: '#334155' }}>
                         {leave.leaveType}
+                      </td>
+
+                      {/* Reviewer / Approver */}
+                      <td>
+                        <div style={{ fontSize: '12.5px', color: '#0f172a', fontWeight: '600' }}>
+                          {leave.appliedToName || leave.approvedBy || 'HR Admin'}
+                        </div>
+                        {leave.approvedBy && (
+                          <span style={{ fontSize: '11px', color: '#16a34a', display: 'block' }}>
+                            ✓ Approved by {leave.approvedBy}
+                          </span>
+                        )}
+                        {leave.rejectedBy && (
+                          <span style={{ fontSize: '11px', color: '#dc2626', display: 'block' }}>
+                            ✕ Denied by {leave.rejectedBy}
+                          </span>
+                        )}
                       </td>
 
                       {/* Paid */}
@@ -544,32 +566,59 @@ export const LeavesPage = () => {
                       </td>
 
                       {/* Reason */}
-                      <td style={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b', fontSize: '12.5px' }} title={leave.reason}>
+                      <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#64748b', fontSize: '12.5px' }} title={leave.reason}>
                         {leave.reason || '—'}
                       </td>
 
                       {/* Actions */}
                       <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          {leave.status === 'pending' && (
-                            <>
+                          {leave.status === 'pending' && (canApproveLeaves(currentUser) || leave.appliedToId === currentUser?._id) && (
+                            <div style={{ display: 'inline-flex', gap: '4px' }}>
                               <button
                                 onClick={() => updateLeaveStatus(leave._id, 'approved')}
-                                className="btn-icon-only"
-                                style={{ width: '28px', height: '28px', color: '#16a34a', background: '#dcfce7' }}
-                                title="Quick Approve"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  background: '#dcfce7',
+                                  color: '#15803d',
+                                  border: '1px solid #bbf7d0',
+                                  fontSize: '11.5px',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                                title="Accept / Approve Leave"
                               >
-                                <Check size={14} />
+                                <Check size={13} /> Accept
                               </button>
                               <button
-                                onClick={() => updateLeaveStatus(leave._id, 'rejected')}
-                                className="btn-icon-only"
-                                style={{ width: '28px', height: '28px', color: '#dc2626', background: '#fee2e2' }}
-                                title="Quick Reject"
+                                onClick={() => {
+                                  const reason = prompt('Optional: Reason for denying leave request:', 'Schedule conflict / staffing requirement');
+                                  if (reason !== null) {
+                                    updateLeaveStatus(leave._id, 'rejected', reason);
+                                  }
+                                }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  background: '#fee2e2',
+                                  color: '#dc2626',
+                                  border: '1px solid #fecaca',
+                                  fontSize: '11.5px',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                                title="Deny / Reject Leave"
                               >
-                                <X size={14} />
+                                <X size={13} /> Deny
                               </button>
-                            </>
+                            </div>
                           )}
                           <button
                             onClick={() => setSelectedLeave(leave)}
@@ -658,7 +707,7 @@ export const LeavesPage = () => {
 
       {/* Card Grid View */}
       {viewMode === 'card' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px', alignItems: 'start', marginBottom: '24px' }}>
           {filteredLeaves.map(leave => (
             <div
               key={leave._id}
@@ -696,7 +745,7 @@ export const LeavesPage = () => {
                 "{leave.reason}"
               </p>
 
-              {leave.status === 'pending' && (
+              {leave.status === 'pending' && canApproveLeaves(currentUser) && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }} onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => updateLeaveStatus(leave._id, 'rejected')}

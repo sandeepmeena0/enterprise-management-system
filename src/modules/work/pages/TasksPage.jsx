@@ -38,6 +38,7 @@ export const TasksPage = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [scopeMode, setScopeMode] = useState('all'); // 'all' | 'assigned_to_me' | 'assigned_by_me'
+  const [statusMode, setStatusMode] = useState('all'); // 'all' | 'active' | 'completed'
 
   // Handle Scope Switching
   const handleScopeChange = (mode) => {
@@ -52,7 +53,7 @@ export const TasksPage = () => {
       setTaskFilter(prev => ({
         ...prev,
         assignedTo: 'all',
-        assignedBy: currentUser?._id || currentUser?.name || 'Avinash'
+        assignedBy: currentUser?._id || currentUser?.name || 'Admin'
       }));
     } else {
       setTaskFilter(prev => ({
@@ -60,6 +61,18 @@ export const TasksPage = () => {
         assignedTo: 'all',
         assignedBy: 'all'
       }));
+    }
+  };
+
+  // Handle Quick Status Tab Switching
+  const handleStatusModeChange = (mode) => {
+    setStatusMode(mode);
+    if (mode === 'active') {
+      setTaskFilter(prev => ({ ...prev, hideCompleted: true, status: 'all' }));
+    } else if (mode === 'completed') {
+      setTaskFilter(prev => ({ ...prev, hideCompleted: false, status: 'completed' }));
+    } else {
+      setTaskFilter(prev => ({ ...prev, hideCompleted: false, status: 'all' }));
     }
   };
 
@@ -73,7 +86,7 @@ export const TasksPage = () => {
       `"${t.projectName.replace(/"/g, '""')}"`,
       t.category,
       t.assignedToName,
-      t.assignedBy || 'Avinash',
+      t.assignedBy || 'Admin',
       t.startDate,
       t.hasNoDueDate ? 'No Due Date' : t.dueDate,
       t.status,
@@ -92,22 +105,22 @@ export const TasksPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {/* Top Breadcrumb & Title */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '8px'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#64748b', marginBottom: '1px' }}>
             <span>Home</span>
             <span>•</span>
             <span style={{ color: '#0f172a', fontWeight: '600' }}>Tasks</span>
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
             Tasks & Delegation
           </h1>
         </div>
@@ -116,20 +129,20 @@ export const TasksPage = () => {
       {/* Top Filter Controls Bar */}
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
-        padding: '12px 18px',
+        borderRadius: '8px',
+        padding: '8px 14px',
         border: '1px solid #e2e8f0',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        gap: '10px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
           {/* Member Filter Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Member</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Member</span>
             <select
               value={taskFilter.assignedTo || 'all'}
               onChange={(e) => {
@@ -137,13 +150,14 @@ export const TasksPage = () => {
                 setScopeMode('all');
               }}
               style={{
-                padding: '6px 10px',
+                padding: '4px 8px',
                 borderRadius: '6px',
                 border: '1px solid #cbd5e1',
-                fontSize: '13px',
+                fontSize: '12px',
                 color: '#334155',
                 outline: 'none',
-                backgroundColor: '#ffffff'
+                backgroundColor: '#ffffff',
+                height: '30px'
               }}
             >
               <option value="all">All Members</option>
@@ -156,8 +170,8 @@ export const TasksPage = () => {
           </div>
 
           {/* Status Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Status</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Status</span>
             <select
               value={taskFilter.hideCompleted ? 'hide_completed' : taskFilter.status}
               onChange={(e) => {
@@ -169,13 +183,14 @@ export const TasksPage = () => {
                 }
               }}
               style={{
-                padding: '6px 10px',
+                padding: '4px 8px',
                 borderRadius: '6px',
                 border: '1px solid #cbd5e1',
-                fontSize: '13px',
+                fontSize: '12px',
                 color: '#334155',
                 outline: 'none',
-                backgroundColor: '#ffffff'
+                backgroundColor: '#ffffff',
+                height: '30px'
               }}
             >
               <option value="hide_completed">Hide Completed Task</option>
@@ -191,15 +206,16 @@ export const TasksPage = () => {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '6px',
             backgroundColor: '#f8fafc',
             border: '1px solid #cbd5e1',
             borderRadius: '6px',
-            padding: '6px 12px',
-            minWidth: '220px',
-            flex: 1
+            padding: '4px 10px',
+            minWidth: '200px',
+            flex: 1,
+            height: '30px'
           }}>
-            <Search size={15} color="#64748b" />
+            <Search size={14} color="#64748b" />
             <input
               type="text"
               placeholder="Search by task title, project, assignee or assigner..."
@@ -209,7 +225,7 @@ export const TasksPage = () => {
                 border: 'none',
                 backgroundColor: 'transparent',
                 outline: 'none',
-                fontSize: '13px',
+                fontSize: '12px',
                 width: '100%',
                 color: '#0f172a'
               }}
@@ -224,9 +240,9 @@ export const TasksPage = () => {
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* Add Task Button (Anyone can assign to anyone) */}
           <button
             id="btn-add-task"
@@ -234,22 +250,23 @@ export const TasksPage = () => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
               backgroundColor: '#0284c7',
               color: '#ffffff',
               border: 'none',
-              padding: '8px 18px',
+              padding: '6px 12px',
               borderRadius: '6px',
-              fontSize: '13.5px',
+              fontSize: '12px',
               fontWeight: '600',
               cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
-              transition: 'all 0.15s ease'
+              boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)',
+              transition: 'all 0.15s ease',
+              height: '30px'
             }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = '#0369a1'}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = '#0284c7'}
           >
-            <Plus size={16} />
+            <Plus size={14} />
             Assign New Task
           </button>
 
@@ -257,24 +274,27 @@ export const TasksPage = () => {
           <div style={{
             display: 'flex',
             backgroundColor: '#f1f5f9',
-            padding: '3px',
-            borderRadius: '8px',
+            padding: '2px',
+            borderRadius: '6px',
             border: '1px solid #e2e8f0',
-            gap: '2px'
+            gap: '2px',
+            height: '30px',
+            alignItems: 'center'
           }}>
             <button
               onClick={() => handleScopeChange('all')}
               style={{
-                padding: '6px 12px',
+                padding: '4px 10px',
                 border: 'none',
-                borderRadius: '6px',
-                fontSize: '12.5px',
+                borderRadius: '4px',
+                fontSize: '11.5px',
                 fontWeight: scopeMode === 'all' ? '700' : '500',
                 backgroundColor: scopeMode === 'all' ? '#ffffff' : 'transparent',
                 color: scopeMode === 'all' ? '#0f172a' : '#64748b',
-                boxShadow: scopeMode === 'all' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: scopeMode === 'all' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                height: '24px'
               }}
             >
               All Team Tasks
@@ -282,16 +302,17 @@ export const TasksPage = () => {
             <button
               onClick={() => handleScopeChange('assigned_to_me')}
               style={{
-                padding: '6px 12px',
+                padding: '4px 10px',
                 border: 'none',
-                borderRadius: '6px',
-                fontSize: '12.5px',
+                borderRadius: '4px',
+                fontSize: '11.5px',
                 fontWeight: scopeMode === 'assigned_to_me' ? '700' : '500',
                 backgroundColor: scopeMode === 'assigned_to_me' ? '#ffffff' : 'transparent',
                 color: scopeMode === 'assigned_to_me' ? '#2563eb' : '#64748b',
-                boxShadow: scopeMode === 'assigned_to_me' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: scopeMode === 'assigned_to_me' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                height: '24px'
               }}
             >
               Assigned to Me
@@ -299,19 +320,87 @@ export const TasksPage = () => {
             <button
               onClick={() => handleScopeChange('assigned_by_me')}
               style={{
-                padding: '6px 12px',
+                padding: '4px 10px',
                 border: 'none',
-                borderRadius: '6px',
-                fontSize: '12.5px',
+                borderRadius: '4px',
+                fontSize: '11.5px',
                 fontWeight: scopeMode === 'assigned_by_me' ? '700' : '500',
                 backgroundColor: scopeMode === 'assigned_by_me' ? '#ffffff' : 'transparent',
                 color: scopeMode === 'assigned_by_me' ? '#0284c7' : '#64748b',
-                boxShadow: scopeMode === 'assigned_by_me' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                boxShadow: scopeMode === 'assigned_by_me' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                height: '24px'
               }}
             >
               Assigned by Me
+            </button>
+          </div>
+
+          {/* Status Filter Pills (All / Active & New / Recently Completed) */}
+          <div style={{
+            display: 'flex',
+            backgroundColor: '#f1f5f9',
+            padding: '2px',
+            borderRadius: '6px',
+            border: '1px solid #e2e8f0',
+            gap: '2px',
+            height: '30px',
+            alignItems: 'center'
+          }}>
+            <button
+              onClick={() => handleStatusModeChange('all')}
+              style={{
+                padding: '4px 9px',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: statusMode === 'all' ? '700' : '500',
+                backgroundColor: statusMode === 'all' ? '#ffffff' : 'transparent',
+                color: statusMode === 'all' ? '#0f172a' : '#64748b',
+                boxShadow: statusMode === 'all' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                height: '24px'
+              }}
+            >
+              All Status
+            </button>
+            <button
+              onClick={() => handleStatusModeChange('active')}
+              style={{
+                padding: '4px 9px',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: statusMode === 'active' ? '700' : '500',
+                backgroundColor: statusMode === 'active' ? '#e0f2fe' : 'transparent',
+                color: statusMode === 'active' ? '#0284c7' : '#64748b',
+                boxShadow: statusMode === 'active' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                height: '24px'
+              }}
+            >
+              ⚡ Active & New
+            </button>
+            <button
+              onClick={() => handleStatusModeChange('completed')}
+              style={{
+                padding: '4px 9px',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: statusMode === 'completed' ? '700' : '500',
+                backgroundColor: statusMode === 'completed' ? '#dcfce7' : 'transparent',
+                color: statusMode === 'completed' ? '#16a34a' : '#64748b',
+                boxShadow: statusMode === 'completed' ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                height: '24px'
+              }}
+            >
+              ✅ Recently Completed
             </button>
           </div>
 
@@ -321,18 +410,19 @@ export const TasksPage = () => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '5px',
               backgroundColor: '#ffffff',
               color: '#475569',
               border: '1px solid #cbd5e1',
-              padding: '8px 14px',
+              padding: '4px 10px',
               borderRadius: '6px',
-              fontSize: '13px',
+              fontSize: '12px',
               fontWeight: '500',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              height: '30px'
             }}
           >
-            <Download size={15} />
+            <Download size={13} />
             Export
           </button>
         </div>
@@ -344,7 +434,8 @@ export const TasksPage = () => {
           backgroundColor: '#ffffff',
           border: '1px solid #cbd5e1',
           borderRadius: '6px',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          height: '30px'
         }}>
           <button
             title="Table View"
@@ -353,7 +444,8 @@ export const TasksPage = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '7px 12px',
+              padding: '0 10px',
+              height: '100%',
               border: 'none',
               backgroundColor: viewMode === 'table' ? '#0284c7' : 'transparent',
               color: viewMode === 'table' ? '#ffffff' : '#64748b',
@@ -361,7 +453,7 @@ export const TasksPage = () => {
               transition: 'all 0.15s ease'
             }}
           >
-            <LayoutList size={16} />
+            <LayoutList size={14} />
           </button>
 
           <button
@@ -371,7 +463,8 @@ export const TasksPage = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '7px 12px',
+              padding: '0 10px',
+              height: '100%',
               border: 'none',
               backgroundColor: viewMode === 'kanban' ? '#0284c7' : 'transparent',
               color: viewMode === 'kanban' ? '#ffffff' : '#64748b',
@@ -379,7 +472,7 @@ export const TasksPage = () => {
               transition: 'all 0.15s ease'
             }}
           >
-            <Kanban size={16} />
+            <Kanban size={14} />
           </button>
         </div>
       </div>

@@ -21,15 +21,18 @@ import {
   HelpCircle,
   Keyboard,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Users, Users2, Edit3, Moon, Sun, Coffee, ListTodo, FolderGit2, Ticket, Palmtree, Check, StickyNote, Calendar as CalendarIcon, FileText } from 'lucide-react';
+import { UserPlus, Users, Users2, Edit3, Moon, Sun, Coffee, ListTodo, FolderGit2, Ticket, Palmtree, Check, StickyNote, Calendar as CalendarIcon, FileText, Trash2, ShieldAlert } from 'lucide-react';
 import { useTimer } from '../../context/TimerContext';
 import { useHR } from '../../../modules/hr/context/HRContext';
 import { useCRM } from '../../context/CRMContext';
 import { useWork } from '../../../modules/work/context/WorkContext';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
+import { clearAllDummyData } from '../../services/storageService';
 import { AddEmployeeModal } from '../../../modules/hr/components/employees/AddEmployeeModal';
 import { EmployeeDirectoryModal } from '../../../modules/hr/components/employees/EmployeeDirectoryModal';
 import { EditProfileModal } from '../modals/EditProfileModal';
@@ -42,15 +45,32 @@ import { AddLeadModal } from '../../../modules/crm/components/leads/AddLeadModal
 import { AddEventModal } from '../modals/AddEventModal';
 import { StickyNotesModal } from '../modals/StickyNotesModal';
 import { ScreenRecorderModal } from '../modals/ScreenRecorderModal';
-import { DashboardOverviewModal } from '../modals/DashboardOverviewModal';
 
 export const TopNavbar = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { timeString, isRunning, isClockedIn, isOnBreak, breakType, currentBreakTimeString, loginTime, togglePauseResume, handleClockOut, handleClockIn } = useTimer();
-  const { currentUser, leaves, employees, updateLeaveStatus } = useHR();
-  const { darkMode, toggleDarkMode, tickets, events, leads, notices, computedBirthdays } = useCRM();
-  const { tasks, projects } = useWork();
+  const {
+    timeString,
+    isRunning,
+    isClockedIn,
+    isOnBreak,
+    breakType,
+    currentBreakTimeString,
+    loginTime,
+    hadClockedOutToday,
+    reclockStatus,
+    togglePauseResume,
+    handleClockOut,
+    handleClockIn,
+    startTeaBreak,
+    resumeFromBreak,
+    requestReclockIn
+  } = useTimer();
+  const { currentUser: authUser, role: activeRole, roleConfig: activeRoleConfig, switchRole, switchUser, logout: authLogout } = useAuth();
+  const { currentUser: hrUser, leaves, employees, updateLeaveStatus } = useHR();
+  const currentUser = authUser || hrUser;
+  const { darkMode, toggleDarkMode, tickets, events, leads, notices, computedBirthdays, computedAnniversaries } = useCRM();
+  const { tasks, projects, activeRunningTask, startTaskTimer, pauseTaskTimer, stopTaskTimer, formatSeconds } = useWork();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -76,7 +96,7 @@ export const TopNavbar = () => {
   const [isBreakModalOpen, setIsBreakModalOpen] = useState(false);
   const [isStickyNotesOpen, setIsStickyNotesOpen] = useState(false);
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
-  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const [crmMode, setCrmMode] = useState(() => localStorage.getItem('ems_app_mode') || 'crm');
 
   // Quick Action Modals
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -91,8 +111,12 @@ export const TopNavbar = () => {
   const searchRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  const pendingLeavesCount = (leaves || []).filter(l => l?.status === 'pending').length;
-  const totalNotifications = pendingLeavesCount + 1; // +1 for attendance notification
+  const pendingLeavesList = (leaves || []).filter(l => l?.status === 'pending');
+  const myPendingTasks = (tasks || []).filter(t => (t?.assignedToId === currentUser?._id || t?.assignedToName === currentUser?.name) && t?.status !== 'completed');
+  const openTicketsList = (tickets || []).filter(t => t?.status === 'open' || t?.status === 'pending');
+  const todayBirthdaysList = (computedBirthdays || []).filter(b => b?.diffDays === 0 || b?.isToday || b?.daysRemaining === 0);
+  const upcomingAnniversariesList = (computedAnniversaries || []).filter(a => a?.diffDays >= 0 && a?.diffDays <= 30);
+  const totalNotifications = pendingLeavesList.length + myPendingTasks.length + openTicketsList.length + (todayBirthdaysList.length > 0 ? 1 : 0) + (upcomingAnniversariesList.length > 0 ? 1 : 0);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -137,17 +161,27 @@ export const TopNavbar = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // ── Real Screen Recording Handlers ──
+  // ── Direct CRM Window / Screen Recording Handlers ──
   const startScreenRecording = async () => {
     try {
       recordedChunksRef.current = [];
       setRecordingSeconds(0);
 
       if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: 'always' },
-          audio: true
-        });
+        // Direct browser display options configured to prioritize this CRM window/tab
+        const displayOptions = {
+          video: {
+            cursor: 'always',
+            displaySurface: 'browser'
+          },
+          audio: true,
+          preferCurrentTab: true,
+          selfBrowserSurface: 'include',
+          surfaceSwitching: 'include',
+          systemAudio: 'include'
+        };
+
+        const stream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
 
         mediaStreamRef.current = stream;
 
@@ -189,19 +223,19 @@ export const TopNavbar = () => {
           setRecordingSeconds(prev => prev + 1);
         }, 1000);
 
-        addToast('🔴 Screen recording started. Recording active...', 'info');
+        addToast('🎥 CRM Window recording started! Recording active...', 'info');
       } else {
         // Fallback simulation for unsupported environments
         setIsRecording(true);
         recordingTimerRef.current = setInterval(() => {
           setRecordingSeconds(prev => prev + 1);
         }, 1000);
-        addToast('🔴 Screen recording started (Simulated).', 'info');
+        addToast('🎥 CRM Window recording started (Simulated).', 'info');
       }
     } catch (err) {
       console.warn('Screen recording cancelled or failed:', err);
       if (err.name !== 'NotAllowedError') {
-        addToast('Screen recording permission was cancelled.', 'info');
+        addToast('Screen recording was cancelled or not supported.', 'info');
       }
     }
   };
@@ -447,183 +481,135 @@ export const TopNavbar = () => {
       {/* ───────── RIGHT: All Controls ───────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
 
-        {/* ── Work & Break Session Timer Controls ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
-          
-          {/* Active Break Pill (If currently on break) */}
-          {isOnBreak ? (
-            <button
-              onClick={() => setIsBreakModalOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                backgroundColor: '#fffbeb',
-                border: '1.5px solid #f59e0b',
-                borderRadius: '10px',
-                padding: '6px 12px',
-                cursor: 'pointer',
-                animation: 'pulse 2s infinite'
-              }}
-              title="You are currently on break. Click to manage or resume."
-            >
-              <Coffee size={15} color="#d97706" />
-              <span style={{ fontSize: '12px', fontWeight: '800', color: '#b45309' }}>
-                On {breakType}
-              </span>
-              <span style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '12.5px',
-                fontWeight: '800',
-                color: '#ea580c',
-                backgroundColor: '#fef3c7',
-                padding: '1px 6px',
-                borderRadius: '4px'
-              }}>
-                {currentBreakTimeString}
-              </span>
-            </button>
-          ) : (
-            /* Break Button when working */
-            isClockedIn && (
-              <button
-                onClick={() => setIsBreakModalOpen(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '10px',
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  color: '#475569',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Take a Break (Lunch, Tea, Quick Rest) & View Break History"
-                onMouseEnter={e => {
-                  e.currentTarget.style.backgroundColor = '#fff7ed';
-                  e.currentTarget.style.borderColor = '#fdba74';
-                  e.currentTarget.style.color = '#c2410c';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
-                  e.currentTarget.style.borderColor = '#cbd5e1';
-                  e.currentTarget.style.color = '#475569';
-                }}
-              >
-                <Coffee size={14} color="#ea580c" />
-                <span>Break</span>
-              </button>
-            )
-          )}
-
-          {/* Daily Work Timer Pill */}
+        {/* ── Active Running Task Timer Pill (Live Tracking for Employee Tasks) ── */}
+        {activeRunningTask ? (
           <div
-            onClick={() => navigate('/timesheet')}
+            onClick={() => navigate('/tasks')}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              background: isClockedIn ? '#f0fdf4' : '#fef2f2',
-              border: isClockedIn ? '1px solid #bbf7d0' : '1px solid #fecaca',
+              gap: '6px',
+              backgroundColor: '#eff6ff',
+              border: '1.5px solid #93c5fd',
               borderRadius: '10px',
-              padding: '5px 12px',
+              padding: '4px 10px',
               cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(37,99,235,0.15)',
               transition: 'all 0.15s ease'
             }}
-            title={isClockedIn ? `Clocked in at ${loginTime}. Total productive time: ${timeString}. Click to view Timesheet & Time Logs.` : 'Clocked out. Click to open Timesheet.'}
-            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'}
-            onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+            title={`Active Task: #${activeRunningTask.taskCode} ${activeRunningTask.title}. Click to view Tasks.`}
           >
-            {/* Status Dot */}
             <span style={{
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: isClockedIn && isRunning ? '#10b981' : (isClockedIn ? '#f59e0b' : '#ef4444'),
-              boxShadow: isClockedIn && isRunning ? '0 0 6px #10b981' : 'none',
+              backgroundColor: '#2563eb',
+              boxShadow: '0 0 6px #2563eb',
               flexShrink: 0
             }} />
-
-            {/* Timer Display */}
-            <span
+            <span style={{
+              fontSize: '11.5px',
+              fontWeight: '800',
+              color: '#1e40af',
+              maxWidth: '110px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}>
+              #{activeRunningTask.taskCode || 'TSK'}: {activeRunningTask.title}
+            </span>
+            <span style={{
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '12px',
+              fontWeight: '800',
+              color: '#1d4ed8',
+              backgroundColor: '#dbeafe',
+              padding: '1px 5px',
+              borderRadius: '4px'
+            }}>
+              {activeRunningTask.hoursLoggedText || formatSeconds(activeRunningTask.timerSeconds || 0)}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                pauseTaskTimer(activeRunningTask._id);
+              }}
+              title="Pause Task Timer"
               style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: '13.5px',
-                fontWeight: '700',
-                color: isClockedIn ? '#15803d' : '#94a3b8',
-                letterSpacing: '0.04em',
-                minWidth: '58px'
+                width: '22px',
+                height: '22px',
+                borderRadius: '5px',
+                border: 'none',
+                background: '#2563eb',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
               }}
             >
-              {timeString}
-            </span>
-
-            {/* Timer Play/Pause Buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {isClockedIn && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    togglePauseResume();
-                  }}
-                  title={isRunning ? 'Pause Work Timer' : 'Resume Work Timer'}
-                  style={{
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    background: isRunning ? '#2563eb' : '#64748b',
-                    color: '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    flexShrink: 0
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  {isRunning
-                    ? <Pause size={12} fill="#fff" />
-                    : <Play size={12} fill="#fff" />
-                  }
-                </button>
-              )}
-
-              {/* Clock In / Out */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClockOut();
-                }}
-                title={isClockedIn ? 'Clock Out for Today' : 'Clock In for Today'}
-                style={{
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: isClockedIn ? '#ef4444' : '#16a34a',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  flexShrink: 0
-                }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-              >
-                {isClockedIn ? <Square size={10} fill="#fff" /> : <Play size={12} fill="#fff" />}
-              </button>
-            </div>
+              <Pause size={10} fill="#fff" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                stopTaskTimer(activeRunningTask._id);
+              }}
+              title="Stop Task Timer & Log to Timesheet"
+              style={{
+                width: '22px',
+                height: '22px',
+                borderRadius: '5px',
+                border: 'none',
+                background: '#dc2626',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <Square size={9} fill="#fff" />
+            </button>
           </div>
-        </div>
+        ) : (
+          <button
+            onClick={() => {
+              const firstIncomplete = (tasks || []).find(t => t.status !== 'completed');
+              if (firstIncomplete) {
+                startTaskTimer(firstIncomplete._id);
+              } else {
+                navigate('/tasks');
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '9px',
+              padding: '5px 10px',
+              fontSize: '12px',
+              fontWeight: '700',
+              color: '#475569',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            title="Start tracking time on assigned task"
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+              e.currentTarget.style.borderColor = '#94a3b8';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = '#f8fafc';
+              e.currentTarget.style.borderColor = '#cbd5e1';
+            }}
+          >
+            <Play size={11} color="#2563eb" fill="#2563eb" />
+            <span>Task Timer</span>
+          </button>
+        )}
 
         {/* ── Real-Life Enterprise Quick Create Dropdown ── */}
         <div style={{ position: 'relative' }} ref={quickCreateRef}>
@@ -830,20 +816,6 @@ export const TopNavbar = () => {
           <StickyNote size={18} color="#eab308" />
         </button>
 
-        {/* ── Grid / Dashboard Overview HUD ── */}
-        <button
-          className="navbar-icon-btn"
-          title="Dashboard Overview & Switcher"
-          onClick={() => setIsOverviewOpen(true)}
-          style={{
-            ...navBtnStyle,
-            backgroundColor: isOverviewOpen ? '#eff6ff' : 'transparent',
-            border: isOverviewOpen ? '1px solid #bfdbfe' : '1px solid transparent'
-          }}
-        >
-          <LayoutGrid size={18} color={isOverviewOpen ? '#2563eb' : '#64748b'} />
-        </button>
-
         {/* ── Screen Recording Toggle & Live Status ── */}
         {isRecording ? (
           <div
@@ -898,6 +870,23 @@ export const TopNavbar = () => {
             <Video size={18} color="#64748b" />
           </button>
         )}
+
+        {/* ── Direct 1-Click Dark/Light Mode Toggle ── */}
+        <button
+          className="navbar-icon-btn"
+          title={darkMode ? 'Switch to Light Mode ☀️' : 'Switch to Dark Mode 🌙'}
+          onClick={toggleDarkMode}
+          style={{
+            ...navBtnStyle,
+            backgroundColor: darkMode ? '#1e293b' : 'transparent',
+            borderColor: darkMode ? '#334155' : 'transparent'
+          }}
+        >
+          {darkMode
+            ? <Sun size={18} color="#f59e0b" />
+            : <Moon size={18} color="#64748b" />
+          }
+        </button>
 
         {/* ── Fullscreen Toggle ── */}
         <button
@@ -1007,137 +996,347 @@ export const TopNavbar = () => {
               </div>
 
               {/* Notification Items */}
-              <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
-                {/* Real-time Dynamic Pending Leaves */}
-                {(leaves || []).filter(l => l?.status === 'pending').length > 0 ? (
-                  (leaves || []).filter(l => l?.status === 'pending').map((leave) => (
-                    <div
-                      key={leave._id}
-                      style={{
-                        padding: '12px 16px',
-                        display: 'flex',
-                        gap: '12px',
-                        alignItems: 'flex-start',
-                        borderBottom: '1px solid #f1f5f9',
-                        background: '#fffdf5',
-                        transition: 'background 0.15s'
-                      }}
-                    >
-                      <div style={{ position: 'relative', flexShrink: 0 }}>
-                        {leave.employeeAvatar ? (
-                          <img
-                            src={leave.employeeAvatar}
-                            alt={leave.employeeName}
-                            style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #fed7aa' }}
-                          />
-                        ) : (
-                          <div style={{
-                            width: '36px',
-                            height: '36px',
-                            borderRadius: '8px',
-                            background: '#fef3c7',
-                            color: '#d97706',
-                            fontWeight: '700',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '13px'
-                          }}>
-                            {leave.employeeName?.charAt(0) || 'L'}
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '12.5px', color: '#0f172a' }}>
-                            {leave.employeeName}
-                          </span>
-                          <span style={{
-                            fontSize: '10px',
-                            fontWeight: '700',
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            background: '#fef3c7',
-                            color: '#d97706'
-                          }}>
-                            Pending Review
-                          </span>
-                        </div>
-
-                        <div style={{ color: '#475569', fontSize: '11.5px', marginTop: '2px' }}>
-                          <strong>{leave.leaveType}</strong> ({leave.durationText})
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
-                          📅 {leave.startDate} {leave.endDate !== leave.startDate ? `to ${leave.endDate}` : ''}
-                        </div>
-                        {leave.reason && (
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={leave.reason}>
-                            "{leave.reason}"
-                          </div>
-                        )}
-
-                        {/* Quick 1-Click Approve / Reject Action Bar */}
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              await updateLeaveStatus(leave._id, 'approved');
-                              addToast(`Leave approved for ${leave.employeeName}`, 'success');
-                            }}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              background: '#16a34a',
-                              color: '#ffffff',
-                              border: 'none',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              boxShadow: '0 1px 3px rgba(22,163,74,0.25)'
-                            }}
-                            title="Approve immediately"
-                          >
-                            <Check size={12} />
-                            Approve
-                          </button>
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              await updateLeaveStatus(leave._id, 'rejected');
-                              addToast(`Leave rejected for ${leave.employeeName}`, 'info');
-                            }}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              background: '#fee2e2',
-                              color: '#dc2626',
-                              border: '1px solid #fecaca',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
-                            title="Reject leave request"
-                          >
-                            <X size={12} />
-                            Reject
-                          </button>
-                        </div>
-                      </div>
+              <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+                {/* 1. Real-time Dynamic Pending Leaves (For Admin / HR Review) */}
+                {pendingLeavesList.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#d97706', padding: '8px 16px 4px 16px', background: '#fffbeb', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      ⏳ Pending Leave Requests ({pendingLeavesList.length})
                     </div>
-                  ))
-                ) : (
-                  <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
-                    ✨ All leave requests have been reviewed!
+                    {pendingLeavesList.map((leave) => (
+                      <div
+                        key={leave._id}
+                        style={{
+                          padding: '12px 16px',
+                          display: 'flex',
+                          gap: '12px',
+                          alignItems: 'flex-start',
+                          borderBottom: '1px solid #f1f5f9',
+                          background: '#fffdf5',
+                          transition: 'background 0.15s'
+                        }}
+                      >
+                        <div style={{ position: 'relative', flexShrink: 0 }}>
+                          {leave.employeeAvatar ? (
+                            <img
+                              src={leave.employeeAvatar}
+                              alt={leave.employeeName}
+                              style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #fed7aa' }}
+                            />
+                          ) : (
+                            <div style={{
+                              width: '36px',
+                              height: '36px',
+                              borderRadius: '8px',
+                              background: '#fef3c7',
+                              color: '#d97706',
+                              fontWeight: '700',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '13px'
+                            }}>
+                              {leave.employeeName?.charAt(0) || 'L'}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '12.5px', color: '#0f172a' }}>
+                              {leave.employeeName}
+                            </span>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: '700',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: '#fef3c7',
+                              color: '#d97706'
+                            }}>
+                              Pending Review
+                            </span>
+                          </div>
+
+                          <div style={{ color: '#475569', fontSize: '11.5px', marginTop: '2px' }}>
+                            <strong>{leave.leaveType}</strong> ({leave.durationText})
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '1px' }}>
+                            📅 {leave.startDate} {leave.endDate !== leave.startDate ? `to ${leave.endDate}` : ''}
+                          </div>
+                          {leave.appliedToName && (
+                            <div style={{ fontSize: '11px', color: '#2563eb', marginTop: '2px', fontWeight: '600' }}>
+                              👤 Reviewer: {leave.appliedToName}
+                            </div>
+                          )}
+                          {leave.reason && (
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={leave.reason}>
+                              "{leave.reason}"
+                            </div>
+                          )}
+
+                          {/* Quick 1-Click Accept / Deny Action Bar */}
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await updateLeaveStatus(leave._id, 'approved');
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                boxShadow: '0 1px 3px rgba(22,163,74,0.25)'
+                              }}
+                              title="Accept & Approve leave"
+                            >
+                              <Check size={12} />
+                              Accept
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const reason = prompt('Optional reason for denying leave:', 'Schedule requirement');
+                                if (reason !== null) {
+                                  await updateLeaveStatus(leave._id, 'rejected', reason);
+                                }
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                background: '#fee2e2',
+                                color: '#dc2626',
+                                border: '1px solid #fecaca',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                cursor: 'pointer'
+                              }}
+                              title="Deny / Reject leave request"
+                            >
+                              <X size={12} />
+                              Deny
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
+                {/* 2. My Assigned Active Tasks */}
+                {myPendingTasks.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#2563eb', padding: '8px 16px 4px 16px', background: '#eff6ff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      📋 Assigned Tasks ({myPendingTasks.length})
+                    </div>
+                    {myPendingTasks.slice(0, 3).map((task) => (
+                      <div
+                        key={task._id}
+                        onClick={() => {
+                          setShowNotifications(false);
+                          navigate('/tasks');
+                        }}
+                        style={{
+                          padding: '10px 16px',
+                          display: 'flex',
+                          gap: '10px',
+                          alignItems: 'center',
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '8px',
+                          background: '#dbeafe',
+                          color: '#2563eb',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <ListTodo size={15} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '600', fontSize: '12.5px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {task.title}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            #{task.taskCode || 'TSK-1'} • Due: {task.dueDate || 'Today'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. Open Support Tickets */}
+                {openTicketsList.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#ea580c', padding: '8px 16px 4px 16px', background: '#fff7ed', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      🎫 Support Tickets ({openTicketsList.length})
+                    </div>
+                    {openTicketsList.slice(0, 2).map((ticket) => (
+                      <div
+                        key={ticket._id}
+                        onClick={() => {
+                          setShowNotifications(false);
+                          navigate('/tickets');
+                        }}
+                        style={{
+                          padding: '10px 16px',
+                          display: 'flex',
+                          gap: '10px',
+                          alignItems: 'center',
+                          borderBottom: '1px solid #f1f5f9',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '8px',
+                          background: '#ffedd5',
+                          color: '#ea580c',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Ticket size={15} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '600', fontSize: '12.5px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {ticket.subject}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            #{ticket.ticketCode} • {ticket.priority} priority
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4. Today's Birthdays */}
+                {todayBirthdaysList.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#db2777', padding: '8px 16px 4px 16px', background: '#fdf2f8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      🎂 Birthday Celebrations
+                    </div>
+                    {todayBirthdaysList.map((bday) => (
+                      <div
+                        key={bday._id || bday.name}
+                        style={{
+                          padding: '10px 16px',
+                          display: 'flex',
+                          gap: '10px',
+                          alignItems: 'center',
+                          borderBottom: '1px solid #f1f5f9',
+                          background: '#fff5f7'
+                        }}
+                      >
+                        <img src={bday.avatar} alt={bday.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '700', fontSize: '12.5px', color: '#9d174d' }}>
+                            {bday.name}'s Birthday! 🎉
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            {bday.role}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToast(`🎉 Birthday wishes sent to ${bday.name}!`, 'success');
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            background: '#db2777',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Wish 🎂
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 5. Work Anniversary Celebrations */}
+                {upcomingAnniversariesList.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#7c3aed', padding: '8px 16px 4px 16px', background: '#faf5ff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      🌟 Work Anniversaries ({upcomingAnniversariesList.length})
+                    </div>
+                    {upcomingAnniversariesList.slice(0, 3).map((anniv) => (
+                      <div
+                        key={anniv._id || anniv.name}
+                        style={{
+                          padding: '10px 16px',
+                          display: 'flex',
+                          gap: '10px',
+                          alignItems: 'center',
+                          borderBottom: '1px solid #f1f5f9',
+                          background: '#fbf8ff'
+                        }}
+                      >
+                        <img src={anniv.avatar} alt={anniv.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', border: '1.5px solid #7c3aed' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: '700', fontSize: '12.5px', color: '#6b21a8' }}>
+                            {anniv.name} • {anniv.serviceYearsText} Year
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#7c3aed' }}>
+                            💼 {anniv.anniversaryDate} ({anniv.daysRemainingText})
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToast(`🌟 Work Anniversary congratulations sent to ${anniv.name}! 🎉`, 'success');
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            background: '#7c3aed',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Congratulate 🌟
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Default Attendance Clock-in reminder */}
                 <div style={{
                   padding: '12px 16px',
                   display: 'flex',
@@ -1168,13 +1367,13 @@ export const TopNavbar = () => {
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', fontSize: '12.5px', color: '#1e293b' }}>
-                      Attendance Clocked In
+                      Attendance Shift Active
                     </div>
                     <div style={{ color: '#64748b', fontSize: '11.5px', marginTop: '2px', lineHeight: '1.4' }}>
-                      You arrived on time today at 09:12 AM. Great start!
+                      Logged in at {loginTime || '09:00 AM'}. Productive hours syncing live.
                     </div>
                     <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                      Today, 09:12 AM
+                      Today, Live
                     </div>
                   </div>
                 </div>
@@ -1184,7 +1383,9 @@ export const TopNavbar = () => {
               <div style={{
                 padding: '10px 16px',
                 borderTop: '1px solid #f1f5f9',
-                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
                 backgroundColor: '#f8fafc'
               }}>
                 <button
@@ -1201,7 +1402,23 @@ export const TopNavbar = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  Go to Leave Management →
+                  Leaves →
+                </button>
+                <button
+                  onClick={() => {
+                    setShowNotifications(false);
+                    navigate('/tasks');
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    color: '#2563eb',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Tasks →
                 </button>
               </div>
             </div>
@@ -1289,7 +1506,7 @@ export const TopNavbar = () => {
             {/* Label */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', lineHeight: 1 }}>
               <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#0f172a' }}>
-                {currentUser?.name || 'Avinash'}
+                {currentUser?.name || 'User'}
               </span>
               <span style={{ fontSize: '10.5px', color: '#64748b' }}>
                 Work
@@ -1312,16 +1529,16 @@ export const TopNavbar = () => {
               position: 'absolute',
               top: '50px',
               right: '0',
-              width: '240px',
+              width: '280px',
               background: '#ffffff',
-              borderRadius: '14px',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05)',
+              borderRadius: '16px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
               border: '1px solid #e2e8f0',
               overflow: 'hidden',
               zIndex: 200,
               animation: 'fadeIn 0.18s ease'
             }}>
-              {/* Profile Header (Matching Screenshot 4) */}
+              {/* Profile Header */}
               <div style={{
                 padding: '16px',
                 background: 'linear-gradient(135deg, #101b33, #1e293b)',
@@ -1336,10 +1553,10 @@ export const TopNavbar = () => {
                     />
                     <div>
                       <div style={{ fontWeight: '700', fontSize: '13.5px', color: '#ffffff' }}>
-                        {currentUser?.name || 'Avinash'}
+                        {currentUser?.name || 'User'}
                       </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
-                        {currentUser?.role || 'Digital Marketing Strategic'}
+                      <div style={{ fontSize: '11px', color: '#93c5fd', marginTop: '1px', fontWeight: '600' }}>
+                        {activeRoleConfig?.badge || '👤 Team Member'}
                       </div>
                     </div>
                   </div>
@@ -1369,7 +1586,122 @@ export const TopNavbar = () => {
                 </div>
               </div>
 
-              {/* Menu Items (Matching Screenshot 4) */}
+              {/* ── Fast Role Switcher (Admin, HR, Employee) ── */}
+              <div style={{ padding: '12px 14px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+                  ⚡ Switch Active Role
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+                  <button
+                    onClick={() => {
+                      switchRole('admin');
+                      addToast('Switched to 👑 Admin Portal (Full Access)', 'success');
+                    }}
+                    style={{
+                      padding: '6px 4px',
+                      borderRadius: '8px',
+                      border: activeRole === 'admin' ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                      background: activeRole === 'admin' ? '#eff6ff' : '#ffffff',
+                      color: activeRole === 'admin' ? '#1d4ed8' : '#334155',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '2px'
+                    }}
+                  >
+                    <span>👑</span>
+                    <span>Admin</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      switchRole('hr');
+                      addToast('Switched to 💼 HR Portal', 'info');
+                    }}
+                    style={{
+                      padding: '6px 4px',
+                      borderRadius: '8px',
+                      border: activeRole === 'hr' ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
+                      background: activeRole === 'hr' ? '#f0f9ff' : '#ffffff',
+                      color: activeRole === 'hr' ? '#0284c7' : '#334155',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '2px'
+                    }}
+                  >
+                    <span>💼</span>
+                    <span>HR</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      switchRole('employee');
+                      addToast('Switched to 👤 Employee Portal', 'info');
+                    }}
+                    style={{
+                      padding: '6px 4px',
+                      borderRadius: '8px',
+                      border: activeRole === 'team_member' ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
+                      background: activeRole === 'team_member' ? '#f0fdf4' : '#ffffff',
+                      color: activeRole === 'team_member' ? '#15803d' : '#334155',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '2px'
+                    }}
+                  >
+                    <span>👤</span>
+                    <span>Emp</span>
+                  </button>
+                </div>
+
+                {/* Specific Employee Profile Quick Picker */}
+                {(employees || []).length > 0 && (
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600', marginBottom: '3px' }}>
+                      Or switch to specific teammate:
+                    </div>
+                    <select
+                      value={currentUser?._id || ''}
+                      onChange={(e) => {
+                        const targetEmp = employees.find(emp => emp._id === e.target.value);
+                        if (targetEmp) {
+                          switchUser(targetEmp);
+                          addToast(`Switched profile to 👤 ${targetEmp.name} (${targetEmp.role})`, 'success');
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '5px 8px',
+                        fontSize: '11.5px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#0f172a',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {(employees || []).map(emp => (
+                        <option key={emp._id} value={emp._id}>
+                          👤 {emp.name} ({emp.role || 'Member'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Menu Items */}
               <div style={{ padding: '6px' }}>
                 {/* Dark Mode toggle item */}
                 <div
@@ -1461,31 +1793,130 @@ export const TopNavbar = () => {
                   <ProfileMenuItem icon={<StickyNote size={14} color="#eab308" />} label="Sticky Notes" />
                 </div>
 
-                <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
-
+                {/* Clear Dummy Data Option */}
                 <div
                   onClick={() => {
                     setShowProfileMenu(false);
-                    handleClockOut();
-                    addToast('Clocked out and signed off successfully', 'info');
+                    if (window.confirm('Clear all dummy tasks, projects, leads, tickets, and leaves to start fresh with your own real data?')) {
+                      clearAllDummyData();
+                      addToast('✨ All dummy data cleared! Ready for your own data entry.', 'success');
+                    }
                   }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: '10px',
-                    padding: '8px 12px',
+                    padding: '8px 10px',
                     borderRadius: '8px',
                     fontSize: '13px',
                     fontWeight: '600',
-                    color: '#ef4444',
+                    color: '#ea580c',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#fff7ed'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  title="Clear dummy data and start with a clean slate"
+                >
+                  <Trash2 size={14} color="#ea580c" />
+                  <span>Clear Dummy Data (Fresh CRM)</span>
+                </div>
+
+                <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
+
+                {/* 1. Daily Shift Attendance Action */}
+                {isClockedIn ? (
+                  <div
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      handleClockOut();
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fffbeb'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    title="End today's shift and save hours to attendance."
+                  >
+                    <Square size={14} color="#d97706" style={{ marginTop: '2px', flexShrink: 0 }} />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#b45309' }}>
+                        Clock Out (End Shift)
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#78716c', marginTop: '1px' }}>
+                        Records attendance
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      handleClockIn();
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    title="Start today's shift timer."
+                  >
+                    <Play size={14} color="#16a34a" style={{ marginTop: '2px', flexShrink: 0 }} />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#15803d' }}>
+                        Clock In (Start Shift)
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#78716c', marginTop: '1px' }}>
+                        Start 8h 30m shift timer
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
+
+                {/* 2. Account Session Logout */}
+                <div
+                  onClick={() => {
+                    setShowProfileMenu(false);
+                    authLogout();
+                    addToast('Signed out of CRM account. See you soon!', 'info');
+                    navigate('/login');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '10px',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
                     cursor: 'pointer',
                     transition: 'background 0.15s'
                   }}
                   onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  title="Sign out to Login page"
                 >
-                  <Power size={14} />
-                  <span>Clock Out & Logout</span>
+                  <LogOut size={14} color="#ef4444" style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#dc2626' }}>
+                      Logout Account (Sign Out)
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '1px' }}>
+                      Redirect to Login Portal
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1567,11 +1998,6 @@ export const TopNavbar = () => {
           setIsRecorderModalOpen(false);
           startScreenRecording();
         }}
-      />
-
-      <DashboardOverviewModal
-        isOpen={isOverviewOpen}
-        onClose={() => setIsOverviewOpen(false)}
       />
     </header>
   );

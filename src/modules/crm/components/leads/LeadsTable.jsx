@@ -103,57 +103,58 @@ export const LeadsTable = ({
   return (
     <div className="table-card" style={{
       backgroundColor: '#ffffff',
-      borderRadius: '14px',
+      borderRadius: '10px',
       border: '1px solid #e2e8f0',
       overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+      boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
     }}>
       <div className="table-responsive" style={{ overflowX: 'auto', maxHeight: '680px' }}>
         <table className="crm-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{
               backgroundColor: '#f8fafc',
-              borderBottom: '1.5px solid #e2e8f0',
+              borderBottom: '1px solid #e2e8f0',
               color: '#64748b',
-              fontSize: '12px',
+              fontSize: '11px',
               fontWeight: '700',
               textTransform: 'uppercase',
-              letterSpacing: '0.04em'
+              letterSpacing: '0.04em',
+              whiteSpace: 'nowrap'
             }}>
-              <th style={{ width: '42px', padding: '14px 16px', textAlign: 'center' }}>
+              <th style={{ width: '36px', padding: '8px 10px', textAlign: 'center' }}>
                 <input
                   type="checkbox"
                   checked={sortedLeads.length > 0 && selectedIds.length === sortedLeads.length}
                   onChange={onSelectAll}
-                  style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                  style={{ width: '13px', height: '13px', cursor: 'pointer' }}
                 />
               </th>
-              <th style={{ width: '60px', padding: '14px 12px', cursor: 'pointer' }} onClick={() => handleSort('idNumber')}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  Id <ArrowUpDown size={12} />
+              <th style={{ width: '50px', padding: '8px 10px', cursor: 'pointer' }} onClick={() => handleSort('idNumber')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Id <ArrowUpDown size={11} />
                 </div>
               </th>
-              <th style={{ minWidth: '200px', padding: '14px 16px', cursor: 'pointer' }} onClick={() => handleSort('name')}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  Contact Name <ArrowUpDown size={12} />
+              <th style={{ minWidth: '180px', padding: '8px 10px', cursor: 'pointer' }} onClick={() => handleSort('name')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Contact Name <ArrowUpDown size={11} />
                 </div>
               </th>
-              <th style={{ minWidth: '180px', padding: '14px 16px' }}>Email</th>
-              <th style={{ minWidth: '140px', padding: '14px 16px' }}>Phone Number</th>
-              <th style={{ minWidth: '170px', padding: '14px 16px' }}>Lead Owner</th>
-              <th style={{ minWidth: '170px', padding: '14px 16px' }}>Added By</th>
-              <th style={{ minWidth: '120px', padding: '14px 16px', cursor: 'pointer' }} onClick={() => handleSort('status')}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  Status <ArrowUpDown size={12} />
+              <th style={{ minWidth: '160px', padding: '8px 10px' }}>Email</th>
+              <th style={{ minWidth: '120px', padding: '8px 10px' }}>Phone Number</th>
+              <th style={{ minWidth: '150px', padding: '8px 10px' }}>Lead Owner</th>
+              <th style={{ minWidth: '150px', padding: '8px 10px' }}>Added By</th>
+              <th style={{ minWidth: '120px', padding: '8px 10px', cursor: 'pointer' }} onClick={() => handleSort('status')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Status <ArrowUpDown size={11} />
                 </div>
               </th>
-              <th style={{ width: '90px', padding: '14px 12px' }}>Priority</th>
-              <th style={{ width: '110px', padding: '14px 16px', cursor: 'pointer' }} onClick={() => handleSort('createdAt')}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  Created <ArrowUpDown size={12} />
+              <th style={{ width: '80px', padding: '8px 10px' }}>Priority</th>
+              <th style={{ width: '100px', padding: '8px 10px', cursor: 'pointer' }} onClick={() => handleSort('createdAt')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  Created <ArrowUpDown size={11} />
                 </div>
               </th>
-              <th style={{ width: '60px', padding: '14px 16px', textAlign: 'center' }}>Action</th>
+              <th style={{ width: '50px', padding: '8px 10px', textAlign: 'center' }}>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -170,8 +171,7 @@ export const LeadsTable = ({
                     style={{
                       borderBottom: '1px solid #f1f5f9',
                       backgroundColor: isSelected ? '#f0f7ff' : '#ffffff',
-                      transition: 'background-color 0.15s ease',
-                      fontSize: '13px'
+                      transition: 'background-color 0.15s ease'
                     }}
                     onMouseEnter={(e) => {
                       if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc';
@@ -181,49 +181,50 @@ export const LeadsTable = ({
                     }}
                   >
                     {/* Checkbox */}
-                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => onSelectRow(lead._id)}
-                        style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                        style={{ width: '13px', height: '13px', cursor: 'pointer' }}
                       />
                     </td>
 
                     {/* Numeric Id */}
-                    <td style={{ padding: '12px 12px', color: '#64748b', fontWeight: '700', fontSize: '12.5px' }}>
+                    <td style={{ padding: '7px 10px', color: '#64748b', fontWeight: '700', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
                       {lead.idNumber || lead.leadCode?.replace('LEAD-', '') || '—'}
                     </td>
 
                     {/* Contact Name & Company */}
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <div
                           onClick={() => onViewLead(lead)}
                           style={{
                             fontWeight: '700',
                             color: '#0f172a',
                             cursor: 'pointer',
-                            fontSize: '13.5px',
+                            fontSize: '12px',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '6px'
+                            gap: '4px',
+                            lineHeight: '1.2'
                           }}
                           className="hover-underline"
                         >
                           {lead.name}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginTop: '1px' }}>
                           {lead.companyName && (
-                            <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                            <span style={{ fontSize: '10.5px', color: '#64748b' }}>
                               {lead.companyName}
                             </span>
                           )}
                           {lead.leadType && (
                             <span style={{
-                              fontSize: '10.5px',
-                              padding: '1px 6px',
-                              borderRadius: '4px',
+                              fontSize: '9.5px',
+                              padding: '1px 4px',
+                              borderRadius: '3px',
                               backgroundColor: '#f1f5f9',
                               color: '#475569',
                               fontWeight: '600'
@@ -236,12 +237,12 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Email */}
-                    <td style={{ padding: '12px 16px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                       {lead.email ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <a
                             href={`mailto:${lead.email}`}
-                            style={{ color: '#2563eb', textDecoration: 'none', fontSize: '12.5px' }}
+                            style={{ color: '#2563eb', textDecoration: 'none', fontSize: '11.5px' }}
                             title="Send email"
                           >
                             {lead.email}
@@ -253,12 +254,12 @@ export const LeadsTable = ({
                               border: 'none',
                               cursor: 'pointer',
                               color: '#94a3b8',
-                              padding: '2px',
+                              padding: '1px',
                               display: 'flex'
                             }}
                             title="Copy email"
                           >
-                            {copiedField === `email_${lead._id}` ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                            {copiedField === `email_${lead._id}` ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
                           </button>
                         </div>
                       ) : (
@@ -267,12 +268,12 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Phone Number */}
-                    <td style={{ padding: '12px 16px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                       {lead.phone ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <a
                             href={`tel:${lead.phone}`}
-                            style={{ color: '#334155', textDecoration: 'none', fontSize: '12.5px', fontWeight: '500' }}
+                            style={{ color: '#334155', textDecoration: 'none', fontSize: '11.5px', fontWeight: '500' }}
                           >
                             {lead.phone}
                           </a>
@@ -283,12 +284,12 @@ export const LeadsTable = ({
                               border: 'none',
                               cursor: 'pointer',
                               color: '#94a3b8',
-                              padding: '2px',
+                              padding: '1px',
                               display: 'flex'
                             }}
                             title="Copy phone"
                           >
-                            {copiedField === `phone_${lead._id}` ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+                            {copiedField === `phone_${lead._id}` ? <Check size={11} color="#16a34a" /> : <Copy size={11} />}
                           </button>
                         </div>
                       ) : (
@@ -297,35 +298,35 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Lead Owner (Avatar + Name + Role) */}
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {lead.leadOwnerAvatar ? (
                           <img
                             src={lead.leadOwnerAvatar}
                             alt={lead.leadOwnerName}
-                            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                            style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                           />
                         ) : (
                           <div style={{
-                            width: '28px',
-                            height: '28px',
+                            width: '22px',
+                            height: '22px',
                             borderRadius: '50%',
                             backgroundColor: '#e2e8f0',
                             color: '#475569',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '11px',
+                            fontSize: '10px',
                             fontWeight: '700'
                           }}>
                             {lead.leadOwnerName?.charAt(0) || 'O'}
                           </div>
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b' }}>
+                          <span style={{ fontSize: '11.5px', fontWeight: '600', color: '#1e293b', lineHeight: '1.2' }}>
                             {lead.leadOwnerName || 'Unassigned'}
                           </span>
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>
                             {lead.leadOwnerRole || 'Senior'}
                           </span>
                         </div>
@@ -333,35 +334,35 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Added By / Created By */}
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {lead.createdByAvatar ? (
                           <img
                             src={lead.createdByAvatar}
                             alt={lead.createdByName}
-                            style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }}
+                            style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover' }}
                           />
                         ) : (
                           <div style={{
-                            width: '28px',
-                            height: '28px',
+                            width: '22px',
+                            height: '22px',
                             borderRadius: '50%',
                             backgroundColor: '#e2e8f0',
                             color: '#475569',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '11px',
+                            fontSize: '10px',
                             fontWeight: '700'
                           }}>
                             {lead.createdByName?.charAt(0) || 'A'}
                           </div>
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontSize: '12.5px', fontWeight: '600', color: '#1e293b' }}>
-                            {lead.createdByName || 'Avinash'}
+                          <span style={{ fontSize: '11.5px', fontWeight: '600', color: '#1e293b', lineHeight: '1.2' }}>
+                            {lead.createdByName || 'Team Member'}
                           </span>
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>
                             {lead.createdByRole || 'Senior'}
                           </span>
                         </div>
@@ -369,21 +370,20 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Status with Quick Toggle Dropdown */}
-                    <td style={{ padding: '12px 16px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                       <select
                         value={lead.status}
                         onChange={(e) => updateLeadStatus(lead._id, e.target.value)}
                         style={{
-                          fontSize: '11.5px',
+                          fontSize: '10.5px',
                           fontWeight: '700',
                           color: statusBadge.color,
                           backgroundColor: statusBadge.bg,
                           border: `1px solid ${statusBadge.border}`,
-                          padding: '4px 8px',
-                          borderRadius: '6px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
                           cursor: 'pointer',
-                          outline: 'none',
-                          appearance: 'auto'
+                          outline: 'none'
                         }}
                       >
                         <option value="new">New Inquiry</option>
@@ -396,14 +396,14 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Priority */}
-                    <td style={{ padding: '12px 12px' }}>
+                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                       <span style={{
-                        fontSize: '11px',
+                        fontSize: '10px',
                         fontWeight: '700',
                         color: priorityBadge.color,
                         backgroundColor: priorityBadge.bg,
-                        padding: '3px 7px',
-                        borderRadius: '4px',
+                        padding: '2px 5px',
+                        borderRadius: '3px',
                         display: 'inline-block'
                       }}>
                         {priorityBadge.label}
@@ -411,12 +411,12 @@ export const LeadsTable = ({
                     </td>
 
                     {/* Created Date */}
-                    <td style={{ padding: '12px 16px', color: '#64748b', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '7px 10px', color: '#64748b', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
                       {lead.createdDate || lead.createdAt?.split('T')[0] || '09-12-2026'}
                     </td>
 
                     {/* Actions Menu */}
-                    <td style={{ padding: '12px 16px', textAlign: 'center', position: 'relative' }}>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', position: 'relative', whiteSpace: 'nowrap' }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -425,9 +425,9 @@ export const LeadsTable = ({
                         style={{
                           background: isMenuOpen ? '#e2e8f0' : 'transparent',
                           border: 'none',
-                          borderRadius: '6px',
-                          width: '28px',
-                          height: '28px',
+                          borderRadius: '4px',
+                          width: '24px',
+                          height: '24px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -437,7 +437,7 @@ export const LeadsTable = ({
                         }}
                         title="Actions"
                       >
-                        <MoreVertical size={16} />
+                        <MoreVertical size={14} />
                       </button>
 
                       {isMenuOpen && (

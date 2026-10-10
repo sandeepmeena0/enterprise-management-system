@@ -31,34 +31,35 @@ export const ActiveTimerCard = ({ onSelectTask }) => {
     return (
       <div style={{
         backgroundColor: '#ffffff',
-        borderRadius: '12px',
-        padding: '20px 24px',
+        borderRadius: '8px',
+        padding: '8px 14px',
         border: '1px dashed #cbd5e1',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '16px'
+        gap: '10px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '10px',
+            width: '28px',
+            height: '28px',
+            borderRadius: '6px',
             backgroundColor: '#f1f5f9',
             color: '#64748b',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
-            <Clock size={22} />
+            <Clock size={16} />
           </div>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a' }}>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#0f172a' }}>
               No Active Task Timer Running
             </div>
-            <div style={{ fontSize: '12.5px', color: '#64748b' }}>
-              Start tracking from the Tasks table or click "Log Time" to add past hours manually.
+            <div style={{ fontSize: '11px', color: '#64748b' }}>
+              Start tracking from the Tasks table or click "Log Time" to record hours.
             </div>
           </div>
         </div>
@@ -76,55 +77,55 @@ export const ActiveTimerCard = ({ onSelectTask }) => {
   return (
     <div style={{
       background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-      borderRadius: '14px',
-      padding: '24px 28px',
+      borderRadius: '8px',
+      padding: '10px 14px',
       color: '#ffffff',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
-      gap: '20px',
-      boxShadow: '0 10px 20px -5px rgba(2, 132, 199, 0.4)'
+      gap: '12px',
+      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
     }}>
       {/* Left Details */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <div style={{
-          width: '52px',
-          height: '52px',
-          borderRadius: '12px',
-          backgroundColor: 'rgba(255,255,255,0.15)',
+          width: '32px',
+          height: '32px',
+          borderRadius: '6px',
+          backgroundColor: 'rgba(255,255,255,0.18)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backdropFilter: 'blur(4px)',
-          border: '1px solid rgba(255,255,255,0.2)'
+          flexShrink: 0,
+          border: '1px solid rgba(255,255,255,0.25)'
         }}>
-          <Zap size={28} fill="#ffffff" />
+          <Zap size={18} fill="#ffffff" />
         </div>
 
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1px' }}>
             <span style={{
               backgroundColor: 'rgba(255,255,255,0.25)',
-              padding: '2px 8px',
-              borderRadius: '4px',
-              fontSize: '11px',
+              padding: '1px 5px',
+              borderRadius: '3px',
+              fontSize: '10px',
               fontWeight: '700',
-              letterSpacing: '0.04em'
+              letterSpacing: '0.02em'
             }}>
               {activeRunningTask.taskCode}
             </span>
-            <span style={{ fontSize: '12px', color: '#e0f2fe', fontWeight: '500' }}>
+            <span style={{ fontSize: '11px', color: '#e0f2fe', fontWeight: '500' }}>
               {activeRunningTask.projectName}
             </span>
           </div>
 
-          <h3 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 4px 0', color: '#ffffff' }}>
+          <h3 style={{ fontSize: '13.5px', fontWeight: '700', margin: 0, color: '#ffffff', lineHeight: 1.2 }}>
             {activeRunningTask.title}
           </h3>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#bae6fd' }}>
-            <span>👤 Assigned: <strong>{activeRunningTask.assignedToName}</strong></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#bae6fd', marginTop: '1px' }}>
+            <span>👤 {activeRunningTask.assignedToName}</span>
             <span>•</span>
             <span>Started: Today</span>
           </div>
@@ -132,43 +133,83 @@ export const ActiveTimerCard = ({ onSelectTask }) => {
       </div>
 
       {/* Right Controls & Live Clock */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '11.5px', color: '#e0f2fe', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '600' }}>
+          <div style={{ fontSize: '10px', color: '#e0f2fe', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: '600' }}>
             Running Duration
           </div>
           <div style={{
-            fontSize: '28px',
+            fontSize: '18px',
             fontWeight: '800',
             fontFamily: 'monospace',
-            letterSpacing: '0.05em',
-            textShadow: '0 2px 4px rgba(0,0,0,0.2)'
+            letterSpacing: '0.03em',
+            lineHeight: 1.1
           }}>
-            {activeRunningTask.hoursLoggedText || '02:17:21'}
+            {activeRunningTask.hoursLoggedText || '00:00:00'}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {activeRunningTask.timerRunning ? (
+            <button
+              onClick={() => pauseTaskTimer(activeRunningTask._id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                backgroundColor: 'rgba(255,255,255,0.18)',
+                color: '#ffffff',
+                border: '1px solid rgba(255,255,255,0.3)',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                fontSize: '11.5px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                height: '28px'
+              }}
+            >
+              <Pause size={12} fill="#ffffff" /> Pause
+            </button>
+          ) : (
+            <button
+              onClick={() => startTaskTimer(activeRunningTask._id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                backgroundColor: '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                fontSize: '11.5px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                height: '28px'
+              }}
+            >
+              <Play size={12} fill="#ffffff" /> Resume
+            </button>
+          )}
+
           <button
             onClick={() => onSelectTask && onSelectTask(activeRunningTask)}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '4px',
               backgroundColor: 'rgba(255,255,255,0.18)',
               color: '#ffffff',
               border: '1px solid rgba(255,255,255,0.3)',
-              padding: '10px 16px',
-              borderRadius: '8px',
-              fontSize: '13.5px',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              fontSize: '11.5px',
               fontWeight: '600',
               cursor: 'pointer',
-              transition: 'all 0.15s ease'
+              height: '28px'
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.28)'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.18)'}
           >
-            <Eye size={16} /> View
+            <Eye size={13} /> View
           </button>
 
           <button
@@ -177,23 +218,21 @@ export const ActiveTimerCard = ({ onSelectTask }) => {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '4px',
               backgroundColor: '#dc2626',
               color: '#ffffff',
               border: 'none',
-              padding: '10px 20px',
-              borderRadius: '8px',
-              fontSize: '13.5px',
+              padding: '4px 10px',
+              borderRadius: '6px',
+              fontSize: '11.5px',
               fontWeight: '700',
               cursor: 'pointer',
-              boxShadow: '0 4px 10px rgba(220, 38, 38, 0.4)',
-              transition: 'all 0.15s ease'
+              boxShadow: '0 2px 4px rgba(220, 38, 38, 0.3)',
+              height: '28px'
             }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#b91c1c'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#dc2626'}
           >
-            <Square size={14} fill="#ffffff" />
-            {stopping ? 'Logging...' : 'Stop Timer'}
+            <Square size={11} fill="#ffffff" />
+            {stopping ? 'Logging...' : 'Stop'}
           </button>
         </div>
       </div>

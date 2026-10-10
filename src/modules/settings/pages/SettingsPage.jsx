@@ -42,20 +42,46 @@ export const SettingsPage = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
       
-      {/* ── Top Header & Live Clock Matching Screenshots 6, 7, 8, 9 ── */}
+      {/* ── Standard Compact Header ── */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '12px',
+        background: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '2px' }}>
-            <span style={{ fontWeight: '700', color: '#0f172a' }}>
-              {activeSection === 'profile' ? 'Profile Settings' : 'Security Settings'}
-            </span>
-            <span>Home • Settings • {activeSection === 'profile' ? 'Profile Settings' : 'Security Settings'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: 'linear-gradient(135deg, #475569, #334155)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            boxShadow: '0 2px 6px rgba(71,85,105,0.25)',
+            flexShrink: 0
+          }}>
+            <SettingsIcon size={16} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.01em' }}>
+                {activeSection === 'profile' ? 'Profile Settings' : activeSection === 'security' ? 'Security Settings' : activeSection === 'roles' ? 'Roles & Permissions' : 'Company Branding'}
+              </h1>
+              <span style={{ fontSize: '10.5px', fontWeight: '700', padding: '2px 7px', borderRadius: '12px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>
+                Settings
+              </span>
+            </div>
+            <p style={{ fontSize: '11.5px', color: '#64748b', margin: '2px 0 0 0' }}>
+              Home • Settings • {activeSection === 'profile' ? 'Profile Settings' : activeSection === 'security' ? 'Security Settings' : activeSection === 'roles' ? 'Roles & RBAC' : 'Company & Payslip'}
+            </p>
           </div>
         </div>
 
@@ -64,38 +90,35 @@ export const SettingsPage = () => {
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
-          padding: '6px 14px',
-          backgroundColor: '#ffffff',
+          padding: '5px 12px',
+          backgroundColor: '#f8fafc',
           borderRadius: '20px',
           border: '1px solid #e2e8f0',
-          fontSize: '13px',
+          fontSize: '12px',
           fontWeight: '700',
-          color: '#0f172a',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          color: '#0f172a'
         }}>
           <span style={{
-            width: '8px',
-            height: '8px',
+            width: '7px',
+            height: '7px',
             borderRadius: '50%',
             backgroundColor: !isClockedIn ? '#94a3b8' : isOnBreak ? '#f59e0b' : '#22c55e'
           }}></span>
-          <span>{timeString || '00:00:00'}</span>
-          <span style={{ color: '#ef4444' }}>●</span>
-          <span style={{ color: '#3b82f6' }}>●</span>
+          <span style={{ fontFamily: 'monospace' }}>{timeString || '00:00:00'}</span>
         </div>
       </div>
 
-      {/* ── Two-Column Settings Layout (Matching Screenshots 6 & 9) ── */}
+      {/* ── Two-Column Settings Layout ── */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '260px 1fr',
-        gap: '24px',
+        gridTemplateColumns: '240px 1fr',
+        gap: '18px',
         backgroundColor: '#ffffff',
-        borderRadius: '16px',
+        borderRadius: '10px',
         border: '1px solid #e2e8f0',
-        padding: '24px',
-        minHeight: '680px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        padding: '16px',
+        minHeight: '600px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
       }}>
         
         {/* ── Left Sidebar Menu ── */}

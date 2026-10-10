@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Trash2, Calendar, Clock, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, Calendar, Clock, CheckCircle2, Lock } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
+import { useToast } from '../../../../shared/context/ToastContext';
+import { isHRorAdmin } from '../../../../shared/utils/permissionUtils';
 import { AddHolidayModal } from './AddHolidayModal';
 
 export const HolidayCalendar = () => {
-  const { holidays, deleteHoliday } = useHR();
+  const { addToast } = useToast();
+  const { holidays, deleteHoliday, currentUser } = useHR();
+
+  const canManageHolidays = isHRorAdmin(currentUser);
 
   const [currentDate, setCurrentDate] = useState(new Date(2026, 8, 1)); // September 2026
   const [calendarView, setCalendarView] = useState('month'); // 'month', 'week', 'day', 'list'
@@ -70,6 +75,10 @@ export const HolidayCalendar = () => {
   }
 
   const handleCellClick = (dateStr) => {
+    if (!canManageHolidays) {
+      addToast('🔒 Access Restricted: Only HR & Admin can add or modify company holidays.', 'warning');
+      return;
+    }
     setSelectedDayDate(dateStr);
     setIsAddModalOpen(true);
   };
@@ -232,20 +241,22 @@ export const HolidayCalendar = () => {
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           ⭐ {hol.name}
                         </span>
-                        <button
-                          onClick={() => deleteHoliday(hol._id)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#94a3b8',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            padding: '1px'
-                          }}
-                          title="Remove holiday"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        {canManageHolidays && (
+                          <button
+                            onClick={() => deleteHoliday(hol._id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              padding: '1px'
+                            }}
+                            title="Remove holiday (Admin/HR)"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -330,14 +341,20 @@ export const HolidayCalendar = () => {
                       {hol.description || '—'}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <button
-                        onClick={() => deleteHoliday(hol._id)}
-                        className="btn-icon-only"
-                        style={{ width: '28px', height: '28px', color: '#ef4444' }}
-                        title="Delete holiday"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {canManageHolidays ? (
+                        <button
+                          onClick={() => deleteHoliday(hol._id)}
+                          className="btn-icon-only"
+                          style={{ width: '28px', height: '28px', color: '#ef4444' }}
+                          title="Delete holiday (Admin/HR)"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>
+                          Official
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

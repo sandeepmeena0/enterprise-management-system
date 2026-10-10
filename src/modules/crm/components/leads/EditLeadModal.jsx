@@ -90,8 +90,8 @@ export const EditLeadModal = ({ lead, isOpen, onClose }) => {
         contactPerson: formData.contactPerson || formData.name,
         companyName: formData.companyName || formData.client || 'Enterprise Client',
         client: formData.client || formData.companyName || 'Enterprise Client',
-        leadOwnerId: selectedOwner?._id || 'emp_001',
-        leadOwnerName: selectedOwner?.name || 'Avinash',
+        leadOwnerId: selectedOwner?._id || currentUser?._id || 'emp_001',
+        leadOwnerName: selectedOwner?.name || currentUser?.name || 'Lead Owner',
         leadOwnerRole: selectedOwner?.role || 'Senior Director',
         leadOwnerAvatar: selectedOwner?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
         dealValue: Number(formData.dealValue) || 0
@@ -292,7 +292,7 @@ export const EditLeadModal = ({ lead, isOpen, onClose }) => {
               }}>
                 <UserCheck size={16} color="#16a34a" />
                 <span style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
-                  {lead.createdByName || 'Avinash'}
+                  {lead.createdByName || 'Team Member'}
                 </span>
                 <span style={{ fontSize: '11px', color: '#64748b' }}>
                   on {lead.createdDate || '09-12-2026'}

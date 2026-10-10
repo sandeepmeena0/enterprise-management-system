@@ -173,7 +173,7 @@ export const ExpenseDetailModal = ({ expense, isOpen, onClose }) => {
                   style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }}
                 />
                 <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a' }}>
-                  {expense.employeeName || expense.paidBy || 'Avinash'}
+                  {expense.employeeName || expense.paidBy || 'Employee'}
                 </span>
               </div>
             </div>

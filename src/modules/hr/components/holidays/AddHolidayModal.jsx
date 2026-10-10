@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
+import { isHRorAdmin } from '../../../../shared/utils/permissionUtils';
+import { ShieldCheck } from 'lucide-react';
 
 export const AddHolidayModal = ({ isOpen, onClose, selectedDate = '' }) => {
-  const { addHoliday } = useHR();
+  const { addHoliday, currentUser } = useHR();
+  const canManageHolidays = isHRorAdmin(currentUser);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -15,6 +18,10 @@ export const AddHolidayModal = ({ isOpen, onClose, selectedDate = '' }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!canManageHolidays) {
+      alert('🔒 Access Denied: Only HR and Admin administrators have authorization to publish company holidays.');
+      return;
+    }
     if (!formData.name.trim()) {
       alert('Please enter holiday name');
       return;
@@ -35,8 +42,8 @@ export const AddHolidayModal = ({ isOpen, onClose, selectedDate = '' }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Add Company Holiday"
-      subtitle="Publish a new gazetted or company holiday to the team calendar."
+      title="Declare Company Holiday"
+      subtitle="Publish a new national, gazetted, or corporate holiday to the company-wide calendar."
     >
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div>
