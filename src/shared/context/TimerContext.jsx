@@ -516,6 +516,16 @@ export const TimerProvider = ({ children }) => {
       const localIsClockedIn = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true';
       const localHadClockedOut = localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true';
 
+      // 🌟 Remote MongoDB is authoritative over stale local cache:
+      // If remote record shows isClockedIn is true for today, employee is actively working regardless of local stale clock-out flag!
+      const remoteIsClockedIn = Boolean(
+        rec &&
+        rec.date === today &&
+        rec.isClockedIn === true &&
+        (rec.clockInTime || rec.clockIn) &&
+        !rec.clockOutTime &&
+        rec.status !== 'on_leave'
+      );
       // 🌟 Check if employee is on approved leave today
       const isRecordOnLeave = Boolean(rec && rec.date === today && rec.status === 'on_leave');
       if (isRecordOnLeave) {
@@ -535,16 +545,6 @@ export const TimerProvider = ({ children }) => {
         setTodayLeaveRecord(null);
       }
 
-      // 🌟 Remote MongoDB is authoritative over stale local cache:
-      // If remote record shows isClockedIn is true for today, employee is actively working regardless of local stale clock-out flag!
-      const remoteIsClockedIn = Boolean(
-        rec &&
-        rec.date === today &&
-        rec.isClockedIn === true &&
-        (rec.clockInTime || rec.clockIn) &&
-        !rec.clockOutTime &&
-        rec.status !== 'on_leave'
-      );
 
       const isActuallyClockedIn = remoteIsClockedIn || (localIsClockedIn && (!localSessionDate || localSessionDate === today) && !localHadClockedOut);
       const isActuallyClockedOut = !isActuallyClockedIn && (Boolean(rec && rec.date === today && (rec.clockOutTime || rec.clockOut) && !rec.isClockedIn) || localHadClockedOut);
@@ -975,7 +975,15 @@ export const TimerProvider = ({ children }) => {
         // 2. Active session start timestamp (starts freshly from now on each clock in)
         let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`));
         if (!sessStartTs || sessStartTs < todayMidnightMs) {
-          sessStartTs = clockInTs || Date.now();
+          // Use clockInTs if valid (today), otherwise estimate based on stored work_seconds to avoid counter reset
+          if (clockInTs && clockInTs >= todayMidnightMs) {
+            sessStartTs = clockInTs;
+          } else {
+            // Estimate: current time minus already-accumulated work seconds (to preserve continuity)
+            const storedWorkSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || 0;
+            sessStartTs = Date.now() - (storedWorkSecs * 1000);
+            sessStartTs = Math.max(sessStartTs, todayMidnightMs); // Never before midnight
+          }
           localStorage.setItem(`ems_timer_${userKey}_current_session_start_timestamp`, sessStartTs.toString());
         }
 

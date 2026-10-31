@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file storageService.js
  * @description Centralized Database-First Storage & Offline Mirroring Layer.
  * 
@@ -95,10 +95,14 @@ export const sanitizeRunawayTimers = () => {
 
             if (t.timerRunning && (isStartedBeforeToday || isDifferentDate)) {
               tasksChanged = true;
+              // Do NOT reset accumulatedSeconds - it holds total all-time seconds
+              // but DO reset session-scoped fields so today starts fresh
               return {
                 ...t,
                 timerRunning: false,
-                startedAt: null
+                startedAt: null,
+                // todayWorkSeconds reset to 0 for the new day (dailySessions preserves per-day truth)
+                todayWorkSeconds: isDifferentDate ? 0 : (t.todayWorkSeconds || 0)
               };
             }
             return t;
@@ -188,7 +192,7 @@ export const purgeStaleMockData = () => {
       });
 
       localStorage.setItem(PROD_CLEAN_VERSION, 'true');
-      console.log('✅ Inforag Management System: Stale mock data cleaned. Ready for live DB sync.');
+      console.log('âœ… Inforag Management System: Stale mock data cleaned. Ready for live DB sync.');
     }
   } catch (e) {
     console.error('Error purging stale mock data:', e);
