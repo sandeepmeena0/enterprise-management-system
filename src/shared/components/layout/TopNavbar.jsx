@@ -25,7 +25,8 @@ import {
   Sun,
   Moon,
   MessageSquare,
-  LayoutDashboard
+  LayoutDashboard,
+  FileText
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTimer } from '../../context/TimerContext';

@@ -1008,38 +1008,25 @@ export const TimerProvider = ({ children }) => {
 
       if (inVal) {
         // ── Option 1: Cumulative Multi-Session Shift Calculation ──
-        // 1. Sum of all previous completed punch sessions today
+        // 1. Sum of all previous completed punch sessions today (only past completed sessions)
         let storedSessions = [];
         try {
           const rawSess = localStorage.getItem(`ems_timer_${userKey}_punch_sessions`);
           if (rawSess) storedSessions = JSON.parse(rawSess) || [];
         } catch {}
         const rawPastSecs = storedSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
-        const savedOfficial = Number(localStorage.getItem(`ems_timer_${userKey}_saved_official_seconds`)) || 0;
-        let attWorkSecs = 0;
-        try {
-          const rawAtt = localStorage.getItem('hrms_attendance');
-          if (rawAtt) {
-            const parsedAtt = JSON.parse(rawAtt);
-            const r = parsedAtt.find(a => isRecordForUser(a, today));
-            if (r) attWorkSecs = Number(r.workSeconds) || 0;
-          }
-        } catch {}
-
-        // Effective past sessions preserves all previously logged shift hours
-        const pastSessionsSecs = Math.max(rawPastSecs, savedOfficial, attWorkSecs);
+        // Past sessions only apply if there are actually recorded closed sessions
+        const pastSessionsSecs = rawPastSecs;
 
         // 2. Active session start timestamp (starts freshly from now on each clock in)
         let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`));
         if (!sessStartTs || sessStartTs < todayMidnightMs) {
-          // Use clockInTs if valid (today), otherwise estimate based on stored work_seconds to avoid counter reset
           if (clockInTs && clockInTs >= todayMidnightMs) {
             sessStartTs = clockInTs;
           } else {
-            // Estimate: current time minus already-accumulated work seconds (to preserve continuity)
             const storedWorkSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || 0;
             sessStartTs = Date.now() - (storedWorkSecs * 1000);
-            sessStartTs = Math.max(sessStartTs, todayMidnightMs); // Never before midnight
+            sessStartTs = Math.max(sessStartTs, todayMidnightMs);
           }
           localStorage.setItem(`ems_timer_${userKey}_current_session_start_timestamp`, sessStartTs.toString());
         }
@@ -1048,16 +1035,24 @@ export const TimerProvider = ({ children }) => {
         const sessionBreakBaseline = Number(localStorage.getItem(`ems_timer_${userKey}_session_break_baseline`)) || 0;
         // Total break duration strictly incurred during this active session
         const curSessionBreaks = Math.max(0, totalBreaks - sessionBreakBaseline);
-        // Total working time = all completed sessions + (current active session minus active & completed breaks in this session)
-        let netWorkSecs = Math.min(maxPossibleGrossSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
 
-        // ⏱️ Strict Invariant: Shift work seconds can never be less than actual task seconds worked today!
-        const todayTaskSecs = getTodayTaskSecondsForUser();
+        // ⏱️ Physical Upper Bound: Shift work seconds can NEVER exceed physical wall-clock time since clock-in minus breaks!
+        const firstClockInTs = (clockInTs && clockInTs >= todayMidnightMs) ? clockInTs : sessStartTs;
+        const maxPossibleElapsedSinceClockIn = Math.max(0, Math.floor((Date.now() - firstClockInTs) / 1000));
+        const maxPossibleNetWorkSecs = Math.max(0, maxPossibleElapsedSinceClockIn - totalBreaks);
+
+        // Total working time = completed sessions + (current active session minus active & completed breaks in this session)
+        let netWorkSecs = Math.min(maxPossibleNetWorkSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+
+        // ⏱️ Task Invariant: Shift work seconds must reflect actual tasks worked today, bounded by physical elapsed time
+        const todayTaskSecs = Math.min(maxPossibleNetWorkSecs, getTodayTaskSecondsForUser());
         netWorkSecs = Math.max(netWorkSecs, todayTaskSecs);
+        netWorkSecs = Math.min(netWorkSecs, maxPossibleNetWorkSecs);
         setWorkSeconds(netWorkSecs);
 
         const nowTs = Date.now();
-        if (nowTs - lastStorageWriteTs > 2000 || netWorkSecs > Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`) || 0)) {
+        const storedWorkVal = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`) || 0);
+        if (nowTs - lastStorageWriteTs > 2000 || Math.abs(netWorkSecs - storedWorkVal) > 2) {
           lastStorageWriteTs = nowTs;
           const mirrorKeys = [userKey, targetEmpId, targetEmpCode].filter(Boolean);
           for (const uk of mirrorKeys) {
