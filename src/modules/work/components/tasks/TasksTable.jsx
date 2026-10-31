@@ -19,6 +19,8 @@ import {
   Bell
 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
+import { useAuth } from '../../../../shared/context/AuthContext';
+import { canDeleteTask } from '../../../../shared/utils/permissionUtils';
 import { useConfirm, confirmDialog } from '../../../../shared/context/ConfirmContext';
 import { SnoozeTaskModal } from './SnoozeTaskModal';
 
@@ -31,6 +33,7 @@ const STATUS_CONFIG = {
 };
 
 export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
+  const { currentUser } = useAuth();
   const {
     tasks: contextTasks,
     deleteTask,
@@ -479,12 +482,14 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                         >
                           <Bell size={13} className="text-purple-600 dark:text-purple-400" /> Do Later & Remind ⏰
                         </div>
-                        <div
-                          onClick={(e) => handleDelete(task._id, e)}
-                          className="flex items-center gap-1.5 py-1.5 px-2.5 text-[11.5px] text-red-500 dark:text-red-400 cursor-pointer rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                        >
-                          <Trash2 size={13} /> Delete Task
-                        </div>
+                        {canDeleteTask(currentUser, task) && (
+                          <div
+                            onClick={(e) => handleDelete(task._id, e)}
+                            className="flex items-center gap-1.5 py-1.5 px-2.5 text-[11.5px] text-red-500 dark:text-red-400 cursor-pointer rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                          >
+                            <Trash2 size={13} /> Delete Task
+                          </div>
+                        )}
                       </div>
                     )}
                   </td>

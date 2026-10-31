@@ -26,6 +26,7 @@ import {
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';
+import { canDeleteProject } from '../../../../shared/utils/permissionUtils';
 
 export const ProjectDetailModal = ({ project, onClose, onAddTaskForProject, onExtendDeadline }) => {
   const { tasks, approveProjectCompletion, reopenProject, submitProjectForCompletion, deleteProject } = useWork();
@@ -383,7 +384,7 @@ export const ProjectDetailModal = ({ project, onClose, onAddTaskForProject, onEx
               </button>
             )}
 
-            {canManageApprovals && (
+            {canDeleteProject(currentUser, project) && (
               <button
                 type="button"
                 onClick={async () => {

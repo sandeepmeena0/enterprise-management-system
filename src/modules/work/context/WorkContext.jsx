@@ -1300,6 +1300,14 @@ export const WorkProvider = ({ children }) => {
     // Target user who owns this task
     const targetUserKey = isForOtherEmployee ? String(assignedEmpId) : String(userKey);
 
+    // 0. Shift Clock-In Guard: Task timer cannot run unless employee is clocked in!
+    const isClockedIn = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true' ||
+      (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true');
+    if (!isClockedIn && !options.skipClockInCheck) {
+      addToast('⚠️ Please Clock In for shift before starting task timer!', 'warning');
+      return;
+    }
+
     // 1. Break Guard: You cannot track task time while actively on break
     const isOnBreak = localStorage.getItem(`ems_timer_${userKey}_is_on_break`) === 'true' ||
       (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_on_break`) === 'true');

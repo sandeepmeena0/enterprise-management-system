@@ -46,19 +46,7 @@ export const TaskDetailModal = ({ task, onClose }) => {
 
   if (!task) return null;
 
-  const canDeleteTask = currentUser && (
-    currentUser.isAdmin ||
-    currentUser.isSuperAdmin ||
-    currentUser.systemRole === 'admin' ||
-    currentUser.systemRole === 'hr' ||
-    currentUser.role === 'Administrator' ||
-    currentUser.role === 'HR Manager' ||
-    currentUser.permissions?.manageTasks ||
-    currentUser.permissions?.deleteTasks ||
-    task.assignedById === currentUser?._id ||
-    task.createdBy === currentUser?.name ||
-    task.createdById === currentUser?._id
-  );
+  const canDeleteTask = checkCanDeleteTask(currentUser, task);
 
   const handleReassign = async (newEmpId) => {
     const newAssignee = employees.find(e => e._id === newEmpId);

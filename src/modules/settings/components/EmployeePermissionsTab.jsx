@@ -119,6 +119,15 @@ export const EmployeePermissionsTab = () => {
       allTrue.liveOperations = true;
       allTrue.payroll = true;
       allTrue.finance = true;
+      allTrue.allAccess = true;
+      allTrue.deleteTasks = true;
+      allTrue.deleteProjects = true;
+      allTrue.deleteEmployees = true;
+      allTrue.manageSalaries = true;
+      allTrue.manageExpenses = true;
+      allTrue.editAttendance = true;
+      allTrue.postNotices = true;
+      allTrue.grantPermissions = true;
       setPermissions(prev => ({ ...prev, ...allTrue }));
       addToast(`👑 Full Admin access granted for ${selectedEmp?.name}! Click Save to apply.`, 'info');
     } else {
@@ -141,6 +150,28 @@ export const EmployeePermissionsTab = () => {
       [key]: !prev[key]
     }));
     setIsSaved(false);
+  };
+
+  // 1-Click All Access & Full Administrative Authority
+  const handleGrantAll = () => {
+    if (isSelectedEmpPrimaryAdmin) {
+      addToast('🔒 Primary Administrator authority is protected.', 'warning');
+      return;
+    }
+    const allTrue = { ...permissions, allAccess: true, isDelegatedAdmin: true };
+    MODULE_LIST.forEach(m => { allTrue[m.id] = true; });
+    [
+      'deleteTasks', 'deleteProjects', 'deleteEmployees', 'manageProjects',
+      'viewAllProjects', 'approveLeaves', 'viewAllLeads', 'viewAllTasks',
+      'viewAllTickets', 'viewAllAttendance', 'viewAllLeaves', 'manageEmployees',
+      'accessFinance', 'liveOperations', 'manageSalaries', 'manageExpenses',
+      'editAttendance', 'postNotices', 'grantPermissions', 'payroll', 'finance'
+    ].forEach(k => { allTrue[k] = true; });
+
+    setPermissions(allTrue);
+    setIsDelegatedAdmin(true);
+    setIsSaved(false);
+    addToast(`⚡ All administrative permissions & module access enabled for ${selectedEmp?.name}! Click Save to apply.`, 'info');
   };
 
   const handleResetToRoleDefault = () => {
@@ -167,6 +198,10 @@ export const EmployeePermissionsTab = () => {
         Object.keys(permissions).forEach(k => {
           safePerms[k] = adminPerms[k] === false ? false : permissions[k];
         });
+        if (isDelegatedAdmin) {
+          safePerms.allAccess = true;
+          safePerms.isDelegatedAdmin = true;
+        }
         map[userKey] = safePerms;
         localStorage.setItem('EMS_USER_PERMISSIONS', JSON.stringify(map));
 
@@ -318,6 +353,104 @@ export const EmployeePermissionsTab = () => {
               }`} />
             </span>
           </label>
+        </div>
+      </div>
+
+      {/* ── ⚡ 1-CLICK ACTION CONTROLS & SAVE BAR ── */}
+      <div className="flex items-center justify-between flex-wrap gap-2.5 p-3 px-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleGrantAll}
+            className="py-1.5 px-3 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-all flex items-center gap-1.5"
+            title="1-Click: Grant All Module & Delete Permissions to this employee"
+          >
+            <span>⚡</span> Grant All Permissions (1-Click)
+          </button>
+          <button
+            type="button"
+            onClick={handleResetToRoleDefault}
+            className="py-1.5 px-3 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 font-semibold text-xs cursor-pointer transition-colors flex items-center gap-1"
+          >
+            <RotateCcw size={13} /> Reset to Role Default
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSave}
+          className="py-1.5 px-4 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold text-xs cursor-pointer shadow-xs transition-all flex items-center gap-1.5"
+        >
+          <Check size={14} /> Save Permissions
+        </button>
+      </div>
+
+      {/* ── 🗑️ CRITICAL ADMINISTRATIVE ACTIONS & DELETE PERMISSIONS (GRANULAR) ── */}
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 sm:px-5 flex flex-col gap-3 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🗑️</span>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 m-0">
+                Administrative Actions & Delete Authority
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 m-0 mt-0.5">
+                Grant or revoke granular authority to delete tasks, projects, employees, approve leaves, and manage company records.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(270px,1fr))] gap-3 mt-1.5">
+          {[
+            { key: 'deleteTasks',      emoji: '🗑️', label: 'Delete Tasks',               onDesc: 'Can permanently delete any task across the enterprise',            offDesc: 'Cannot delete tasks (unless assigned creator)' },
+            { key: 'deleteProjects',   emoji: '🗂️', label: 'Delete Projects',            onDesc: 'Can permanently delete any project & its sprint tasks',           offDesc: 'Cannot delete projects' },
+            { key: 'deleteEmployees',  emoji: '👥', label: 'Delete & Manage Employees',  onDesc: 'Can onboard, edit, archive or remove employee accounts',          offDesc: 'Cannot edit or remove employee directory' },
+            { key: 'approveLeaves',    emoji: '🌴', label: 'Universal Leave Approvals',   onDesc: 'Can review, approve or decline employee leave applications',       offDesc: 'Cannot approve leaves' },
+            { key: 'manageSalaries',   emoji: '💰', label: 'Salary & Payroll Management', onDesc: 'Can manage employee salary hikes, deductions, and payslips',       offDesc: 'Cannot access payroll or salary edits' },
+            { key: 'manageExpenses',   emoji: '💳', label: 'Approve Reimbursements',     onDesc: 'Can review, approve and settle employee expense claims',           offDesc: 'Can only submit personal expense claims' },
+            { key: 'editAttendance',   emoji: '⏱️', label: 'Shift & Clock Overrides',     onDesc: 'Can override attendance logs, force clock-out, adjust timers',    offDesc: 'Cannot manage live team shifts' },
+            { key: 'postNotices',      emoji: '📢', label: 'Publish & Delete Notices',    onDesc: 'Can publish company announcements and delete board notices',       offDesc: 'Can only read company notices' },
+            { key: 'grantPermissions', emoji: '🛡️', label: 'Role & Permission Delegation', onDesc: 'Can manage access rights and permissions of other employees',      offDesc: 'Cannot modify permissions' }
+          ].map(({ key, emoji, label, onDesc, offDesc }) => {
+            const isEnabled = !!permissions[key] || isDelegatedAdmin;
+            const adminHas = adminPerms[key] !== false;
+            return (
+              <div
+                key={key}
+                className={`p-3 px-3.5 rounded-lg flex items-center justify-between gap-2.5 transition-colors ${
+                  adminHas ? 'bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 opacity-100' : 'bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 opacity-75'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <span>{emoji}</span>
+                    <span>{label}</span>
+                    {!adminHas && <Lock size={11} className="text-red-600 shrink-0" />}
+                  </div>
+                  <div className={`text-[11px] mt-0.5 ${adminHas ? 'text-slate-500 dark:text-slate-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {!adminHas ? 'You lack this permission — cannot grant' : (isEnabled ? onDesc : offDesc)}
+                  </div>
+                </div>
+                <label className={`relative inline-block w-[38px] h-5 shrink-0 ${adminHas ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                  <input
+                    type="checkbox"
+                    checked={isEnabled}
+                    disabled={!adminHas}
+                    onChange={() => handleToggle(key)}
+                    className="sr-only"
+                  />
+                  <span className={`block w-full h-full rounded-full transition-colors ${
+                    !adminHas ? 'bg-slate-200 dark:bg-slate-800' : isEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}>
+                    <span className={`absolute top-[3px] h-3.5 w-3.5 bg-white rounded-full transition-all shadow-xs ${
+                      isEnabled ? 'left-[20px]' : 'left-[3px]'
+                    }`} />
+                  </span>
+                </label>
+              </div>
+            );
+          })}
         </div>
       </div>
 

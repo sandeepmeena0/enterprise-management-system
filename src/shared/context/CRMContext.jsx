@@ -1458,9 +1458,26 @@ export const CRMProvider = ({ children }) => {
     const idx = currentConvs.findIndex(c => c.id === conversationId);
     if (idx === -1) return;
 
+    // Deduplicate rapid accidental double-sends (e.g. within 2 seconds)
+    const senderId = currentUser?._id || currentUser?.employeeCode || 'EMP-001';
+    const existingMsgs = Array.isArray(currentConvs[idx].messages) ? currentConvs[idx].messages : [];
+    if (existingMsgs.length > 0) {
+      const lastMsg = existingMsgs[existingMsgs.length - 1];
+      const isSameSender = lastMsg && (lastMsg.senderId === senderId || (currentUser?.email && lastMsg.senderEmail === currentUser.email));
+      const isWithin2Secs = lastMsg && (Date.now() - (lastMsg.createdAt || 0) < 2000);
+      if (isSameSender && isWithin2Secs) {
+        const isSameText = (lastMsg.text || '') === trimmedText;
+        const isSameAttCount = (lastMsg.attachments?.length || 0) === (attachments?.length || 0);
+        const isSameFirstAtt = !hasAttachments || (lastMsg.attachments?.[0]?.name === attachments?.[0]?.name);
+        if (isSameText && isSameAttCount && isSameFirstAtt) {
+          console.warn('[CRMContext] Prevented duplicate rapid message submission');
+          return;
+        }
+      }
+    }
+
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const senderId = currentUser?._id || currentUser?.employeeCode || 'EMP-001';
 
     const newMsg = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,

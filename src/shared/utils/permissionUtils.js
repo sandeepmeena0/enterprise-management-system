@@ -136,6 +136,18 @@ export const getUserRole = (user) => {
     return ROLES.ADMIN;
   }
 
+  // Check stored delegation in EMS_USER_PERMISSIONS
+  try {
+    const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
+    if (rawMap) {
+      const parsed = JSON.parse(rawMap);
+      const userKey = user._id || user.employeeCode || user.email;
+      if (userKey && (parsed[userKey]?.allAccess || parsed[userKey]?.isDelegatedAdmin)) {
+        return ROLES.ADMIN;
+      }
+    }
+  } catch (_) {}
+
   const roleStr = (user.role || '').toLowerCase().trim();
   const titleStr = (user.title || user.designation || '').toLowerCase().trim();
   const emailStr = (user.email || '').toLowerCase().trim();
@@ -325,7 +337,44 @@ export const canPostNotices = (user) => {
   const perms = getUserModulePermissions(user);
   return !!(perms?.notices || perms?.dashboard);
 };
-export const canDeleteEmployee = (user) => isAdmin(user);
+export const canDeleteTask = (user, task = null) => {
+  if (!user) return false;
+  if (isAdmin(user) || user.isSuperAdmin || user.isDelegatedAdmin) return true;
+  const perms = getUserModulePermissions(user);
+  if (perms?.allAccess || perms?.deleteTasks || perms?.manageTasks) return true;
+  if (task) {
+    const uId = String(user._id || user.id || '').toLowerCase().trim();
+    const uCode = String(user.employeeCode || '').toLowerCase().trim();
+    const uName = String(user.name || '').toLowerCase().trim();
+    if (task.assignedById && (String(task.assignedById).toLowerCase() === uId || String(task.assignedById).toLowerCase() === uCode)) return true;
+    if (task.createdById && (String(task.createdById).toLowerCase() === uId || String(task.createdById).toLowerCase() === uCode)) return true;
+    if (task.createdBy && String(task.createdBy).toLowerCase().trim() === uName) return true;
+  }
+  return false;
+};
+
+export const canDeleteProject = (user, project = null) => {
+  if (!user) return false;
+  if (isAdmin(user) || user.isSuperAdmin || user.isDelegatedAdmin) return true;
+  const perms = getUserModulePermissions(user);
+  if (perms?.allAccess || perms?.deleteProjects || perms?.manageProjects) return true;
+  if (project) {
+    const uId = String(user._id || user.id || '').toLowerCase().trim();
+    const uCode = String(user.employeeCode || '').toLowerCase().trim();
+    const uEmail = String(user.email || '').toLowerCase().trim();
+    if (project.createdById && (String(project.createdById).toLowerCase() === uId || String(project.createdById).toLowerCase() === uCode)) return true;
+    if (project.createdBy && (String(project.createdBy).toLowerCase() === uId || String(project.createdBy).toLowerCase() === uCode)) return true;
+    if (project.creatorEmail && String(project.creatorEmail).toLowerCase() === uEmail) return true;
+  }
+  return false;
+};
+
+export const canDeleteEmployee = (user) => {
+  if (!user) return false;
+  if (isAdmin(user) || user.isSuperAdmin || user.isDelegatedAdmin) return true;
+  const perms = getUserModulePermissions(user);
+  return !!(perms?.allAccess || perms?.deleteEmployees || perms?.manageEmployees);
+};
 export const canEditSettings = (user) => isAdmin(user) || user?.isDelegatedAdmin;
 
 /**
@@ -504,6 +553,15 @@ export const getRoleConfig = (roleIdOrUser) => {
 // ── 16. Toggle-Based Permissions Matrix (Admin Control) ──
 export const DEFAULT_MODULE_PERMISSIONS = {
   admin: {
+    allAccess: true,
+    isDelegatedAdmin: true,
+    deleteTasks: true,
+    deleteProjects: true,
+    deleteEmployees: true,
+    manageSalaries: true,
+    manageExpenses: true,
+    editAttendance: true,
+    postNotices: true,
     dashboard: true,
     tasks: true,
     leads: true,
@@ -648,6 +706,10 @@ export const getUserModulePermissions = (user) => {
 
   const basePerms = { ...(DEFAULT_MODULE_PERMISSIONS[role] || DEFAULT_MODULE_PERMISSIONS.team_member) };
 
+  if (user.isDelegatedAdmin || user.allAccess) {
+    return { ...DEFAULT_MODULE_PERMISSIONS.admin, allAccess: true, isDelegatedAdmin: true };
+  }
+
   // 1. Direct permissions embedded on the user object
   if (user.permissions && typeof user.permissions === 'object') {
     Object.assign(basePerms, user.permissions);
@@ -668,6 +730,10 @@ export const getUserModulePermissions = (user) => {
     }
   } catch (e) {
     console.warn('Error reading module permissions:', e);
+  }
+
+  if (basePerms.allAccess || basePerms.isDelegatedAdmin) {
+    return { ...DEFAULT_MODULE_PERMISSIONS.admin, allAccess: true, isDelegatedAdmin: true, ...basePerms };
   }
 
   return basePerms;

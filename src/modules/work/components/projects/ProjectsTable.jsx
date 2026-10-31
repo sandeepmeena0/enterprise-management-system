@@ -20,6 +20,7 @@ import {
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';
+import { canDeleteProject } from '../../../../shared/utils/permissionUtils';
 
 const STATUS_CONFIG = {
   in_progress: {
@@ -364,12 +365,14 @@ export const ProjectsTable = ({ projects: propProjects, onSelectProject, onExten
                           </div>
                         )}
 
-                        <div
-                          onClick={(e) => handleDelete(proj._id, e)}
-                          className="flex items-center gap-2 px-3 py-2 text-[12.5px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded cursor-pointer transition-colors"
-                        >
-                          <Trash2 size={14} /> Delete Project
-                        </div>
+                        {canDeleteProject(currentUser, proj) && (
+                          <div
+                            onClick={(e) => handleDelete(proj._id, e)}
+                            className="flex items-center gap-2 px-3 py-2 text-[12.5px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded cursor-pointer transition-colors"
+                          >
+                            <Trash2 size={14} /> Delete Project
+                          </div>
+                        )}
                       </div>
                     )}
                   </td>

@@ -77,8 +77,11 @@ export const MessagesPage = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const messageContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+  const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
 
   const activeConv = useMemo(() => {
     // 1. Try finding in visibleConversations
@@ -156,9 +159,12 @@ export const MessagesPage = () => {
     });
   }, [visibleConversations, activeTab, searchContact, currentUser, employees]);
 
+  // Smooth scroll strictly within the message stream container without jumping outer page
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeConv?.messages]);
+    if (messageContainerRef.current) {
+      messageContainerRef.current.scrollTop = messageContainerRef.current.scrollHeight;
+    }
+  }, [activeConv?.messages?.length, activeConv?.id]);
 
   // Handle file uploads (images, videos, docs)
   const handleFileSelect = async (e) => {
@@ -191,13 +197,28 @@ export const MessagesPage = () => {
   };
 
   const handleSend = (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSendingRef.current) return;
     if ((!inputText.trim() && pendingAttachments.length === 0) || !activeConv) return;
 
-    sendMessage(activeConv.id, inputText, pendingAttachments);
+    isSendingRef.current = true;
+    setIsSending(true);
+
+    const attachmentsToSend = [...pendingAttachments];
+    const textToSend = inputText;
+
     setInputText('');
     setPendingAttachments([]);
     setShowEmojiPicker(false);
+
+    try {
+      sendMessage(activeConv.id, textToSend, attachmentsToSend);
+    } finally {
+      setTimeout(() => {
+        isSendingRef.current = false;
+        setIsSending(false);
+      }, 600);
+    }
   };
 
   const addEmoji = (emoji) => {
@@ -443,7 +464,7 @@ export const MessagesPage = () => {
                 </div>
 
                 {/* Message Stream */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3 bg-slate-100/50 dark:bg-[#0b1329]">
+                <div ref={messageContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3 bg-slate-100/50 dark:bg-[#0b1329]">
                   {(!activeConv.messages || activeConv.messages.length === 0) ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-400 dark:text-slate-500">
                       <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-sky-400 flex items-center justify-center mb-2 border border-blue-200/50 dark:border-blue-900/40 shadow-xs">
@@ -695,7 +716,7 @@ export const MessagesPage = () => {
 
                   <button
                     type="submit"
-                    disabled={!inputText.trim() && pendingAttachments.length === 0}
+                    disabled={(!inputText.trim() && pendingAttachments.length === 0) || isSending}
                     className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border-0 ${
                       inputText.trim() || pendingAttachments.length > 0
                         ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white cursor-pointer shadow-md shadow-blue-600/30'

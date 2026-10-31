@@ -957,7 +957,20 @@ export const TimerProvider = ({ children }) => {
           const rawSess = localStorage.getItem(`ems_timer_${userKey}_punch_sessions`);
           if (rawSess) storedSessions = JSON.parse(rawSess) || [];
         } catch {}
-        const pastSessionsSecs = storedSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+        const rawPastSecs = storedSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+        const savedOfficial = Number(localStorage.getItem(`ems_timer_${userKey}_saved_official_seconds`)) || 0;
+        let attWorkSecs = 0;
+        try {
+          const rawAtt = localStorage.getItem('hrms_attendance');
+          if (rawAtt) {
+            const parsedAtt = JSON.parse(rawAtt);
+            const r = parsedAtt.find(a => isRecordForUser(a, today));
+            if (r) attWorkSecs = Number(r.workSeconds) || 0;
+          }
+        } catch {}
+
+        // Effective past sessions preserves all previously logged shift hours
+        const pastSessionsSecs = Math.max(rawPastSecs, savedOfficial, attWorkSecs);
 
         // 2. Active session start timestamp (starts freshly from now on each clock in)
         let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`));
@@ -971,11 +984,27 @@ export const TimerProvider = ({ children }) => {
         // Total break duration strictly incurred during this active session
         const curSessionBreaks = Math.max(0, totalBreaks - sessionBreakBaseline);
         // Total working time = all completed sessions + (current active session minus active & completed breaks in this session)
-        const netWorkSecs = Math.min(maxPossibleGrossSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+        let netWorkSecs = Math.min(maxPossibleGrossSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+
+        // ⏱️ Strict Invariant: Shift work seconds can never be less than actual task seconds worked today!
+        let todayTaskSecs = 0;
+        try {
+          const rawTimesheets = localStorage.getItem('ems_timesheets');
+          if (rawTimesheets) {
+            const ts = JSON.parse(rawTimesheets) || [];
+            todayTaskSecs = ts.filter(t => t.date === today && (
+              String(t.employeeId) === String(targetEmpId) ||
+              String(t.employeeId) === String(targetEmpCode) ||
+              String(t.employeeId) === String(userKey)
+            )).reduce((acc, t) => acc + (Number(t.totalDurationSeconds) || 0), 0);
+          }
+        } catch {}
+
+        netWorkSecs = Math.max(netWorkSecs, todayTaskSecs);
         setWorkSeconds(netWorkSecs);
 
         const nowTs = Date.now();
-        if (nowTs - lastStorageWriteTs > 10000) {
+        if (nowTs - lastStorageWriteTs > 2000 || netWorkSecs > Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`) || 0)) {
           lastStorageWriteTs = nowTs;
           localStorage.setItem(`ems_timer_${userKey}_break_seconds`, totalBreaks.toString());
           localStorage.setItem(`ems_timer_${userKey}_work_seconds`, netWorkSecs.toString());
