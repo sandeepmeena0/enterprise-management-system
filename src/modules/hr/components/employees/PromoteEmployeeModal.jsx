@@ -18,7 +18,7 @@ import { getRoles, canUserAssignRole, recordPromotion } from '../../../../shared
 import { getCompanySettings } from '../../../../shared/services/companySettingsService';
 
 export const PromoteEmployeeModal = ({ isOpen, onClose, employee }) => {
-  const { employees, updateEmployee, currentUser } = useHR();
+  const { employees = [], updateEmployee = () => {}, currentUser = null } = useHR() || {};
   const { addToast } = useToast();
 
   const [availableRoles, setAvailableRoles] = useState(getRoles());

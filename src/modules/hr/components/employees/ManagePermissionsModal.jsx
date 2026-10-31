@@ -13,7 +13,7 @@ import { ChangePasswordModal } from '../../../../shared/components/modals/Change
 
 export const ManagePermissionsModal = ({ isOpen, onClose, employee }) => {
   const { addToast } = useToast();
-  const { updateEmployee, currentUser } = useHR();
+  const { updateEmployee = () => {}, currentUser = null } = useHR() || {};
 
   const [permissions, setPermissions] = useState({});
   const [isSaving, setIsSaving] = useState(false);

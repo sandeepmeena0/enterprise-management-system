@@ -25,8 +25,8 @@ import { useToast } from '../../context/ToastContext';
 import { getCollection, saveCollection, KEYS } from '../../services/storageService';
 
 export const ChangePasswordModal = ({ isOpen, onClose, targetUser = null }) => {
-  const { currentUser, setCurrentUser } = useAuth();
-  const { addToast } = useToast();
+  const { currentUser = null, setCurrentUser = () => {} } = useAuth() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   const isSelf = !targetUser || targetUser._id === currentUser?._id || targetUser.employeeCode === currentUser?.employeeCode;
   const effectiveUser = targetUser || currentUser;

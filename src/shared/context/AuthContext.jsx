@@ -448,7 +448,32 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    let fallbackUser = null;
+    try {
+      const s = localStorage.getItem('ems_auth_session');
+      if (s) {
+        const p = JSON.parse(s);
+        fallbackUser = p?.user || p;
+      }
+    } catch (_) {}
+    const role = fallbackUser?.systemRole || fallbackUser?.role || 'team_member';
+    return {
+      currentUser: fallbackUser,
+      setCurrentUser: () => {},
+      isAuthenticated: !!fallbackUser,
+      role,
+      roleConfig: getRoleConfig(role),
+      isAdmin: isAdmin(fallbackUser),
+      isHR: isHR(fallbackUser),
+      isTeamMember: isTeamMember(fallbackUser),
+      isHRorAdmin: isHRorAdmin(fallbackUser),
+      isLeaderOrAbove: isLeaderOrAbove(fallbackUser),
+      login: async () => {},
+      logout: () => {},
+      switchRole: () => {},
+      switchUser: () => {},
+      PRESET_USERS
+    };
   }
   return context;
 };

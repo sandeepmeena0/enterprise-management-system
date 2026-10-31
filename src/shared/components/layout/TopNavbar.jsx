@@ -720,20 +720,26 @@ export const TopNavbar = () => {
         onClose={() => setIsRaiseTicketOpen(false)}
       />
 
-      <NewLeaveModal
-        isOpen={isApplyLeaveOpen}
-        onClose={() => setIsApplyLeaveOpen(false)}
-      />
+      {isApplyLeaveOpen && (
+        <NewLeaveModal
+          isOpen={isApplyLeaveOpen}
+          onClose={() => setIsApplyLeaveOpen(false)}
+        />
+      )}
 
-      <AddLeadModal
-        isOpen={isAddLeadOpen}
-        onClose={() => setIsAddLeadOpen(false)}
-      />
+      {isAddLeadOpen && (
+        <AddLeadModal
+          isOpen={isAddLeadOpen}
+          onClose={() => setIsAddLeadOpen(false)}
+        />
+      )}
 
-      <ChangePasswordModal
-        isOpen={isChangePassOpen}
-        onClose={() => setIsChangePassOpen(false)}
-      />
+      {isChangePassOpen && (
+        <ChangePasswordModal
+          isOpen={isChangePassOpen}
+          onClose={() => setIsChangePassOpen(false)}
+        />
+      )}
 
       <LogoutConfirmModal
         isOpen={isLogoutModalOpen}
@@ -748,10 +754,12 @@ export const TopNavbar = () => {
         onClose={() => setIsOverviewOpen(false)}
       />
 
-      <SubmitResignationModal
-        isOpen={isResignationOpen}
-        onClose={() => setIsResignationOpen(false)}
-      />
+      {isResignationOpen && (
+        <SubmitResignationModal
+          isOpen={isResignationOpen}
+          onClose={() => setIsResignationOpen(false)}
+        />
+      )}
     </header>
   );
 };

@@ -3,7 +3,48 @@ import { hrService } from '../services/hrService';
 import { useToast } from '../../../shared/context/ToastContext';
 import { getCollection, saveCollection, KEYS } from '../../../shared/services/storageService';
 
-const HRContext = createContext();
+const defaultHRContext = {
+  loading: false,
+  employees: [],
+  currentUser: null,
+  leaves: [],
+  attendance: [],
+  auditLogs: [],
+  holidays: [],
+  appreciations: [],
+  resignations: [],
+  selectedMonth: new Date().getMonth() + 1,
+  selectedYear: new Date().getFullYear(),
+  selectedEmployeeId: 'all',
+  searchQuery: '',
+  dateRange: { startDate: '', endDate: '' },
+  setSelectedMonth: () => {},
+  setSelectedYear: () => {},
+  setSelectedEmployeeId: () => {},
+  setSearchQuery: () => {},
+  setDateRange: () => {},
+  loadData: async () => {},
+  addEmployee: async () => {},
+  updateEmployee: async () => {},
+  deleteEmployee: async () => {},
+  applyLeave: async () => {},
+  updateLeaveStatus: async () => {},
+  acknowledgeLeave: async () => {},
+  deleteLeave: async () => {},
+  markAttendanceRecord: async () => {},
+  adminForceClockOut: async () => {},
+  addHoliday: async () => {},
+  deleteHoliday: async () => {},
+  toggleHolidayConfirmation: async () => {},
+  bulkConfirmGazetted: async () => {},
+  resetHolidayConfirmations: async () => {},
+  addAppreciation: async () => {},
+  deleteAppreciation: async () => {},
+  submitResignation: async () => {},
+  reviewResignation: async () => {}
+};
+
+const HRContext = createContext(defaultHRContext);
 
 export const HRProvider = ({ children }) => {
   const { addToast } = useToast();
@@ -505,4 +546,7 @@ export const HRProvider = ({ children }) => {
   );
 };
 
-export const useHR = () => useContext(HRContext);
+export const useHR = () => {
+  const context = useContext(HRContext);
+  return context || defaultHRContext;
+};

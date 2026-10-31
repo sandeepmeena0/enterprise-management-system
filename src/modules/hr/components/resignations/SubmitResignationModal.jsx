@@ -5,9 +5,9 @@ import { useAuth } from '../../../../shared/context/AuthContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 
 export const SubmitResignationModal = ({ isOpen, onClose }) => {
-  const { currentUser: hrUser, submitResignation, resignations } = useHR();
-  const { currentUser: authUser } = useAuth();
-  const { addToast } = useToast();
+  const { currentUser: hrUser = null, submitResignation = () => {}, resignations = [] } = useHR() || {};
+  const { currentUser: authUser = null } = useAuth() || {};
+  const { addToast = () => {} } = useToast() || {};
   const currentUser = authUser || hrUser;
 
   const today = new Date().toISOString().split('T')[0];

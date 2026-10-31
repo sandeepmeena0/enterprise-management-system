@@ -233,36 +233,46 @@ export const EmployeeDirectoryModal = ({ isOpen, onClose }) => {
         </div>
       </Modal>
 
-      <AddEmployeeModal
-        isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
-      />
+      {isAddOpen && (
+        <AddEmployeeModal
+          isOpen={isAddOpen}
+          onClose={() => setIsAddOpen(false)}
+        />
+      )}
 
-      <PromoteEmployeeModal
-        isOpen={!!selectedPromoteEmp}
-        onClose={() => setSelectedPromoteEmp(null)}
-        employee={selectedPromoteEmp}
-      />
+      {selectedPromoteEmp && (
+        <PromoteEmployeeModal
+          isOpen={!!selectedPromoteEmp}
+          onClose={() => setSelectedPromoteEmp(null)}
+          employee={selectedPromoteEmp}
+        />
+      )}
 
-      <EditProfileModal
-        isOpen={!!selectedProfileEmp}
-        onClose={() => setSelectedProfileEmp(null)}
-        employee={selectedProfileEmp}
-      />
+      {selectedProfileEmp && (
+        <EditProfileModal
+          isOpen={!!selectedProfileEmp}
+          onClose={() => setSelectedProfileEmp(null)}
+          employee={selectedProfileEmp}
+        />
+      )}
 
-      <SalaryIncrementModal
-        isOpen={!!selectedSalaryEmp}
-        onClose={() => setSelectedSalaryEmp(null)}
-        employee={selectedSalaryEmp}
-        currentSalaryData={selectedSalaryEmp ? salaryMap[selectedSalaryEmp.employeeCode] : null}
-        onSalaryUpdated={handleSalaryUpdated}
-      />
+      {selectedSalaryEmp && (
+        <SalaryIncrementModal
+          isOpen={!!selectedSalaryEmp}
+          onClose={() => setSelectedSalaryEmp(null)}
+          employee={selectedSalaryEmp}
+          currentSalaryData={selectedSalaryEmp ? salaryMap[selectedSalaryEmp.employeeCode] : null}
+          onSalaryUpdated={handleSalaryUpdated}
+        />
+      )}
 
-      <ManagePermissionsModal
-        isOpen={!!selectedPermsEmp}
-        onClose={() => setSelectedPermsEmp(null)}
-        employee={selectedPermsEmp}
-      />
+      {selectedPermsEmp && (
+        <ManagePermissionsModal
+          isOpen={!!selectedPermsEmp}
+          onClose={() => setSelectedPermsEmp(null)}
+          employee={selectedPermsEmp}
+        />
+      )}
     </>
   );
 };

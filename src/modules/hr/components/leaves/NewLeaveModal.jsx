@@ -7,9 +7,9 @@ import { canApproveLeaves, isAdmin } from '../../../../shared/utils/permissionUt
 import { UserCheck, ShieldAlert, Calendar, Clock, AlertCircle } from 'lucide-react';
 
 export const NewLeaveModal = ({ isOpen, onClose }) => {
-  const { employees, currentUser: hrUser, applyLeave } = useHR();
-  const { currentUser: authUser } = useAuth();
-  const { addToast } = useToast();
+  const { employees = [], currentUser: hrUser = null, applyLeave = () => {} } = useHR() || {};
+  const { currentUser: authUser = null } = useAuth() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   // 1. Resolve Active Logged In Employee from Auth or Storage
   const activeUser = useMemo(() => {

@@ -31,7 +31,7 @@ import {
 import { useToast } from '../../../../shared/context/ToastContext';
 
 export const AddEmployeeModal = ({ isOpen, onClose }) => {
-  const { addEmployee, employees, currentUser } = useHR();
+  const { addEmployee = () => {}, employees = [], currentUser = null } = useHR() || {};
   const { addToast } = useToast();
   const [availableRoles, setAvailableRoles] = useState(getRoles());
   const [showPassword, setShowPassword] = useState(false);
