@@ -264,11 +264,12 @@ export const TeamOperationsPage = () => {
     const hasTodayStoredClockIn = Boolean(isTodaySession && (storedLogin || Number(localStorage.getItem(`ems_timer_${empKey}_clock_in_timestamp`)) > 0));
     const hasTodayStoredClockOut = Boolean(isTodaySession && (storedClockOut || localStorage.getItem(`ems_timer_${empKey}_had_clocked_out`) === 'true'));
 
+    // Strict Clock-In validation: An employee is ONLY clocked in if they actively punched today!
     const isClockedIn = (isTodaySession && storedClockedIn && hasTodayStoredClockIn) ||
-                        (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn !== false && attRec?.status !== 'absent');
+                        (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent');
 
     const isClockedOut = !isClockedIn && (
-      (hasTodayAttClockIn && hasTodayAttClockOut) ||
+      (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
       (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn)
     );
 

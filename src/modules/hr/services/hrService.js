@@ -12,6 +12,7 @@
 import { getCollection, saveCollection, KEYS, initStorage } from '../../../shared/services/storageService';
 import { API_BASE } from '../../../shared/config/apiConfig';
 import { holidaySyncService } from './holidaySyncService';
+import { getCompanySettings } from '../../../shared/services/companySettingsService';
 
 // Ensure storage is initialized
 initStorage();
@@ -897,10 +898,15 @@ export const hrService = {
           const diffSecs = Math.max(0, outSecs - inSecs);
           computedHours = +(diffSecs / 3600).toFixed(2);
 
-          const shiftGraceSecs = 9 * 3600 + 30 * 60;
-          if (inSecs > shiftGraceSecs) {
+          const companySettings = getCompanySettings();
+          const shiftStartTime = companySettings.shiftStartTime || '09:30 AM';
+          const graceMins = Number(companySettings.gracePeriodMinutes) || 15;
+          const shiftStartSecs = parseToSecs(shiftStartTime);
+          const graceLimitSecs = shiftStartSecs + (graceMins * 60);
+
+          if (inSecs > graceLimitSecs) {
             isLateCalc = true;
-            lateByMinutes = Math.floor((inSecs - shiftGraceSecs) / 60);
+            lateByMinutes = Math.floor((inSecs - shiftStartSecs) / 60);
           }
         } catch {}
       } else if (status === 'half_day') {

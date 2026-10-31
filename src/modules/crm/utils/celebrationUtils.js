@@ -20,7 +20,8 @@ export const calculateComputedBirthdays = (employees) => {
     .map(emp => {
       let birthMonth = 9; // 0-indexed default
       let birthDay = 15;
-      let dobStr = emp.dob;
+      let dobStr = emp.dob || emp.birthdayDate;
+      if (dobStr) dobStr = String(dobStr).split('T')[0];
 
       if (dobStr) {
         const parts = dobStr.split(/[-/]/);
@@ -98,7 +99,8 @@ export const calculateComputedAnniversaries = (employees, companySettings = null
   const fullMonthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   // ── 1. Company Foundation / Corporate Anniversary ──
-  const foundationStr = companySettings?.foundationDate;
+  let foundationStr = companySettings?.foundationDate;
+  if (foundationStr) foundationStr = String(foundationStr).split('T')[0];
   if (foundationStr) {
     const parts = String(foundationStr).split(/[-/]/);
     if (parts.length === 3) {
@@ -171,7 +173,8 @@ export const calculateComputedAnniversaries = (employees, companySettings = null
         let joinMonth = -1;
         let joinDay = 1;
         let joinYear = currentYear;
-        const joinStr = emp.joiningDate || emp.joinDate;
+        let joinStr = emp.joiningDate || emp.joinDate;
+        if (joinStr) joinStr = String(joinStr).split('T')[0];
 
         if (joinStr) {
           const parts = String(joinStr).split(/[-/]/);
