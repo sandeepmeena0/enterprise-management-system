@@ -574,14 +574,24 @@ export const DashboardPage = () => {
     let workSecs = 0;
     if (isClockedIn && !storedOnBreak && !isStaleFromPreviousDay) {
       workSecs = storedWorkSecs || Number(attRec?.workSeconds) || 0;
-      const clockInTs = rawClockInTs;
-      if (clockInTs > 0) {
-        const rawGross = Math.max(0, Math.floor((Date.now() - clockInTs) / 1000));
-        if (rawGross > 14 * 3600) {
-          workSecs = 32400; // Cap runaway session at 9.0 hours standard
-        } else {
-          workSecs = Math.max(workSecs, rawGross - (storedBreakSecs || Number(attRec?.breakSeconds) || 0));
-        }
+      // Multi-session cumulative calculation (prevents clock-out gap inflation)
+      let punchSessions = [];
+      try {
+        const rawSessions = readTimerKey('punch_sessions');
+        if (rawSessions) punchSessions = JSON.parse(rawSessions) || [];
+      } catch {}
+      if (punchSessions.length === 0 && Array.isArray(attRec?.punchSessions)) {
+        punchSessions = attRec.punchSessions;
+      }
+      const pastSessionsSecs = punchSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+
+      const sessStartTs = Number(readTimerKey('current_session_start_timestamp')) || rawClockInTs;
+      if (sessStartTs > 0) {
+        const curSessionGross = Math.max(0, Math.floor((Date.now() - sessStartTs) / 1000));
+        const sessionBreakBaseline = Number(readTimerKey('session_break_baseline')) || 0;
+        const curSessionBreaks = Math.max(0, (storedBreakSecs || Number(attRec?.breakSeconds) || 0) - sessionBreakBaseline);
+        const liveWorkSecs = pastSessionsSecs + Math.max(0, curSessionGross - curSessionBreaks);
+        workSecs = Math.max(workSecs, liveWorkSecs);
       } else if (empId === currentUser?._id) {
         const localGross = Number(localStorage.getItem(`ems_timer_${empKey}_work_seconds`)) || 0;
         workSecs = Math.max(workSecs, localGross);
@@ -1503,13 +1513,24 @@ export const DashboardPage = () => {
 
       let dayTotalSecs = dayTs.reduce((acc, curr) => acc + (Number(curr.totalDurationSeconds) || 0), 0);
 
-      // Check tasks completed on this date that might not be in timesheets
+      // Check tasks completed on this date that might not be in timesheets (strictly isolate to this date)
       (tasks || []).forEach(t => {
         if (!isTaskAssignedToUser(t, effectiveWeekUser)) return;
         const isCompletedOnDate = t.completedOn === dateStr || (t.completedAt && String(t.completedAt).startsWith(dateStr));
         const alreadyInTs = dayTs.some(ts => String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode));
         if (isCompletedOnDate && !alreadyInTs) {
-          const tSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+          let tSecs = 0;
+          if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
+            tSecs = Number(t.dailySessions[dateStr]) || 0;
+          } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
+            tSecs = Number(t.todayWorkSeconds) || 0;
+          } else {
+            const otherDaysLogged = (timesheets || [])
+              .filter(ts => (String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode)) && ts.date !== dateStr)
+              .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
+            const rawSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+            tSecs = Math.max(0, rawSecs - otherDaysLogged);
+          }
           if (tSecs > 0) dayTotalSecs += tSecs;
         }
       });

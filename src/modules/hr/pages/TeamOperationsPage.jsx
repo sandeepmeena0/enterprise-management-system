@@ -285,17 +285,32 @@ export const TeamOperationsPage = () => {
     if (isClockedIn) {
       workSecs = storedWorkSecs || Number(attRec?.workSeconds) || 0;
       if (!storedOnBreak) {
-        let clockInTs = Number(attRec?.clockInTimestamp) ||
-                        Number(localStorage.getItem(`ems_timer_${empKey}_clock_in_timestamp`)) ||
-                        (empId ? Number(localStorage.getItem(`ems_timer_${empId}_clock_in_timestamp`)) : 0);
-        if (!clockInTs && loginTime && loginTime !== 'Active' && loginTime !== '--' && loginTime !== 'On Leave') {
+        let punchSessions = [];
+        try {
+          const rawS = localStorage.getItem(`ems_timer_${empKey}_punch_sessions`) || (empId ? localStorage.getItem(`ems_timer_${empId}_punch_sessions`) : null);
+          if (rawS) punchSessions = JSON.parse(rawS) || [];
+        } catch {}
+        if (punchSessions.length === 0 && Array.isArray(attRec?.punchSessions)) {
+          punchSessions = attRec.punchSessions;
+        }
+        const pastSessionsSecs = punchSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+
+        let sessStartTs = Number(localStorage.getItem(`ems_timer_${empKey}_current_session_start_timestamp`)) ||
+                          (empId ? Number(localStorage.getItem(`ems_timer_${empId}_current_session_start_timestamp`)) : 0) ||
+                          Number(attRec?.clockInTimestamp) ||
+                          Number(localStorage.getItem(`ems_timer_${empKey}_clock_in_timestamp`)) ||
+                          (empId ? Number(localStorage.getItem(`ems_timer_${empId}_clock_in_timestamp`)) : 0);
+        if (!sessStartTs && loginTime && loginTime !== 'Active' && loginTime !== '--' && loginTime !== 'On Leave') {
           const todayMidnight = new Date();
           todayMidnight.setHours(0, 0, 0, 0);
-          clockInTs = todayMidnight.getTime() + parseTimeToSeconds(loginTime) * 1000;
+          sessStartTs = todayMidnight.getTime() + parseTimeToSeconds(loginTime) * 1000;
         }
-        if (clockInTs > 0) {
-          const gross = Math.max(0, Math.floor((Date.now() - clockInTs) / 1000));
-          workSecs = Math.max(workSecs, gross - storedBreakSecs);
+        if (sessStartTs > 0) {
+          const curSessionGross = Math.max(0, Math.floor((Date.now() - sessStartTs) / 1000));
+          const sessionBreakBaseline = Number(localStorage.getItem(`ems_timer_${empKey}_session_break_baseline`)) || 0;
+          const curSessionBreaks = Math.max(0, storedBreakSecs - sessionBreakBaseline);
+          const liveSecs = pastSessionsSecs + Math.max(0, curSessionGross - curSessionBreaks);
+          workSecs = Math.max(workSecs, liveSecs);
         }
       }
     } else if (isClockedOut) {

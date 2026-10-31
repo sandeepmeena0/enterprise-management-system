@@ -141,6 +141,44 @@ export const TimerProvider = ({ children }) => {
     return fallback;
   }, [userKey]);
 
+  // ── Helper: Accurately compute total task seconds worked today (logged timesheets + active unsubmitted timer) ──
+  const getTodayTaskSecondsForUser = useCallback(() => {
+    const today = getTodayStr();
+    let totalSecs = 0;
+    try {
+      const rawTimesheets = localStorage.getItem('ems_timesheets');
+      let userTodayTs = [];
+      if (rawTimesheets) {
+        const ts = JSON.parse(rawTimesheets) || [];
+        userTodayTs = ts.filter(t => t.date === today && (
+          String(t.employeeId) === String(targetEmpId) ||
+          String(t.employeeId) === String(targetEmpCode) ||
+          String(t.employeeId) === String(userKey)
+        ));
+        totalSecs = userTodayTs.reduce((acc, t) => acc + (Number(t.totalDurationSeconds) || 0), 0);
+      }
+      const rawActiveTimer = localStorage.getItem(`ems_active_task_timer_${userKey}`);
+      if (rawActiveTimer) {
+        const at = JSON.parse(rawActiveTimer);
+        if (at && at.date === today) {
+          let atSecs = Number(at.accumulatedSeconds) || 0;
+          if (at.timerRunning && at.startedAt) {
+            const todayMidnight = new Date();
+            todayMidnight.setHours(0, 0, 0, 0);
+            const effStart = Math.max(Number(at.startedAt), todayMidnight.getTime());
+            atSecs += Math.max(0, Math.floor((Date.now() - effStart) / 1000));
+          }
+          const loggedForAt = userTodayTs
+            .filter(ts => String(ts.taskId) === String(at.taskId) || (at.taskCode && ts.taskCode === at.taskCode))
+            .reduce((acc, t) => acc + (Number(t.totalDurationSeconds) || 0), 0);
+          const unsubmittedAtSecs = Math.max(0, atSecs - loggedForAt);
+          totalSecs += unsubmittedAtSecs;
+        }
+      }
+    } catch {}
+    return totalSecs;
+  }, [targetEmpId, targetEmpCode, userKey]);
+
   // ── Centralized Audit Logging Helper ──
   const recordAuditLog = useCallback(async (eventData) => {
     try {
@@ -995,30 +1033,7 @@ export const TimerProvider = ({ children }) => {
         let netWorkSecs = Math.min(maxPossibleGrossSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
 
         // ⏱️ Strict Invariant: Shift work seconds can never be less than actual task seconds worked today!
-        let todayTaskSecs = 0;
-        try {
-          const rawTimesheets = localStorage.getItem('ems_timesheets');
-          if (rawTimesheets) {
-            const ts = JSON.parse(rawTimesheets) || [];
-            todayTaskSecs = ts.filter(t => t.date === today && (
-              String(t.employeeId) === String(targetEmpId) ||
-              String(t.employeeId) === String(targetEmpCode) ||
-              String(t.employeeId) === String(userKey)
-            )).reduce((acc, t) => acc + (Number(t.totalDurationSeconds) || 0), 0);
-          }
-          const rawActiveTimer = localStorage.getItem(`ems_active_task_timer_${userKey}`);
-          if (rawActiveTimer) {
-            const at = JSON.parse(rawActiveTimer);
-            if (at) {
-              let atSecs = Number(at.accumulatedSeconds) || 0;
-              if (at.timerRunning && at.startedAt) {
-                atSecs += Math.max(0, Math.floor((Date.now() - Number(at.startedAt)) / 1000));
-              }
-              todayTaskSecs = Math.max(todayTaskSecs, atSecs);
-            }
-          }
-        } catch {}
-
+        const todayTaskSecs = getTodayTaskSecondsForUser();
         netWorkSecs = Math.max(netWorkSecs, todayTaskSecs);
         setWorkSeconds(netWorkSecs);
 
@@ -1431,18 +1446,7 @@ export const TimerProvider = ({ children }) => {
       setLoginTime(initialLoginTime);
 
       // Check task seconds worked today so preservedWorkSecs is always >= task time
-      let todayTaskSecs = 0;
-      try {
-        const rawTimesheets = localStorage.getItem('ems_timesheets');
-        if (rawTimesheets) {
-          const ts = JSON.parse(rawTimesheets) || [];
-          todayTaskSecs = ts.filter(t => t.date === today && (
-            String(t.employeeId) === String(targetEmpId) ||
-            String(t.employeeId) === String(targetEmpCode) ||
-            String(t.employeeId) === String(userKey)
-          )).reduce((acc, t) => acc + (Number(t.totalDurationSeconds) || 0), 0);
-        }
-      } catch {}
+      const todayTaskSecs = getTodayTaskSecondsForUser();
 
       // Preserve previous completed sessions
       const pastSessionsSecs = existingSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
@@ -1642,29 +1646,7 @@ export const TimerProvider = ({ children }) => {
       if (rawSess) existingSessions = JSON.parse(rawSess) || [];
     } catch {}
 
-    let todayTaskSecs = 0;
-    try {
-      const rawTimesheets = localStorage.getItem('ems_timesheets');
-      if (rawTimesheets) {
-        const ts = JSON.parse(rawTimesheets) || [];
-        todayTaskSecs = ts.filter(t => t.date === today && (
-          String(t.employeeId) === String(targetEmpId) ||
-          String(t.employeeId) === String(targetEmpCode) ||
-          String(t.employeeId) === String(userKey)
-        )).reduce((acc, t) => acc + (Number(t.totalDurationSeconds) || 0), 0);
-      }
-      const rawActiveTimer = localStorage.getItem(`ems_active_task_timer_${userKey}`);
-      if (rawActiveTimer) {
-        const at = JSON.parse(rawActiveTimer);
-        if (at) {
-          let atSecs = Number(at.accumulatedSeconds) || 0;
-          if (at.timerRunning && at.startedAt) {
-            atSecs += Math.max(0, Math.floor((Date.now() - Number(at.startedAt)) / 1000));
-          }
-          todayTaskSecs = Math.max(todayTaskSecs, atSecs);
-        }
-      }
-    } catch {}
+    const todayTaskSecs = getTodayTaskSecondsForUser();
 
     const pastSessionsSecs = existingSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
     const storedWorkSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || 0;

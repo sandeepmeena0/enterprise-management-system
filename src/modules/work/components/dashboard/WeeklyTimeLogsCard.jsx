@@ -147,7 +147,19 @@ export const WeeklyTimeLogsCard = ({
                 const isCompletedOnDate = t.completedOn === dateStr || (t.completedAt && String(t.completedAt).startsWith(dateStr));
                 const alreadyInTs = dayTs.some(ts => String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode));
                 if (isCompletedOnDate && !alreadyInTs) {
-                    const tSecs = Math.min(Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0, 12 * 3600);
+                    let tSecs = 0;
+                    if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
+                        tSecs = Number(t.dailySessions[dateStr]) || 0;
+                    } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
+                        tSecs = Number(t.todayWorkSeconds) || 0;
+                    } else {
+                        const otherDaysLogged = (timesheets || [])
+                            .filter(ts => (String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode)) && ts.date !== dateStr)
+                            .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
+                        const rawSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+                        tSecs = Math.max(0, rawSecs - otherDaysLogged);
+                    }
+                    tSecs = Math.min(tSecs, 12 * 3600);
                     if (tSecs > 0) {
                         dayTotalSecs += tSecs;
                         tasksWorked.push({

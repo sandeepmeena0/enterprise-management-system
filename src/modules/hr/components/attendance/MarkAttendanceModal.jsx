@@ -29,8 +29,10 @@ export const MarkAttendanceModal = ({ isOpen, onClose, initialData = null }) => 
   const isPrivileged = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.role === 'admin' || currentUser?.role === 'hr';
   const adminIdentifier = currentUser?.employeeCode || currentUser?._id || 'ADM-001';
 
+  const defaultEmpId = employees[0]?._id || employees[0]?.employeeCode || '';
+
   const [formData, setFormData] = useState({
-    employeeId: 'emp_001',
+    employeeId: defaultEmpId,
     date: new Date().toISOString().split('T')[0],
     status: 'present',
     clockInTime: defaultInTime,
@@ -42,7 +44,7 @@ export const MarkAttendanceModal = ({ isOpen, onClose, initialData = null }) => 
   useEffect(() => {
     if (initialData) {
       setFormData({
-        employeeId: initialData.employeeId || 'emp_001',
+        employeeId: initialData.employeeId || initialData.employee || defaultEmpId,
         date: initialData.date || new Date().toISOString().split('T')[0],
         status: initialData.status || 'present',
         clockInTime: initialData.clockInTime || defaultInTime,
@@ -50,8 +52,10 @@ export const MarkAttendanceModal = ({ isOpen, onClose, initialData = null }) => 
         notes: initialData.notes || '',
         auditNote: ''
       });
+    } else if (defaultEmpId && !formData.employeeId) {
+      setFormData(prev => ({ ...prev, employeeId: defaultEmpId }));
     }
-  }, [initialData, defaultInTime, defaultOutTime]);
+  }, [initialData, defaultInTime, defaultOutTime, defaultEmpId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

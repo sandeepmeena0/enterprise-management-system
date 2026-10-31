@@ -313,9 +313,10 @@ export const workService = {
 
                 const effectiveRunning = isRemoteActive ? true : (localStartedRecently ? true : false);
                 const effectiveStartedAt = isRemoteActive ? rt.startedAt : (localStartedRecently ? local.startedAt : null);
-                const effectiveSecs = effectiveRunning ? Math.max(localTimerSecs, remoteTimerSecs) : remoteTimerSecs;
-                const effectiveAccum = effectiveRunning ? Math.max(localAccum, remoteAccum) : remoteAccum;
-                const maxHours = Math.max(localHoursLogged, remoteHoursLogged);
+                // Invariant: Task timer seconds and accumulated seconds can never run backwards!
+                const effectiveSecs = Math.max(localTimerSecs, remoteTimerSecs);
+                const effectiveAccum = Math.max(localAccum, remoteAccum);
+                const maxHours = Math.max(localHoursLogged, remoteHoursLogged, +(effectiveSecs / 3600).toFixed(2));
 
                 return {
                   ...local,
@@ -709,7 +710,23 @@ export const workService = {
             });
             remoteTimesheets.forEach(ts => {
               const id = String(ts._id || ts.id);
-              if (id) tsMap.set(id, ts);
+              if (id) {
+                const existing = tsMap.get(id);
+                if (existing) {
+                  // Invariant: Timesheet duration can never decrease due to stale remote fetches
+                  const localSecs = Number(existing.totalDurationSeconds) || 0;
+                  const remoteSecs = Number(ts.totalDurationSeconds) || 0;
+                  const maxSecs = Math.max(localSecs, remoteSecs);
+                  tsMap.set(id, {
+                    ...existing,
+                    ...ts,
+                    totalDurationSeconds: maxSecs,
+                    totalDurationText: maxSecs > 0 ? (maxSecs === localSecs ? existing.totalDurationText : ts.totalDurationText) : ts.totalDurationText
+                  });
+                } else {
+                  tsMap.set(id, ts);
+                }
+              }
             });
             const merged = Array.from(tsMap.values());
             if (merged.length > 0) {

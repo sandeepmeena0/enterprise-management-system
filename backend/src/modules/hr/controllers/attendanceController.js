@@ -48,8 +48,15 @@ const getMonthlyAttendance = asyncHandler(async (req, res) => {
   }
 
   const records = await Attendance.find(query).sort(month && year ? { date: 1, employee: 1 } : { date: -1, employee: 1 });
+  const formattedRecords = records.map(r => {
+    const obj = r.toObject ? r.toObject() : { ...r };
+    if (!obj.employeeId && obj.employee) {
+      obj.employeeId = String(obj.employee);
+    }
+    return obj;
+  });
 
-  res.json({ success: true, count: records.length, data: records });
+  res.json({ success: true, count: formattedRecords.length, data: formattedRecords });
 });
 
 // ─── GET /api/attendance/summary ──────────────────────────────────────────────
@@ -307,7 +314,9 @@ const markAttendance = asyncHandler(async (req, res) => {
     }
   }
 
-  res.status(200).json({ success: true, data: record });
+  const resObj = record.toObject ? record.toObject() : { ...record };
+  resObj.employeeId = String(resObj.employee || targetEmpId);
+  res.status(200).json({ success: true, data: resObj });
 });
 
 // ─── GET /api/attendance/daily ───────────────────────────────────────────────
