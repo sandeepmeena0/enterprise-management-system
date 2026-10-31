@@ -8,6 +8,7 @@ export const calculateComputedBirthdays = (employees) => {
   if (!employees || !Array.isArray(employees) || employees.length === 0) return [];
   const today = new Date();
   const currentYear = today.getFullYear();
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
 
   return employees
     .filter(emp => {
@@ -41,13 +42,13 @@ export const calculateComputedBirthdays = (employees) => {
       const birthdayFormattedDate = `${birthDay.toString().padStart(2, '0')} ${monthNames[birthMonth]}`;
       const birthdayEventDate = `${currentYear}-${(birthMonth + 1).toString().padStart(2, '0')}-${birthDay.toString().padStart(2, '0')}`;
 
-      const diffTime = birthdayThisYear.getTime() - today.setHours(0, 0, 0, 0);
-      let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffTime = birthdayThisYear.getTime() - todayMidnight;
+      let diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
       let targetEventDate = birthdayEventDate;
 
       if (diffDays < 0) {
         const nextYearBday = new Date(currentYear + 1, birthMonth, birthDay);
-        diffDays = Math.ceil((nextYearBday.getTime() - today.setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
+        diffDays = Math.round((nextYearBday.getTime() - todayMidnight) / (1000 * 60 * 60 * 24));
         targetEventDate = `${currentYear + 1}-${(birthMonth + 1).toString().padStart(2, '0')}-${birthDay.toString().padStart(2, '0')}`;
       }
 
@@ -90,6 +91,7 @@ export const calculateComputedBirthdays = (employees) => {
 export const calculateComputedAnniversaries = (employees, companySettings = null) => {
   const today = new Date();
   const currentYear = today.getFullYear();
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const results = [];
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -115,14 +117,14 @@ export const calculateComputedAnniversaries = (employees, companySettings = null
         const annivFormattedDate = `${fDay.toString().padStart(2, '0')} ${monthNames[fMonth]}`;
         const annivEventDate = `${currentYear}-${(fMonth + 1).toString().padStart(2, '0')}-${fDay.toString().padStart(2, '0')}`;
 
-        const diffTime = annivThisYear.getTime() - today.setHours(0, 0, 0, 0);
-        let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffTime = annivThisYear.getTime() - todayMidnight;
+        let diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
         let targetEventDate = annivEventDate;
         let milestoneYears = currentYear - fYear;
 
         if (diffDays < 0) {
           const nextYearAnniv = new Date(currentYear + 1, fMonth, fDay);
-          diffDays = Math.ceil((nextYearAnniv.getTime() - today.setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
+          diffDays = Math.round((nextYearAnniv.getTime() - todayMidnight) / (1000 * 60 * 60 * 24));
           targetEventDate = `${currentYear + 1}-${(fMonth + 1).toString().padStart(2, '0')}-${fDay.toString().padStart(2, '0')}`;
           milestoneYears = (currentYear + 1) - fYear;
         }
@@ -192,14 +194,14 @@ export const calculateComputedAnniversaries = (employees, companySettings = null
         const annivFormattedDate = `${joinDay.toString().padStart(2, '0')} ${monthNames[joinMonth]}`;
         const annivEventDate = `${currentYear}-${(joinMonth + 1).toString().padStart(2, '0')}-${joinDay.toString().padStart(2, '0')}`;
 
-        const diffTime = annivThisYear.getTime() - today.setHours(0, 0, 0, 0);
-        let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffTime = annivThisYear.getTime() - todayMidnight;
+        let diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
         let targetEventDate = annivEventDate;
         let milestoneYears = currentYear - joinYear;
 
         if (diffDays < 0) {
           const nextYearAnniv = new Date(currentYear + 1, joinMonth, joinDay);
-          diffDays = Math.ceil((nextYearAnniv.getTime() - today.setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
+          diffDays = Math.round((nextYearAnniv.getTime() - todayMidnight) / (1000 * 60 * 60 * 24));
           targetEventDate = `${currentYear + 1}-${(joinMonth + 1).toString().padStart(2, '0')}-${joinDay.toString().padStart(2, '0')}`;
           milestoneYears = (currentYear + 1) - joinYear;
         }

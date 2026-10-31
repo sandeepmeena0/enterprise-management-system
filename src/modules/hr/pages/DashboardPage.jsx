@@ -1690,6 +1690,23 @@ export const DashboardPage = () => {
     });
   }, [notices, dismissedTopAlerts, effectiveTargetUser, currentUser]);
 
+  // Today's celebrations for upper dashboard alert banner (ONLY on actual birthday/anniversary, dismissible via cross)
+  const todayActiveBirthdays = React.useMemo(() => {
+    return (computedBirthdays || []).filter(b => {
+      if (!b?.isToday && b?.diffDays !== 0) return false;
+      const bdayAlertId = `bday_${b._id || b.employeeId}_${todayStr}`;
+      return !dismissedTopAlerts.includes(bdayAlertId);
+    });
+  }, [computedBirthdays, dismissedTopAlerts, todayStr]);
+
+  const todayActiveAnniversaries = React.useMemo(() => {
+    return (computedAnniversaries || []).filter(a => {
+      if (!a?.isToday && a?.diffDays !== 0) return false;
+      const annivAlertId = `anniv_${a._id || a.employeeId}_${todayStr}`;
+      return !dismissedTopAlerts.includes(annivAlertId);
+    });
+  }, [computedAnniversaries, dismissedTopAlerts, todayStr]);
+
   // 4. All personal leaves of current user (for history/status display)
   const myRecentLeaves = (leaves || []).filter(l => {
     return isLeaveApplicant(l, currentUser);
@@ -2233,6 +2250,124 @@ export const DashboardPage = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── 🎂 TOP ALERT BANNER: TODAY'S BIRTHDAY CELEBRATION (ONLY ON ACTUAL BIRTHDAY, DISMISSIBLE VIA CROSS) ── */}
+      {todayActiveBirthdays.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {todayActiveBirthdays.map(bday => {
+            const bdayAlertId = `bday_${bday._id || bday.employeeId}_${todayStr}`;
+            return (
+              <div
+                key={bdayAlertId}
+                className="bg-gradient-to-r from-pink-50 via-rose-50 to-amber-50 dark:from-pink-950/40 dark:via-rose-950/30 dark:to-amber-950/30 border-[1.5px] border-pink-300 dark:border-pink-800/70 rounded-[12px] py-3 px-4 flex items-center justify-between flex-wrap gap-3 shadow-[0_4px_16px_rgba(244,63,94,0.12)]"
+              >
+                <div className="flex items-center gap-3.5 flex-1 min-w-[280px]">
+                  <div className="relative shrink-0">
+                    <img
+                      src={bday?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(bday?.name || 'User')}`}
+                      alt={bday?.name}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-pink-400 dark:border-pink-500 shadow-xs"
+                    />
+                    <span className="absolute -bottom-1 -right-1 text-sm leading-none">🎂</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[14px] font-extrabold text-pink-900 dark:text-pink-100 flex items-center gap-1.5">
+                        🎉 Today is {bday.name}'s Birthday!
+                      </span>
+                      <span className="text-[10px] font-extrabold bg-pink-100 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 px-2 py-0.5 rounded-full">
+                        🎂 Celebration Today
+                      </span>
+                    </div>
+                    <div className="text-xs text-pink-950 dark:text-pink-200/90 mt-0.5">
+                      <strong>{bday.name}</strong> ({bday.role || bday.department || 'Team Member'}) is celebrating their birthday today! Send your warmest wishes!
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      addToast(`🎉 Birthday wishes sent to ${bday.name}!`, 'success');
+                      dismissTopAlert(bdayAlertId);
+                    }}
+                    className="py-1.5 px-3.5 rounded-lg bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white border-none text-xs font-bold cursor-pointer shadow-xs hover:shadow-sm transition-all flex items-center gap-1.5"
+                    title="Send Birthday Wishes"
+                  >
+                    <span>🎉</span> Wish Happy Birthday
+                  </button>
+                  <button
+                    onClick={() => dismissTopAlert(bdayAlertId)}
+                    className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 border border-pink-200 dark:border-pink-900/60 cursor-pointer flex items-center justify-center transition-colors"
+                    title="Dismiss alert"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── 🌟 TOP ALERT BANNER: TODAY'S WORK ANNIVERSARY CELEBRATION (DISMISSIBLE VIA CROSS) ── */}
+      {todayActiveAnniversaries.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {todayActiveAnniversaries.map(anniv => {
+            const annivAlertId = `anniv_${anniv._id || anniv.employeeId}_${todayStr}`;
+            return (
+              <div
+                key={annivAlertId}
+                className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-blue-950/30 border-[1.5px] border-purple-300 dark:border-purple-800/70 rounded-[12px] py-3 px-4 flex items-center justify-between flex-wrap gap-3 shadow-[0_4px_16px_rgba(147,51,234,0.12)]"
+              >
+                <div className="flex items-center gap-3.5 flex-1 min-w-[280px]">
+                  <div className="relative shrink-0">
+                    <img
+                      src={anniv?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(anniv?.name || 'User')}`}
+                      alt={anniv?.name}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-purple-400 dark:border-purple-500 shadow-xs"
+                    />
+                    <span className="absolute -bottom-1 -right-1 text-sm leading-none">🌟</span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[14px] font-extrabold text-purple-900 dark:text-purple-100 flex items-center gap-1.5">
+                        🌟 Today is {anniv.name}'s Work Anniversary!
+                      </span>
+                      <span className="text-[10px] font-extrabold bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-full">
+                        {anniv.serviceYearsText || 'Milestone'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-purple-950 dark:text-purple-200/90 mt-0.5">
+                      Celebrating <strong>{anniv.serviceYearsText || `${anniv.serviceYears} Years`}</strong> at Inforag with <strong>{anniv.name}</strong>!
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      addToast(`🌟 Work anniversary congratulations sent to ${anniv.name}!`, 'success');
+                      dismissTopAlert(annivAlertId);
+                    }}
+                    className="py-1.5 px-3.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white border-none text-xs font-bold cursor-pointer shadow-xs hover:shadow-sm transition-all flex items-center gap-1.5"
+                    title="Send Congratulations"
+                  >
+                    <span>🌟</span> Congratulate
+                  </button>
+                  <button
+                    onClick={() => dismissTopAlert(annivAlertId)}
+                    className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 border border-purple-200 dark:border-purple-900/60 cursor-pointer flex items-center justify-center transition-colors"
+                    title="Dismiss alert"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

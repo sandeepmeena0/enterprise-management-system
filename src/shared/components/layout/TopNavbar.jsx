@@ -162,26 +162,6 @@ export const TopNavbar = () => {
   const upcomingAnnivList = (computedAnniversaries || []).filter(a => a?.isUpcoming30Days && !a?.isToday);
   const totalNotifications = myPendingTasks.length + openTicketsList.length + todayBirthdaysList.length + upcomingBirthdaysList.length + todayAnnivList.length + upcomingAnnivList.length;
 
-  // Immediate next celebration alert for header pill (prioritizing today / soonest within 14 days)
-  const nextCelebration = React.useMemo(() => {
-    const list = [
-      ...(computedBirthdays || []).map(b => ({
-        ...b,
-        celeType: 'birthday',
-        icon: '🎂',
-        celeText: `${b.name}'s Birthday`,
-        dateFormatted: b.birthdayDate
-      })),
-      ...(computedAnniversaries || []).map(a => ({
-        ...a,
-        celeType: 'anniversary',
-        icon: '🌟',
-        celeText: `${a.name}'s ${a.serviceYearsText || ''} Anniv`,
-        dateFormatted: a.anniversaryDate || a.annivFormattedDate
-      }))
-    ].filter(item => item.diffDays >= 0 && item.diffDays <= 14).sort((a, b) => a.diffDays - b.diffDays);
-    return list[0] || null;
-  }, [computedBirthdays, computedAnniversaries]);
 
   // Search Results
   const filteredTasks = (tasks || []).filter(t => (t.title || '').toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 3);
@@ -272,19 +252,6 @@ export const TopNavbar = () => {
           </button>
         </div>
 
-        {/* ── 🎂 / 🌟 Celebration Countdown in Top Header ── */}
-        {nextCelebration && (
-          <div
-            onClick={() => navigate('/calendar')}
-            className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg cursor-pointer text-xs font-semibold shadow-xs transition-all duration-150 border ${nextCelebration.diffDays === 0 ? 'bg-pink-50 border-pink-200 text-pink-700' : (nextCelebration.diffDays === 1 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-slate-50 border-slate-200 text-slate-700')}`}
-            title={`View on Calendar • Date: ${nextCelebration.dateFormatted}`}
-          >
-            <span>{nextCelebration.icon} {nextCelebration.celeText}</span>
-            <span className={`text-[10px] font-extrabold py-px px-1.5 rounded-full text-white ${nextCelebration.diffDays === 0 ? 'bg-pink-600' : (nextCelebration.diffDays === 1 ? 'bg-orange-600' : 'bg-blue-600')}`}>
-              {nextCelebration.diffDays === 0 ? '🎉 TODAY!' : (nextCelebration.diffDays === 1 ? `⏰ Tomorrow (${nextCelebration.dateFormatted})` : `⏳ In ${nextCelebration.diffDays}d (${nextCelebration.dateFormatted})`)}
-            </span>
-          </div>
-        )}
 
         {/* ── 🔍 Quick Search Icon ── */}
         <button
