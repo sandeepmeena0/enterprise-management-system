@@ -1899,7 +1899,7 @@ export const CRMProvider = ({ children }) => {
       createdAt: now.toISOString(),
       status: leadData.status || 'new',
       priority: leadData.priority || 'medium',
-      dealValue: Number(leadData.dealValue) || 0,
+      dealValue: Number(String(leadData.dealValue || '').replace(/[^0-9.-]+/g, '')) || 0,
       leadSource: leadData.leadSource || 'Website Inquiry',
       notes: leadData.notes || '',
       ...leadData
@@ -2039,7 +2039,7 @@ export const CRMProvider = ({ children }) => {
         createdAt: now.toISOString(),
         status: item.status || 'new',
         priority: item.priority || 'medium',
-        dealValue: Number(item.dealValue) || 0,
+        dealValue: Number(String(item.dealValue || '').replace(/[^0-9.-]+/g, '')) || 0,
         leadSource: item.leadSource || 'CSV Import',
         notes: item.notes || item.description || 'Imported via CSV/Excel template.'
       };

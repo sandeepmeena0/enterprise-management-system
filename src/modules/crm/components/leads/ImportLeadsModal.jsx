@@ -100,7 +100,8 @@ export const ImportLeadsModal = ({ isOpen, onClose }) => {
           const phone = rowObj['phone number'] || rowObj['phone'] || rowObj['mobile'] || '';
           const leadType = rowObj['lead type'] || rowObj['category'] || rowObj['type'] || 'Inbound Web';
           const priority = (rowObj['priority'] || 'medium').toLowerCase();
-          const dealValue = Number(rowObj['deal value'] || rowObj['value'] || rowObj['amount'] || 0);
+          const rawDeal = String(rowObj['deal value'] || rowObj['value'] || rowObj['amount'] || 0).replace(/[^0-9.-]+/g, '');
+          const dealValue = Number(rawDeal) || 0;
           const notes = rowObj['notes'] || rowObj['description'] || '';
 
           // Validation

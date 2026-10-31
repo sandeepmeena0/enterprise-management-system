@@ -25,7 +25,7 @@ import { useCRM } from '../../../shared/context/CRMContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';
-import { getUserModulePermissions, isHRorAdmin } from '../../../shared/utils/permissionUtils';
+import { getUserModulePermissions, isHRorAdmin, canDeleteTicket as checkCanDeleteTicket } from '../../../shared/utils/permissionUtils';
 import { matchesFilter, matchesDateRange, matchesSearch } from '../../../shared/utils/filterUtils';
 import { RaiseTicketModal } from '../../../shared/components/modals/RaiseTicketModal';
 import { TicketDetailModal } from '../components/tickets/TicketDetailModal';
@@ -139,21 +139,7 @@ export const TicketsPage = () => {
   };
 
   const canDeleteTicket = (ticket) => {
-    if (!currentUser || !ticket) return false;
-    if (isPrivileged) return true;
-    const uId = String(currentUser._id || '');
-    const uCode = String(currentUser.employeeCode || '');
-    const uName = (currentUser.name || '').toLowerCase().trim();
-
-    const isRequester =
-      (uId && String(ticket.requestedById) === uId) ||
-      (uCode && String(ticket.requestedById) === uCode) ||
-      (uId && String(ticket.createdBy) === uId) ||
-      (uCode && String(ticket.createdBy) === uCode) ||
-      (uName && ticket.requestedByName && ticket.requestedByName.toLowerCase().trim() === uName) ||
-      (uName && ticket.createdByName && ticket.createdByName.toLowerCase().trim() === uName);
-
-    return isRequester;
+    return checkCanDeleteTicket(currentUser, ticket);
   };
 
   const handleDeleteTicket = async (ticket, e) => {

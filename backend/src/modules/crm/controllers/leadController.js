@@ -102,14 +102,34 @@ exports.deleteLead = async (req, res, next) => {
     const { id } = req.params;
     let lead = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
-      lead = await Lead.findByIdAndDelete(id);
+      lead = await Lead.findById(id);
     } else {
-      lead = await Lead.findOneAndDelete({ leadCode: id });
+      lead = await Lead.findOne({ leadCode: id });
     }
 
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
+
+    // Permission Check: Admin, HR, Delegated Admin, or Lead Owner/Creator can delete
+    const u = req.user;
+    if (u) {
+      const isAdminOrPrivileged = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin;
+      const isOwnerOrCreator =
+        String(lead.leadOwnerId) === String(u._id) ||
+        String(lead.leadOwnerId) === String(u.id) ||
+        String(lead.leadOwnerId) === String(u.employeeCode) ||
+        String(lead.createdById) === String(u._id) ||
+        String(lead.createdById) === String(u.id) ||
+        String(lead.createdById) === String(u.employeeCode) ||
+        (lead.createdByEmail && u.email && lead.createdByEmail.toLowerCase() === u.email.toLowerCase());
+
+      if (!isAdminOrPrivileged && !isOwnerOrCreator) {
+        return res.status(403).json({ success: false, message: 'Access denied: You do not have permission to delete this lead.' });
+      }
+    }
+
+    await Lead.findByIdAndDelete(lead._id);
     res.json({ success: true, message: 'Lead deleted successfully' });
   } catch (error) {
     next(error);

@@ -123,6 +123,9 @@ export const EmployeePermissionsTab = () => {
       allTrue.deleteTasks = true;
       allTrue.deleteProjects = true;
       allTrue.deleteEmployees = true;
+      allTrue.deleteLeads = true;
+      allTrue.deleteTickets = true;
+      allTrue.deleteNotices = true;
       allTrue.manageSalaries = true;
       allTrue.manageExpenses = true;
       allTrue.editAttendance = true;
@@ -161,7 +164,7 @@ export const EmployeePermissionsTab = () => {
     const allTrue = { ...permissions, allAccess: true, isDelegatedAdmin: true };
     MODULE_LIST.forEach(m => { allTrue[m.id] = true; });
     [
-      'deleteTasks', 'deleteProjects', 'deleteEmployees', 'manageProjects',
+      'deleteTasks', 'deleteProjects', 'deleteEmployees', 'deleteLeads', 'deleteTickets', 'deleteNotices', 'manageProjects',
       'viewAllProjects', 'approveLeaves', 'viewAllLeads', 'viewAllTasks',
       'viewAllTickets', 'viewAllAttendance', 'viewAllLeaves', 'manageEmployees',
       'accessFinance', 'liveOperations', 'manageSalaries', 'manageExpenses',
@@ -406,6 +409,8 @@ export const EmployeePermissionsTab = () => {
             { key: 'deleteTasks',      emoji: '🗑️', label: 'Delete Tasks',               onDesc: 'Can permanently delete any task across the enterprise',            offDesc: 'Cannot delete tasks (unless assigned creator)' },
             { key: 'deleteProjects',   emoji: '🗂️', label: 'Delete Projects',            onDesc: 'Can permanently delete any project & its sprint tasks',           offDesc: 'Cannot delete projects' },
             { key: 'deleteEmployees',  emoji: '👥', label: 'Delete & Manage Employees',  onDesc: 'Can onboard, edit, archive or remove employee accounts',          offDesc: 'Cannot edit or remove employee directory' },
+            { key: 'deleteLeads',      emoji: '💼', label: 'Delete CRM Leads',            onDesc: 'Can permanently delete any sales lead from the CRM pipeline',     offDesc: 'Cannot delete leads' },
+            { key: 'deleteTickets',    emoji: '🎫', label: 'Delete Support Tickets',      onDesc: 'Can permanently delete any helpdesk support ticket',              offDesc: 'Cannot delete support tickets (unless creator)' },
             { key: 'approveLeaves',    emoji: '🌴', label: 'Universal Leave Approvals',   onDesc: 'Can review, approve or decline employee leave applications',       offDesc: 'Cannot approve leaves' },
             { key: 'manageSalaries',   emoji: '💰', label: 'Salary & Payroll Management', onDesc: 'Can manage employee salary hikes, deductions, and payslips',       offDesc: 'Cannot access payroll or salary edits' },
             { key: 'manageExpenses',   emoji: '💳', label: 'Approve Reimbursements',     onDesc: 'Can review, approve and settle employee expense claims',           offDesc: 'Can only submit personal expense claims' },

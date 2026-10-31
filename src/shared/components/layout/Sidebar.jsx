@@ -129,7 +129,7 @@ export const Sidebar = () => {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
                 <span className="text-xs text-slate-300 font-semibold max-w-[130px] truncate">
-                  {currentUser?.name || 'Avinash'}
+                  {currentUser?.name || 'Employee'}
                 </span>
               </div>
             </div>

@@ -25,6 +25,8 @@ import {
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';
+import { useAuth } from '../../../../shared/context/AuthContext';
+import { canDeleteLead } from '../../../../shared/utils/permissionUtils';
 
 export const LeadsTable = ({
   leads = [],
@@ -37,6 +39,7 @@ export const LeadsTable = ({
   const { updateLeadStatus, deleteLead } = useCRM();
   const { addToast } = useToast();
   const { confirm } = useConfirm();
+  const { currentUser } = useAuth();
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [copiedField, setCopiedField] = useState(null);
   const [sortField, setSortField] = useState('idNumber');
@@ -380,26 +383,30 @@ export const LeadsTable = ({
                             </button>
                           )}
 
-                          <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
+                          {canDeleteLead(currentUser, lead) && (
+                            <>
+                              <div className="h-px bg-slate-100 dark:bg-slate-700 my-1" />
 
-                          <button
-                            onClick={async () => {
-                              setActiveMenuId(null);
-                              const ok = await confirm({
-                                title: 'Delete Lead',
-                                message: `Are you sure you want to delete lead "${lead.name}"? This action cannot be undone.`,
-                                confirmText: 'Delete Lead',
-                                variant: 'danger'
-                              });
-                              if (ok) {
-                                deleteLead(lead._id);
-                              }
-                            }}
-                            className={`${actionItemClass} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30`}
-                          >
-                            <Trash2 size={14} className="text-red-600" />
-                            <span>Delete Lead</span>
-                          </button>
+                              <button
+                                onClick={async () => {
+                                  setActiveMenuId(null);
+                                  const ok = await confirm({
+                                    title: 'Delete Lead',
+                                    message: `Are you sure you want to delete lead "${lead.name}"? This action cannot be undone.`,
+                                    confirmText: 'Delete Lead',
+                                    variant: 'danger'
+                                  });
+                                  if (ok) {
+                                    deleteLead(lead._id);
+                                  }
+                                }}
+                                className={`${actionItemClass} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30`}
+                              >
+                                <Trash2 size={14} className="text-red-600" />
+                                <span>Delete Lead</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </td>

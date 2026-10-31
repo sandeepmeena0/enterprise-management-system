@@ -23,6 +23,7 @@ import {
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useHR } from '../../../hr/context/HRContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';
+import { canDeleteTicket } from '../../../../shared/utils/permissionUtils';
 
 export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
   const { replyToTicket, updateTicketStatus, addTicketInternalNote, assignTicket, deleteTicket } = useCRM();
@@ -57,20 +58,7 @@ export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
     assignTicket(ticket._id, empId);
   };
 
-  const isPrivileged = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr';
-  const uId = String(currentUser?._id || '');
-  const uCode = String(currentUser?.employeeCode || '');
-  const uName = (currentUser?.name || '').toLowerCase().trim();
-
-  const isRequester =
-    (uId && String(ticket.requestedById) === uId) ||
-    (uCode && String(ticket.requestedById) === uCode) ||
-    (uId && String(ticket.createdBy) === uId) ||
-    (uCode && String(ticket.createdBy) === uCode) ||
-    (uName && ticket.requestedByName && ticket.requestedByName.toLowerCase().trim() === uName) ||
-    (uName && ticket.createdByName && ticket.createdByName.toLowerCase().trim() === uName);
-
-  const canDelete = isPrivileged || isRequester;
+  const canDelete = canDeleteTicket(currentUser, ticket);
 
   const handleDeleteClick = async () => {
     const ok = await confirm({

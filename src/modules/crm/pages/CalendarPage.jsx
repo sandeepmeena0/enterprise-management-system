@@ -1324,6 +1324,25 @@ export const CalendarPage = () => {
             )}
 
             <div className="flex justify-end gap-2 flex-wrap">
+              {(!selectedEvent.isHoliday && !selectedEvent.type?.toLowerCase().includes('holiday') && selectedEvent.type !== 'Birthday' && selectedEvent.type !== 'Work Anniversary') && (isPrivileged || (currentUser && (selectedEvent.createdById === currentUser._id || selectedEvent.createdBy === currentUser._id || selectedEvent.createdBy === currentUser.employeeCode || selectedEvent.createdByName === currentUser.name))) && (
+                <button
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Delete Company Event',
+                      message: `Are you sure you want to permanently delete event "${selectedEvent.title || selectedEvent.eventName}"?`,
+                      confirmText: 'Delete Event',
+                      variant: 'danger'
+                    });
+                    if (ok) {
+                      await deleteEvent(selectedEvent._id || selectedEvent.id);
+                      setSelectedEvent(null);
+                    }
+                  }}
+                  className="py-2 px-3.5 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-300 text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
+                >
+                  <Trash2 size={14} /> Delete Event
+                </button>
+              )}
               {isPrivileged && (selectedEvent.isHoliday || selectedEvent.type?.toLowerCase().includes('holiday')) && (
                 <button
                   onClick={handleCancelSelectedHoliday}

@@ -22,6 +22,8 @@ import {
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';
+import { useAuth } from '../../../shared/context/AuthContext';
+import { canPostNotices, canDeleteNotice } from '../../../shared/utils/permissionUtils';
 import { matchesDateRange, matchesSearch } from '../../../shared/utils/filterUtils';
 import { AddNoticeModal } from '../../../shared/components/modals/AddNoticeModal';
 
@@ -29,6 +31,7 @@ export const NoticeBoardPage = () => {
   const { notices, deleteNotice } = useCRM();
   const { addToast } = useToast();
   const { confirm, alert } = useConfirm();
+  const { currentUser } = useAuth();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState(null);
@@ -123,13 +126,15 @@ export const NoticeBoardPage = () => {
             <Download size={13} />
             <span>Export CSV</span>
           </button>
-          <button
-            onClick={() => setIsAddOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 h-[30px] rounded-md bg-blue-600 hover:bg-blue-700 text-white border-0 text-xs font-bold cursor-pointer shadow-[0_1px_3px_rgba(37,99,235,0.2)] transition-colors"
-          >
-            <Plus size={14} />
-            <span>Publish Notice</span>
-          </button>
+          {canPostNotices(currentUser) && (
+            <button
+              onClick={() => setIsAddOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 h-[30px] rounded-md bg-blue-600 hover:bg-blue-700 text-white border-0 text-xs font-bold cursor-pointer shadow-[0_1px_3px_rgba(37,99,235,0.2)] transition-colors"
+            >
+              <Plus size={14} />
+              <span>Publish Notice</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -346,24 +351,26 @@ export const NoticeBoardPage = () => {
 
             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <span>Target: <strong className="text-slate-800 dark:text-slate-200">{selectedNotice.to || 'All Employees'}</strong></span>
-              <button
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: 'Delete Company Notice',
-                    message: `Are you sure you want to permanently delete notice "${selectedNotice.title}"? This cannot be undone.`,
-                    confirmText: 'Delete Notice',
-                    variant: 'danger'
-                  });
-                  if (ok) {
-                    deleteNotice(selectedNotice._id);
-                    setSelectedNotice(null);
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 cursor-pointer font-semibold hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
-              >
-                <Trash2 size={13} />
-                Delete Notice
-              </button>
+              {canDeleteNotice(currentUser, selectedNotice) && (
+                <button
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Delete Company Notice',
+                      message: `Are you sure you want to permanently delete notice "${selectedNotice.title}"? This cannot be undone.`,
+                      confirmText: 'Delete Notice',
+                      variant: 'danger'
+                    });
+                    if (ok) {
+                      deleteNotice(selectedNotice._id);
+                      setSelectedNotice(null);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 cursor-pointer font-semibold hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+                >
+                  <Trash2 size={13} />
+                  Delete Notice
+                </button>
+              )}
             </div>
           </div>
         </div>

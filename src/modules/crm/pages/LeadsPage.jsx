@@ -32,7 +32,7 @@ import { useHR } from '../../hr/context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { confirmDialog } from '../../../shared/context/ConfirmContext';
-import { getUserModulePermissions, isHRorAdmin } from '../../../shared/utils/permissionUtils';
+import { getUserModulePermissions, isHRorAdmin, canDeleteLead } from '../../../shared/utils/permissionUtils';
 import { matchesFilter, matchesDateRange, matchesSearch } from '../../../shared/utils/filterUtils';
 
 // Components
@@ -212,17 +212,23 @@ export const LeadsPage = () => {
 
   // Batch actions
   const handleBatchDelete = async () => {
+    const deletableLeads = leads.filter(l => selectedIds.includes(l._id) && canDeleteLead(currentUser, l));
+    if (deletableLeads.length === 0) {
+      addToast('You do not have permission to delete the selected lead(s).', 'warning');
+      return;
+    }
+
     const ok = await confirmDialog({
       title: 'Delete Selected Leads',
-      message: `Are you sure you want to permanently delete ${selectedIds.length} selected lead(s)? This action cannot be reversed.`,
-      confirmText: `Delete ${selectedIds.length} Lead(s)`,
+      message: `Are you sure you want to permanently delete ${deletableLeads.length} authorized lead(s)? This action cannot be reversed.`,
+      confirmText: `Delete ${deletableLeads.length} Lead(s)`,
       variant: 'danger'
     });
     if (ok) {
-      selectedIds.forEach(id => deleteLead(id));
-      const count = selectedIds.length;
-      setSelectedIds([]);
-      addToast(`Deleted ${count} leads`, 'info');
+      deletableLeads.forEach(lead => deleteLead(lead._id));
+      const count = deletableLeads.length;
+      setSelectedIds(prev => prev.filter(id => !deletableLeads.some(d => d._id === id)));
+      addToast(`Deleted ${count} lead(s)`, 'info');
     }
   };
 
@@ -594,13 +600,15 @@ export const LeadsPage = () => {
               Export Selected
             </button>
 
-            <button
-              onClick={handleBatchDelete}
-              className="flex items-center gap-1.5 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white border-none rounded-md text-[12.5px] font-semibold cursor-pointer transition-colors"
-            >
-              <Trash2 size={14} />
-              Delete Selected
-            </button>
+            {canDeleteLead(currentUser) && (
+              <button
+                onClick={handleBatchDelete}
+                className="flex items-center gap-1.5 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white border-none rounded-md text-[12.5px] font-semibold cursor-pointer transition-colors"
+              >
+                <Trash2 size={14} />
+                Delete Selected
+              </button>
+            )}
 
             <button
               onClick={() => setSelectedIds([])}

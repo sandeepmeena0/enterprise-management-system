@@ -517,11 +517,11 @@ export const TopNavbar = () => {
               {/* Profile Card Header */}
               <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="w-10 h-10 rounded-lg bg-amber-600 text-white text-base font-bold flex items-center justify-center shrink-0">
-                  {currentUser?.name?.charAt(0) || 'A'}
+                  {currentUser?.name?.charAt(0) || 'U'}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px] font-bold text-slate-900 dark:text-slate-100 truncate">
-                    {currentUser?.name || 'Avinash'}
+                    {currentUser?.name || 'Employee'}
                   </div>
                   <div className="text-[11.5px] text-slate-500 dark:text-slate-400">
                     {currentUser?.role || 'UI/UX Designer'}

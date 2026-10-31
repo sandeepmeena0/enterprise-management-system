@@ -375,6 +375,55 @@ export const canDeleteEmployee = (user) => {
   const perms = getUserModulePermissions(user);
   return !!(perms?.allAccess || perms?.deleteEmployees || perms?.manageEmployees);
 };
+
+export const canDeleteLead = (user, lead = null) => {
+  if (!user) return false;
+  if (isAdmin(user) || user.isSuperAdmin || user.isDelegatedAdmin) return true;
+  const perms = getUserModulePermissions(user);
+  if (perms?.allAccess || perms?.deleteLeads || perms?.manageLeads) return true;
+  if (lead) {
+    const uId = String(user._id || user.id || '').toLowerCase().trim();
+    const uCode = String(user.employeeCode || '').toLowerCase().trim();
+    const uEmail = String(user.email || '').toLowerCase().trim();
+    if (lead.leadOwnerId && (String(lead.leadOwnerId).toLowerCase() === uId || String(lead.leadOwnerId).toLowerCase() === uCode)) return true;
+    if (lead.createdById && (String(lead.createdById).toLowerCase() === uId || String(lead.createdById).toLowerCase() === uCode)) return true;
+    if (lead.createdByEmail && String(lead.createdByEmail).toLowerCase() === uEmail) return true;
+  }
+  return false;
+};
+
+export const canDeleteNotice = (user, notice = null) => {
+  if (!user) return false;
+  if (isAdmin(user) || user.isSuperAdmin || user.isDelegatedAdmin) return true;
+  const perms = getUserModulePermissions(user);
+  if (perms?.allAccess || perms?.deleteNotices || perms?.postNotices) return true;
+  if (notice) {
+    const uId = String(user._id || user.id || '').toLowerCase().trim();
+    const uCode = String(user.employeeCode || '').toLowerCase().trim();
+    const uName = String(user.name || '').toLowerCase().trim();
+    if (notice.createdById && (String(notice.createdById).toLowerCase() === uId || String(notice.createdById).toLowerCase() === uCode)) return true;
+    if (notice.postedBy && String(notice.postedBy).toLowerCase().trim() === uName) return true;
+    if (notice.createdBy && String(notice.createdBy).toLowerCase().trim() === uName) return true;
+  }
+  return false;
+};
+
+export const canDeleteTicket = (user, ticket = null) => {
+  if (!user) return false;
+  if (isAdmin(user) || user.isSuperAdmin || user.isDelegatedAdmin) return true;
+  const perms = getUserModulePermissions(user);
+  if (perms?.allAccess || perms?.deleteTickets || perms?.manageTickets) return true;
+  if (ticket) {
+    const uId = String(user._id || user.id || '').toLowerCase().trim();
+    const uCode = String(user.employeeCode || '').toLowerCase().trim();
+    const uName = String(user.name || '').toLowerCase().trim();
+    if (ticket.requestedById && (String(ticket.requestedById).toLowerCase() === uId || String(ticket.requestedById).toLowerCase() === uCode)) return true;
+    if (ticket.createdBy && (String(ticket.createdBy).toLowerCase() === uId || String(ticket.createdBy).toLowerCase() === uCode)) return true;
+    if (ticket.requestedByName && String(ticket.requestedByName).toLowerCase().trim() === uName) return true;
+    if (ticket.createdByName && String(ticket.createdByName).toLowerCase().trim() === uName) return true;
+  }
+  return false;
+};
 export const canEditSettings = (user) => isAdmin(user) || user?.isDelegatedAdmin;
 
 /**
@@ -558,6 +607,9 @@ export const DEFAULT_MODULE_PERMISSIONS = {
     deleteTasks: true,
     deleteProjects: true,
     deleteEmployees: true,
+    deleteLeads: true,
+    deleteTickets: true,
+    deleteNotices: true,
     manageSalaries: true,
     manageExpenses: true,
     editAttendance: true,
@@ -691,6 +743,8 @@ export const GRANULAR_PERMISSIONS_LIST = [
   { key: 'approveLeaves', label: 'Approve Leaves', icon: '🌴', desc: 'Can approve or decline leave applications' },
   { key: 'viewAllTickets', label: 'View All Tickets', icon: '🎫', desc: 'Can view and resolve helpdesk support tickets' },
   { key: 'accessCRM', label: 'Access CRM & Leads', icon: '💼', desc: 'Can access CRM pipeline and customer leads' },
+  { key: 'deleteLeads', label: 'Delete CRM Leads', icon: '👥', desc: 'Can permanently delete sales leads from CRM pipeline' },
+  { key: 'deleteTickets', label: 'Delete Support Tickets', icon: '🎫', desc: 'Can permanently delete helpdesk support tickets' },
   { key: 'accessFinance', label: 'Finance & Payroll', icon: '💰', desc: 'Can view payroll summaries and company expenses' },
   { key: 'manageEmployees', label: 'Manage Employees', icon: '👥', desc: 'Can add, edit, or remove employee records' },
   { key: 'grantPermissions', label: 'Grant Permissions', icon: '🛡️', desc: 'Admin delegation: Can modify other users access rights' }
