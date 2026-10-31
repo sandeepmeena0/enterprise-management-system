@@ -467,23 +467,34 @@ export const DashboardPage = () => {
     );
     const leaveNote = attRec?.notes || 'Approved Leave';
 
-    // Stored live keys
-    const storedClockedIn = localStorage.getItem(`ems_timer_${empKey}_is_clocked_in`) === 'true';
-    const storedOnBreak = localStorage.getItem(`ems_timer_${empKey}_is_on_break`) === 'true';
-    const storedBreakType = localStorage.getItem(`ems_timer_${empKey}_break_type`) || 'Break';
-    const storedLogin = localStorage.getItem(`ems_timer_${empKey}_login_time`);
-    const storedClockOut = localStorage.getItem(`ems_timer_${empKey}_clock_out`) || localStorage.getItem(`ems_timer_${empKey}_clockout_time`);
-    const storedWorkSecs = Number(localStorage.getItem(`ems_timer_${empKey}_work_seconds`)) || 0;
-    const storedBreakSecs = Number(localStorage.getItem(`ems_timer_${empKey}_break_seconds`)) || 0;
-    const storedBreakHistoryRaw = localStorage.getItem(`ems_timer_${empKey}_break_history`);
+    // Stored live keys (supports both employeeCode and _id scoping)
+    const altEmpKey = (empKey === emp.employeeCode && emp._id) ? String(emp._id) : (emp.employeeCode || '');
+    const readTimerKey = (sub) => {
+      const v = localStorage.getItem(`ems_timer_${empKey}_${sub}`);
+      if (v !== null && v !== undefined) return v;
+      if (altEmpKey) {
+        const altV = localStorage.getItem(`ems_timer_${altEmpKey}_${sub}`);
+        if (altV !== null && altV !== undefined) return altV;
+      }
+      return null;
+    };
+
+    const storedClockedIn = readTimerKey('is_clocked_in') === 'true';
+    const storedOnBreak = readTimerKey('is_on_break') === 'true';
+    const storedBreakType = readTimerKey('break_type') || 'Break';
+    const storedLogin = readTimerKey('login_time');
+    const storedClockOut = readTimerKey('clock_out') || readTimerKey('clockout_time');
+    const storedWorkSecs = Number(readTimerKey('work_seconds')) || 0;
+    const storedBreakSecs = Number(readTimerKey('break_seconds')) || 0;
+    const storedBreakHistoryRaw = readTimerKey('break_history');
     let storedBreakHistory = [];
     try {
       if (storedBreakHistoryRaw) storedBreakHistory = JSON.parse(storedBreakHistoryRaw);
     } catch { }
 
     // Check if clockIn was from a previous calendar day (forgotten clock-out)
-    const storedSessionDate = localStorage.getItem(`ems_timer_${empKey}_work_session_date`);
-    const rawClockInTs = Number(localStorage.getItem(`ems_timer_${empKey}_clock_in_timestamp`)) || Number(attRec?.clockInTimestamp);
+    const storedSessionDate = readTimerKey('work_session_date');
+    const rawClockInTs = Number(readTimerKey('clock_in_timestamp')) || Number(attRec?.clockInTimestamp);
     let isStaleFromPreviousDay = false;
     let inDate = '';
     if (storedSessionDate && storedSessionDate !== todayStr) {
@@ -1326,10 +1337,10 @@ export const DashboardPage = () => {
       return isToday && isMine;
     });
 
-    // Deduplicate by task (taking max duration) to prevent duplicate auto-saves from inflating today's total
+    // Deduplicate by timesheet ID / session to preserve distinct sessions and ensure full logged time is counted
     const dedupeMap = new Map();
     rawList.forEach(ts => {
-      const key = String(ts.taskId || ts.taskCode || ts._id || Math.random());
+      const key = String(ts._id || ts.id || `${ts.taskId}_${ts.createdAt || Math.random()}`);
       const dur = Number(ts.totalDurationSeconds) || 0;
       if (!dedupeMap.has(key) || dur > (Number(dedupeMap.get(key).totalDurationSeconds) || 0)) {
         dedupeMap.set(key, ts);

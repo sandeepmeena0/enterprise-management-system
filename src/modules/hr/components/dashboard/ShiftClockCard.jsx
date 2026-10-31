@@ -257,7 +257,7 @@ export const ShiftClockCard = ({
           <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
             {displayedIsClockedIn ? (
               <>
-                <span>Clock In: <strong className="text-slate-900 dark:text-slate-100">{displayedLoginTime || '10:10 AM'}</strong></span>
+                <span>Clock In: <strong className="text-slate-900 dark:text-slate-100">{displayedLoginTime || '--'}</strong></span>
                 <span>•</span>
                 <span className="text-green-600 dark:text-green-400 font-bold">Active ({displayedWorkDuration || '0h 0m'})</span>
               </>

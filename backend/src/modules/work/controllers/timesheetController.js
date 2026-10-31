@@ -238,8 +238,15 @@ exports.stopTimer = async (req, res, next) => {
 
     let timesheetLog = null;
     if (existingLog) {
-      existingLog.totalDurationSeconds = totalDurationSeconds;
-      existingLog.totalDurationText = durationText;
+      const priorSecs = Number(existingLog.totalDurationSeconds) || 0;
+      const effectiveSecs = Math.max(priorSecs, Number(totalDurationSeconds) || 0);
+      const eHrs = String(Math.floor(effectiveSecs / 3600)).padStart(2, '0');
+      const eMins = String(Math.floor((effectiveSecs % 3600) / 60)).padStart(2, '0');
+      const eSecs = String(effectiveSecs % 60).padStart(2, '0');
+      const effectiveDurationText = `${eHrs}:${eMins}:${eSecs}`;
+
+      existingLog.totalDurationSeconds = effectiveSecs;
+      existingLog.totalDurationText = effectiveDurationText;
       existingLog.endTime = endTime || new Date().toTimeString().split(' ')[0];
       if (memo) existingLog.memo = memo;
       existingLog.status = 'stopped';

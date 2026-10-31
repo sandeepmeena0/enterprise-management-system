@@ -925,10 +925,18 @@ export const workService = {
 
     let finalLog = null;
     if (existingIdx !== -1) {
+      const priorSecs = Number(timesheets[existingIdx].totalDurationSeconds) || 0;
+      // Invariant: Never allow logged time to decrease! Take the maximum of prior logged vs new cumulative duration
+      const effectiveSecs = Math.max(priorSecs, totalDurationSeconds);
+      const eHrs = String(Math.floor(effectiveSecs / 3600)).padStart(2, '0');
+      const eMins = String(Math.floor((effectiveSecs % 3600) / 60)).padStart(2, '0');
+      const eSecs = String(effectiveSecs % 60).padStart(2, '0');
+      const effectiveDurationText = `${eHrs}:${eMins}:${eSecs}`;
+
       timesheets[existingIdx] = {
         ...timesheets[existingIdx],
-        totalDurationSeconds,
-        totalDurationText: durationText,
+        totalDurationSeconds: effectiveSecs,
+        totalDurationText: effectiveDurationText,
         endTime: endTime || new Date().toTimeString().split(' ')[0],
         memo: memo || timesheets[existingIdx].memo,
         status: 'stopped',
@@ -962,12 +970,18 @@ export const workService = {
 
     if (task) {
       task.timerRunning = false;
-      task.timerSeconds = totalDurationSeconds;
-      task.durationSeconds = totalDurationSeconds;
-      task.accumulatedSeconds = totalDurationSeconds;
+      const effectiveTaskSecs = Math.max(
+        Number(task.accumulatedSeconds) || 0,
+        Number(task.timerSeconds) || 0,
+        Number(task.durationSeconds) || 0,
+        totalDurationSeconds
+      );
+      task.timerSeconds = effectiveTaskSecs;
+      task.durationSeconds = effectiveTaskSecs;
+      task.accumulatedSeconds = effectiveTaskSecs;
 
       const allTaskTimesheets = timesheets.filter(ts => String(ts.taskId) === String(task._id || task.id) || (task.taskCode && ts.taskCode === task.taskCode));
-      const totalSecs = allTaskTimesheets.reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
+      const totalSecs = Math.max(effectiveTaskSecs, allTaskTimesheets.reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0));
       const totalHrs = Math.floor(totalSecs / 3600);
       const totalMins = Math.floor((totalSecs % 3600) / 60);
       task.hoursLogged = Number((totalSecs / 3600).toFixed(2));

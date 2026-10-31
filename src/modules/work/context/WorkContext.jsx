@@ -1899,16 +1899,19 @@ export const WorkProvider = ({ children }) => {
         String(assignedEmpId) !== String(currentUser?._id);
       const targetUserKey = isForOtherEmployee ? String(assignedEmpId) : String(userKey);
 
-      // Calculate duration actually spent on this task session
-      let durationSecs = (targetTask.accumulatedSeconds !== undefined && targetTask.accumulatedSeconds !== null)
-        ? Number(targetTask.accumulatedSeconds)
-        : (Number(targetTask.timerSeconds) || Number(targetTask.durationSeconds) || 0);
+      // Calculate duration actually spent on this task session (strictly monotonic, never decreases)
+      let durationSecs = Math.max(
+        Number(targetTask.accumulatedSeconds) || 0,
+        Number(targetTask.timerSeconds) || 0,
+        Number(targetTask.durationSeconds) || 0
+      );
 
       if (targetTask.timerRunning && targetTask.startedAt) {
         const elapsed = Math.max(0, Math.floor((now - Number(targetTask.startedAt)) / 1000));
         durationSecs = durationSecs + elapsed;
-      } else if (activeTimer && (String(activeTimer.taskId) === String(taskId) || String(activeTimer._id) === String(taskId)) && !isForOtherEmployee) {
-        durationSecs = getElapsedSeconds(activeTimer);
+      }
+      if (activeTimer && (String(activeTimer.taskId) === String(taskId) || String(activeTimer._id) === String(taskId)) && !isForOtherEmployee) {
+        durationSecs = Math.max(durationSecs, getElapsedSeconds(activeTimer));
       }
 
       // Log timesheet for the actual ASSIGNED EMPLOYEE
@@ -1964,7 +1967,13 @@ export const WorkProvider = ({ children }) => {
         const todayTimesheetsLogged = allTimesheets
           .filter(ts => (String(ts.taskId) === String(targetTask._id || taskId) || (targetTask.taskCode && ts.taskCode === targetTask.taskCode)) && ts.date === todayStr)
           .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
-        const durationToLogToday = Math.max(0, (todaySessionSecs || (targetTask.sessionDate === todayStr ? Math.max(0, durationSecs - prevDaysLogged) : 0)) - todayTimesheetsLogged);
+        // Ensure the full today's cumulative duration is passed to stopTimer, never a truncated difference!
+        const durationToLogToday = Math.max(
+          Number(todaySessionSecs) || 0,
+          (targetTask.sessionDate === todayStr ? Math.max(0, durationSecs - prevDaysLogged) : 0),
+          durationSecs,
+          todayTimesheetsLogged
+        );
 
         if (durationToLogToday > 0) {
           try {
@@ -2016,8 +2025,15 @@ export const WorkProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('ems_task_timer_stopped', { detail: { taskId, userKey: targetUserKey } }));
       window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { taskId, userKey: targetUserKey } }));
 
-      const hoursLoggedNum = +(durationSecs / 3600).toFixed(2);
-      const hoursLoggedFormatted = formatSeconds(durationSecs);
+      const finalTaskDuration = Math.max(
+        durationSecs,
+        durationToLogToday,
+        Number(targetTask.accumulatedSeconds) || 0,
+        Number(targetTask.timerSeconds) || 0,
+        Number(targetTask.durationSeconds) || 0
+      );
+      const hoursLoggedNum = +(finalTaskDuration / 3600).toFixed(2);
+      const hoursLoggedFormatted = formatSeconds(finalTaskDuration);
       const completionHistory = {
         id: `hist_${Date.now()}_complete`,
         action: 'completed',
@@ -2036,8 +2052,9 @@ export const WorkProvider = ({ children }) => {
             status: 'completed',
             progress: 100,
             timerRunning: false,
-            timerSeconds: durationSecs,
-            durationSeconds: durationSecs,
+            timerSeconds: finalTaskDuration,
+            durationSeconds: finalTaskDuration,
+            accumulatedSeconds: finalTaskDuration,
             hoursLogged: hoursLoggedNum,
             hoursLoggedText: hoursLoggedFormatted,
             completedAt: completedIso,
@@ -2056,8 +2073,9 @@ export const WorkProvider = ({ children }) => {
           status: 'completed',
           progress: 100,
           timerRunning: false,
-          timerSeconds: durationSecs,
-          durationSeconds: durationSecs,
+          timerSeconds: finalTaskDuration,
+          durationSeconds: finalTaskDuration,
+          accumulatedSeconds: finalTaskDuration,
           hoursLogged: hoursLoggedNum,
           hoursLoggedText: hoursLoggedFormatted,
           completedAt: completedIso,
