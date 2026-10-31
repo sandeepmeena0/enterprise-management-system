@@ -50,9 +50,9 @@ const DEPARTMENTS = [
 ];
 
 export const AddProjectModal = ({ isOpen, onClose }) => {
-  const { createProject, employees, projects } = useWork();
-  const { currentUser } = useAuth();
-  const { addToast } = useToast();
+  const { createProject = async () => {}, employees = [], projects = [] } = useWork() || {};
+  const { currentUser = null } = useAuth() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   const getTodayStr = () => {
     const d = new Date();

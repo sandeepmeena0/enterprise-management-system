@@ -17,7 +17,26 @@ import { useAuth } from './AuthContext';
 import { hrService } from '../../modules/hr/services/hrService';
 import { getCompanySettings } from '../services/companySettingsService';
 
-const TimerContext = createContext();
+const defaultTimerContext = {
+  isClockedIn: false,
+  isOnBreak: false,
+  breakType: null,
+  workSeconds: 0,
+  breakSeconds: 0,
+  loginTime: null,
+  clockOutTime: null,
+  workDurationText: '00h 00m',
+  breakDurationText: '00h 00m',
+  overtimeText: '00h 00m',
+  clockIn: async () => {},
+  clockOut: async () => {},
+  startBreak: async () => {},
+  endBreak: async () => {},
+  recordAuditLog: async () => {},
+  adminForceClockOut: async () => {}
+};
+
+const TimerContext = createContext(defaultTimerContext);
 
 export const BREAK_THRESHOLDS = {
   'Lunch Break': 45 * 60,       // 45 minutes
@@ -2127,4 +2146,7 @@ export const TimerProvider = ({ children }) => {
   );
 };
 
-export const useTimer = () => useContext(TimerContext);
+export const useTimer = () => {
+  const context = useContext(TimerContext);
+  return context || defaultTimerContext;
+};

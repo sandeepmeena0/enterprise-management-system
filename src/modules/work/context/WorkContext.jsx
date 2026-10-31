@@ -17,7 +17,44 @@ import { OverdueTaskModal } from '../components/tasks/OverdueTaskModal';
 import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
 import { isHRorAdmin } from '../../../shared/utils/permissionUtils';
 
-const WorkContext = createContext();
+const defaultWorkContext = {
+  projects: [],
+  tasks: [],
+  timesheets: [],
+  loading: false,
+  activeTaskId: null,
+  activeTimer: null,
+  timerRunning: false,
+  timerSeconds: 0,
+  refreshWorkData: async () => {},
+  createProject: async () => {},
+  updateProject: async () => {},
+  deleteProject: async () => {},
+  createTask: async () => {},
+  updateTask: async () => {},
+  changeTaskStatus: async () => {},
+  completeTask: async () => {},
+  completeAndNextTask: async () => {},
+  deleteTask: async () => {},
+  purgeAllTasks: async () => {},
+  startTaskTimer: () => {},
+  pauseTaskTimer: () => {},
+  stopTaskTimer: () => {},
+  snoozeTask: async () => {},
+  resumeSnoozedTask: async () => {},
+  dismissTaskReminder: async () => {},
+  logTimesheet: async () => {},
+  deleteTimesheet: async () => {},
+  employees: [],
+  currentUser: null,
+  isEmployeeOnLeave: () => false,
+  isTaskOverdue: () => false,
+  overdueTaskPrompt: null,
+  extendTaskDeadline: async () => {},
+  rescheduleTaskForFuture: async () => {}
+};
+
+const WorkContext = createContext(defaultWorkContext);
 
 export const WorkProvider = ({ children }) => {
   const { addToast } = useToast();
@@ -2520,5 +2557,8 @@ export const WorkProvider = ({ children }) => {
   );
 };
 
-export const useWork = () => useContext(WorkContext);
+export const useWork = () => {
+  const context = useContext(WorkContext);
+  return context || defaultWorkContext;
+};
 

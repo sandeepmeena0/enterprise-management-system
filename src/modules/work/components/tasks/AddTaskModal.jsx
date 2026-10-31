@@ -55,9 +55,9 @@ const PRIORITIES = [
 const HOUR_PRESETS = [1, 2, 4, 6, 8];
 
 export const AddTaskModal = ({ isOpen, onClose, initialProjectId = null, onTaskCreated = null }) => {
-  const { createTask, projects, employees: workEmployees, currentUser: workUser, createProject } = useWork();
-  const { employees: hrEmployees, currentUser: hrUser } = useHR();
-  const { addToast } = useToast();
+  const { createTask = async () => {}, projects = [], employees: workEmployees = [], currentUser: workUser = null, createProject = async () => {} } = useWork() || {};
+  const { employees: hrEmployees = [], currentUser: hrUser = null } = useHR() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   const currentUser = workUser || hrUser;
 

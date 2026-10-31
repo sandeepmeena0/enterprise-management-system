@@ -20,9 +20,9 @@ import { useHR } from '../../../modules/hr/context/HRContext';
 import { useToast } from '../../context/ToastContext';
 
 export const AddNoticeModal = ({ isOpen, onClose }) => {
-  const { createNotice } = useCRM();
-  const { currentUser } = useHR();
-  const { addToast } = useToast();
+  const { createNotice = async () => {} } = useCRM() || {};
+  const { currentUser = null } = useHR() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   const now = new Date().toISOString().split('T')[0];
   const defaultExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

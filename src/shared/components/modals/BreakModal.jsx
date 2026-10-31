@@ -60,7 +60,7 @@ export const BreakModal = ({ isOpen, onClose }) => {
     workDurationText,
     deleteBreakHistoryItem,
     clearTodayBreaks
-  } = useTimer();
+  } = useTimer() || {};
 
   const [activeTab, setActiveTab] = useState(isOnBreak ? 'active' : 'choose');
   const [selectedType, setSelectedType] = useState('Tea / Coffee Break');

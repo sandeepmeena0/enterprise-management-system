@@ -26,9 +26,9 @@ import { useConfirm } from '../../../../shared/context/ConfirmContext';
 import { canDeleteTicket } from '../../../../shared/utils/permissionUtils';
 
 export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
-  const { replyToTicket, updateTicketStatus, addTicketInternalNote, assignTicket, deleteTicket } = useCRM();
-  const { currentUser, employees } = useHR();
-  const { confirm } = useConfirm();
+  const { replyToTicket = async () => {}, updateTicketStatus = async () => {}, addTicketInternalNote = async () => {}, assignTicket = async () => {}, deleteTicket = async () => {} } = useCRM() || {};
+  const { currentUser = null, employees = [] } = useHR() || {};
+  const { confirm = async () => true } = useConfirm() || {};
 
   const [replyText, setReplyText] = useState('');
   const [internalNoteText, setInternalNoteText] = useState('');

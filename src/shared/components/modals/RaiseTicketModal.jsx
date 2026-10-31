@@ -25,8 +25,8 @@ const TICKET_CATEGORIES = [
 ];
 
 export const RaiseTicketModal = ({ isOpen, onClose }) => {
-  const { createTicket } = useCRM();
-  const { addToast } = useToast();
+  const { createTicket = async () => {} } = useCRM() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   const [formData, setFormData] = useState({
     subject: '',

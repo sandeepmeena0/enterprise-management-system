@@ -695,30 +695,40 @@ export const TopNavbar = () => {
       )}
 
       {/* ── Modals ── */}
-      <EditProfileModal
-        isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
-      />
+      {isEditProfileOpen && (
+        <EditProfileModal
+          isOpen={isEditProfileOpen}
+          onClose={() => setIsEditProfileOpen(false)}
+        />
+      )}
 
-      <BreakModal
-        isOpen={isBreakModalOpen}
-        onClose={() => setIsBreakModalOpen(false)}
-      />
+      {isBreakModalOpen && (
+        <BreakModal
+          isOpen={isBreakModalOpen}
+          onClose={() => setIsBreakModalOpen(false)}
+        />
+      )}
 
-      <AddTaskModal
-        isOpen={isAddTaskOpen}
-        onClose={() => setIsAddTaskOpen(false)}
-      />
+      {isAddTaskOpen && (
+        <AddTaskModal
+          isOpen={isAddTaskOpen}
+          onClose={() => setIsAddTaskOpen(false)}
+        />
+      )}
 
-      <AddProjectModal
-        isOpen={isAddProjectOpen}
-        onClose={() => setIsAddProjectOpen(false)}
-      />
+      {isAddProjectOpen && (
+        <AddProjectModal
+          isOpen={isAddProjectOpen}
+          onClose={() => setIsAddProjectOpen(false)}
+        />
+      )}
 
-      <RaiseTicketModal
-        isOpen={isRaiseTicketOpen}
-        onClose={() => setIsRaiseTicketOpen(false)}
-      />
+      {isRaiseTicketOpen && (
+        <RaiseTicketModal
+          isOpen={isRaiseTicketOpen}
+          onClose={() => setIsRaiseTicketOpen(false)}
+        />
+      )}
 
       {isApplyLeaveOpen && (
         <NewLeaveModal
@@ -749,10 +759,12 @@ export const TopNavbar = () => {
         isShiftActive={isClockedIn}
       />
 
-      <DashboardOverviewModal
-        isOpen={isOverviewOpen}
-        onClose={() => setIsOverviewOpen(false)}
-      />
+      {isOverviewOpen && (
+        <DashboardOverviewModal
+          isOpen={isOverviewOpen}
+          onClose={() => setIsOverviewOpen(false)}
+        />
+      )}
 
       {isResignationOpen && (
         <SubmitResignationModal

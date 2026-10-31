@@ -7,7 +7,13 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { AlertTriangle, AlertCircle, HelpCircle, CheckCircle2, X } from 'lucide-react';
 
-const ConfirmContext = createContext();
+const defaultConfirmContext = {
+  confirm: async () => true,
+  alert: async () => {},
+  showDialog: async () => true
+};
+
+const ConfirmContext = createContext(defaultConfirmContext);
 
 let globalConfirm = null;
 let globalAlert = null;
@@ -263,8 +269,5 @@ export const ConfirmProvider = ({ children }) => {
 
 export const useConfirm = () => {
   const context = useContext(ConfirmContext);
-  if (!context) {
-    throw new Error('useConfirm must be used within a ConfirmProvider');
-  }
-  return context;
+  return context || defaultConfirmContext;
 };

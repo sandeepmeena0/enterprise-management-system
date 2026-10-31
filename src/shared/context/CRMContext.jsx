@@ -29,7 +29,73 @@ const DEFAULT_WEEKLY_TIMELOGS = [
   { day: 'Sunday', shortDay: 'Su', date: '', durationText: '0h 00m', durationHours: 0, loginTime: 'Off', logoutTime: 'Off', breakDuration: '0m', isDayOff: true }
 ];
 
-const CRMContext = createContext();
+const defaultCRMContext = {
+  expenses: [],
+  createExpense: async () => {},
+  updateExpense: async () => {},
+  updateExpenseStatus: async () => {},
+  deleteExpense: async () => {},
+  importExpensesBatch: async () => {},
+
+  tickets: [],
+  createTicket: async () => {},
+  updateTicketStatus: async () => {},
+  replyToTicket: async () => {},
+  addTicketInternalNote: async () => {},
+  assignTicket: async () => {},
+  deleteTicket: async () => {},
+
+  events: [],
+  createEvent: async () => {},
+  updateEvent: async () => {},
+  deleteEvent: async () => {},
+  computedBirthdays: [],
+  birthdays: [],
+  computedAnniversaries: [],
+  anniversaries: [],
+
+  conversations: [],
+  visibleConversations: [],
+  totalUnreadMessagesCount: 0,
+  activeConversationId: null,
+  setActiveConversationId: () => {},
+  sendMessage: async () => {},
+  startConversation: async () => {},
+  createChannel: async () => {},
+  markConversationAsRead: () => {},
+
+  notices: [],
+  createNotice: async () => {},
+  updateNotice: async () => {},
+  deleteNotice: async () => {},
+  dismissNoticeForUser: () => {},
+
+  leads: [],
+  leadsFilter: 'all',
+  setLeadsFilter: () => {},
+  createLead: async () => {},
+  updateLead: async () => {},
+  updateLeadStatus: async () => {},
+  deleteLead: async () => {},
+  importLeadsBatch: async () => {},
+
+  emergencyContacts: [],
+  addEmergencyContact: async () => {},
+  updateEmergencyContact: async () => {},
+  deleteEmergencyContact: async () => {},
+
+  userSettings: {},
+  updateUserSettings: async () => {},
+
+  wfhEmployees: [],
+  weeklyTimeLogs: {},
+  computedWeeklyTimeLogs: {},
+  darkMode: false,
+  toggleDarkMode: () => {},
+  updateUserProfile: async () => {}
+};
+
+const CRMContext = createContext(defaultCRMContext);
 
 export const CRMProvider = ({ children }) => {
   const { addToast } = useToast();
@@ -2202,4 +2268,7 @@ export const CRMProvider = ({ children }) => {
   );
 };
 
-export const useCRM = () => useContext(CRMContext);
+export const useCRM = () => {
+  const context = useContext(CRMContext);
+  return context || defaultCRMContext;
+};

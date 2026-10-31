@@ -3331,20 +3331,26 @@ export const DashboardPage = () => {
       {/* ─────────────────────────────────────────────────────────────────────────
           MODALS
       ───────────────────────────────────────────────────────────────────────── */}
-      <BreakModal
-        isOpen={isBreakModalOpen}
-        onClose={() => setIsBreakModalOpen(false)}
-      />
+      {isBreakModalOpen && (
+        <BreakModal
+          isOpen={isBreakModalOpen}
+          onClose={() => setIsBreakModalOpen(false)}
+        />
+      )}
 
-      <EditProfileModal
-        isOpen={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
-      />
+      {isEditProfileOpen && (
+        <EditProfileModal
+          isOpen={isEditProfileOpen}
+          onClose={() => setIsEditProfileOpen(false)}
+        />
+      )}
 
-      <RaiseTicketModal
-        isOpen={isRaiseTicketOpen}
-        onClose={() => setIsRaiseTicketOpen(false)}
-      />
+      {isRaiseTicketOpen && (
+        <RaiseTicketModal
+          isOpen={isRaiseTicketOpen}
+          onClose={() => setIsRaiseTicketOpen(false)}
+        />
+      )}
 
       <TicketDetailModal
         ticket={selectedTicket}
@@ -3352,10 +3358,12 @@ export const DashboardPage = () => {
         onClose={() => setSelectedTicket(null)}
       />
 
-      <EmployeeDirectoryModal
-        isOpen={isEmpDirectoryOpen}
-        onClose={() => setIsEmpDirectoryOpen(false)}
-      />
+      {isEmpDirectoryOpen && (
+        <EmployeeDirectoryModal
+          isOpen={isEmpDirectoryOpen}
+          onClose={() => setIsEmpDirectoryOpen(false)}
+        />
+      )}
 
       <NoticeDetailModal
         notice={selectedNotice}
@@ -3377,35 +3385,43 @@ export const DashboardPage = () => {
         onClose={() => setSelectedProject(null)}
       />
 
-      <AddTaskModal
-        isOpen={isAddTaskOpen}
-        onClose={() => setIsAddTaskOpen(false)}
-        onTaskCreated={(newTask) => {
-          if (newTask && !isTaskAssignedToUser(newTask, currentUser)) {
-            setDashboardTaskScope('delegated');
-            setDashboardTaskTab('all');
-          } else {
-            setDashboardTaskScope('assigned_to_me');
-            setDashboardTaskTab('all');
-          }
-        }}
-      />
+      {isAddTaskOpen && (
+        <AddTaskModal
+          isOpen={isAddTaskOpen}
+          onClose={() => setIsAddTaskOpen(false)}
+          onTaskCreated={(newTask) => {
+            if (newTask && !isTaskAssignedToUser(newTask, currentUser)) {
+              setDashboardTaskScope('delegated');
+              setDashboardTaskTab('all');
+            } else {
+              setDashboardTaskScope('assigned_to_me');
+              setDashboardTaskTab('all');
+            }
+          }}
+        />
+      )}
 
-      <SnoozeTaskModal
-        isOpen={isSnoozeModalOpen}
-        onClose={() => setIsSnoozeModalOpen(false)}
-        task={snoozeTaskTarget}
-      />
+      {isSnoozeModalOpen && (
+        <SnoozeTaskModal
+          isOpen={isSnoozeModalOpen}
+          onClose={() => setIsSnoozeModalOpen(false)}
+          task={snoozeTaskTarget}
+        />
+      )}
 
-      <NewLeaveModal
-        isOpen={isApplyLeaveOpen}
-        onClose={() => setIsApplyLeaveOpen(false)}
-      />
+      {isApplyLeaveOpen && (
+        <NewLeaveModal
+          isOpen={isApplyLeaveOpen}
+          onClose={() => setIsApplyLeaveOpen(false)}
+        />
+      )}
 
-      <AddNoticeModal
-        isOpen={isAddNoticeOpen}
-        onClose={() => setIsAddNoticeOpen(false)}
-      />
+      {isAddNoticeOpen && (
+        <AddNoticeModal
+          isOpen={isAddNoticeOpen}
+          onClose={() => setIsAddNoticeOpen(false)}
+        />
+      )}
 
       <PendingTasksModal
         isOpen={isPendingTasksModalOpen}

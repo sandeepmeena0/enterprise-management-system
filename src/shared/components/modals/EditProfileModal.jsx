@@ -32,11 +32,11 @@ const PRESET_AVATARS = [
 ];
 
 export const EditProfileModal = ({ isOpen, onClose, employee = null }) => {
-  const { currentUser: authUser, setCurrentUser: setAuthCurrentUser } = useAuth();
-  const { currentUser: hrUser, updateEmployee, employees } = useHR();
+  const { currentUser: authUser = null, setCurrentUser: setAuthCurrentUser = () => {} } = useAuth() || {};
+  const { currentUser: hrUser = null, updateEmployee = () => {}, employees = [] } = useHR() || {};
   const currentUser = authUser || hrUser;
-  const { updateUserProfile } = useCRM();
-  const { addToast } = useToast();
+  const { updateUserProfile = async () => {} } = useCRM() || {};
+  const { addToast = () => {} } = useToast() || {};
 
   const targetEmp = employee || currentUser;
   const isEditingOther = employee && employee._id !== currentUser?._id;

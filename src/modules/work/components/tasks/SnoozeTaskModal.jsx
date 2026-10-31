@@ -28,8 +28,8 @@ const QUICK_SNOOZE_PRESETS = [
 ];
 
 export const SnoozeTaskModal = ({ isOpen, onClose, task }) => {
-  const { snoozeTask, formatSeconds } = useWork();
-  const { addToast } = useToast();
+  const { snoozeTask = async () => {}, formatSeconds = (s) => `${s}s` } = useWork() || {};
+  const { addToast = () => {} } = useToast() || {};
   const [selectedPreset, setSelectedPreset] = useState(30);
   const [customDateTime, setCustomDateTime] = useState('');
   const [note, setNote] = useState('');

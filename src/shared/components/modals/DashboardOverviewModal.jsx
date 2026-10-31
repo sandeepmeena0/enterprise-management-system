@@ -37,10 +37,10 @@ import { useTimer } from '../../context/TimerContext';
 
 export const DashboardOverviewModal = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const { currentUser, employees, leaves } = useHR();
-  const { projects, tasks } = useWork();
-  const { leads, tickets, events, notices } = useCRM();
-  const { timeString, isClockedIn, isOnBreak, breakType, loginTime, grossDurationText, workDurationText } = useTimer();
+  const { currentUser = null, employees = [], leaves = [] } = useHR() || {};
+  const { projects = [], tasks = [] } = useWork() || {};
+  const { leads = [], tickets = [], events = [], notices = [] } = useCRM() || {};
+  const { timeString = '', isClockedIn = false, isOnBreak = false, breakType = null, loginTime = null, grossDurationText = '', workDurationText = '' } = useTimer() || {};
 
   if (!isOpen) return null;
 
