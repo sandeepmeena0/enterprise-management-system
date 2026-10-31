@@ -472,7 +472,7 @@ export const DashboardPage = () => {
     const storedOnBreak = localStorage.getItem(`ems_timer_${empKey}_is_on_break`) === 'true';
     const storedBreakType = localStorage.getItem(`ems_timer_${empKey}_break_type`) || 'Break';
     const storedLogin = localStorage.getItem(`ems_timer_${empKey}_login_time`);
-    const storedClockOut = localStorage.getItem(`ems_timer_${empKey}_clock_out`);
+    const storedClockOut = localStorage.getItem(`ems_timer_${empKey}_clock_out`) || localStorage.getItem(`ems_timer_${empKey}_clockout_time`);
     const storedWorkSecs = Number(localStorage.getItem(`ems_timer_${empKey}_work_seconds`)) || 0;
     const storedBreakSecs = Number(localStorage.getItem(`ems_timer_${empKey}_break_seconds`)) || 0;
     const storedBreakHistoryRaw = localStorage.getItem(`ems_timer_${empKey}_break_history`);
@@ -687,9 +687,14 @@ export const DashboardPage = () => {
         console.warn('Backend adminForceClockOut warning:', backendErr);
       }
 
+      localStorage.setItem(`ems_timer_${empKey}_work_session_date`, todayStr);
       localStorage.setItem(`ems_timer_${empKey}_is_clocked_in`, 'false');
+      localStorage.setItem(`ems_timer_${empKey}_is_running`, 'false');
       localStorage.setItem(`ems_timer_${empKey}_is_on_break`, 'false');
+      localStorage.setItem(`ems_timer_${empKey}_had_clocked_out`, 'true');
       localStorage.setItem(`ems_timer_${empKey}_clock_out`, nowStr);
+      localStorage.setItem(`ems_timer_${empKey}_clockout_time`, nowStr);
+      localStorage.setItem(`ems_timer_${empKey}_clock_out_timestamp`, Date.now().toString());
 
       const allTasks = getCollection(KEYS.TASKS) || [];
       let taskChanged = false;
@@ -1358,25 +1363,30 @@ export const DashboardPage = () => {
       .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode))
       .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
 
-    // Subtract all time already logged on previous days only if taskCurrentSecs represents total cumulative time
+    // Subtract all time already logged on previous days
     const prevDaysLogged = (timesheets || [])
       .filter(ts => (String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode)) && ts.date !== todayStr)
       .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
 
-    let taskCurrentSecs = 0;
-    if (t.timerRunning && t.startedAt) {
-      const base = (t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null)
-        ? Number(t.accumulatedSeconds)
-        : (Number(t.timerSeconds) || 0);
-      const elapsed = Math.max(0, Math.floor((Date.now() - Number(t.startedAt)) / 1000));
-      taskCurrentSecs = base + elapsed;
-    } else {
-      taskCurrentSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || Number(t.durationSeconds) || 0;
+    // Strictly isolate time worked TODAY from previous days' lifetime seconds
+    let todayPortion = 0;
+    if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[todayStr] !== undefined) {
+      todayPortion = Number(t.dailySessions[todayStr]) || 0;
+    } else if (t.sessionDate === todayStr && t.todayWorkSeconds !== undefined) {
+      todayPortion = Number(t.todayWorkSeconds) || 0;
+    } else if (t.sessionDate === todayStr) {
+      const rawSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+      todayPortion = Math.max(0, rawSecs - prevDaysLogged);
     }
 
-    const todayPortion = (taskCurrentSecs > prevDaysLogged)
-      ? (taskCurrentSecs - prevDaysLogged)
-      : taskCurrentSecs;
+    // Add running timer elapsed seconds for today (only time that ticked today)
+    if (isRunningNow) {
+      const runningStart = t.startedAt ? Number(t.startedAt) : (activeRunningTask?.startedAt ? Number(activeRunningTask.startedAt) : Date.now());
+      const effectiveStart = Math.max(runningStart, todayMidnight.getTime());
+      const liveElapsed = Math.max(0, Math.floor((Date.now() - effectiveStart) / 1000));
+      todayPortion += liveElapsed;
+    }
+
     const unsubmitted = Math.max(0, todayPortion - loggedForThisTaskToday);
     return acc + unsubmitted;
   }, 0);

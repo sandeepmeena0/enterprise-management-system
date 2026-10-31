@@ -119,6 +119,11 @@ export const HRProvider = ({ children }) => {
         });
       }
       setAttendance(atts || []);
+      try {
+        if (Array.isArray(atts) && atts.length > 0) {
+          saveCollection(KEYS.ATTENDANCE, atts);
+        }
+      } catch (_) {}
       setHolidays(hols || []);
       setAppreciations(apps || []);
       setAuditLogs(auds || []);

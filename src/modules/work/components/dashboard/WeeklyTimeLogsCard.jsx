@@ -219,8 +219,15 @@ export const WeeklyTimeLogsCard = ({
                             .filter(ts => (String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode)) && ts.date !== dateStr)
                             .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
 
-                        const rawTaskSecs = Math.min(Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0, 12 * 3600);
-                        const todayPortion = Math.max(0, rawTaskSecs - prevDaysLogged);
+                        let todayPortion = 0;
+                        if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
+                            todayPortion = Number(t.dailySessions[dateStr]) || 0;
+                        } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
+                            todayPortion = Number(t.todayWorkSeconds) || 0;
+                        } else {
+                            const rawTaskSecs = Math.min(Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0, 12 * 3600);
+                            todayPortion = Math.max(0, rawTaskSecs - prevDaysLogged);
+                        }
                         const unsubmitted = Math.max(0, todayPortion - alreadyLoggedToday);
 
                         if (unsubmitted > 0) {

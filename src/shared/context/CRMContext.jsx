@@ -740,8 +740,15 @@ export const CRMProvider = ({ children }) => {
               .filter(ts => (String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode)) && ts.date !== dateStr)
               .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
 
-            const taskSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || Number(t.durationSeconds) || 0;
-            const dayPortion = Math.max(0, taskSecs - otherDaysLogged);
+            let dayPortion = 0;
+            if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
+              dayPortion = Number(t.dailySessions[dateStr]) || 0;
+            } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
+              dayPortion = Number(t.todayWorkSeconds) || 0;
+            } else {
+              const taskSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || Number(t.durationSeconds) || 0;
+              dayPortion = Math.max(0, taskSecs - otherDaysLogged);
+            }
             const unsubmitted = Math.max(0, dayPortion - timesheetsForThisTask);
             dayTotalTaskSeconds += unsubmitted;
           });

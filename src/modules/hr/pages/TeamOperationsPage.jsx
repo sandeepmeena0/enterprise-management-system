@@ -414,16 +414,26 @@ export const TeamOperationsPage = () => {
     const punchTime = customPunchTime.trim() || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
     try {
+      localStorage.setItem(`ems_timer_${empKey}_work_session_date`, todayStr);
       localStorage.setItem(`ems_timer_${empKey}_is_clocked_in`, 'true');
       localStorage.setItem(`ems_timer_${empKey}_is_running`, 'true');
       localStorage.setItem(`ems_timer_${empKey}_is_on_break`, 'false');
+      localStorage.setItem(`ems_timer_${empKey}_had_clocked_out`, 'false');
       localStorage.setItem(`ems_timer_${empKey}_login_time`, punchTime);
       localStorage.setItem(`ems_timer_${empKey}_clock_in_timestamp`, Date.now().toString());
       localStorage.removeItem(`ems_timer_${empKey}_clock_out`);
+      localStorage.removeItem(`ems_timer_${empKey}_clockout_time`);
+      localStorage.removeItem(`ems_timer_${empKey}_clock_out_timestamp`);
 
       if (emp._id) {
+        localStorage.setItem(`ems_timer_${emp._id}_work_session_date`, todayStr);
         localStorage.setItem(`ems_timer_${emp._id}_is_clocked_in`, 'true');
+        localStorage.setItem(`ems_timer_${emp._id}_is_running`, 'true');
+        localStorage.setItem(`ems_timer_${emp._id}_is_on_break`, 'false');
+        localStorage.setItem(`ems_timer_${emp._id}_had_clocked_out`, 'false');
         localStorage.setItem(`ems_timer_${emp._id}_login_time`, punchTime);
+        localStorage.removeItem(`ems_timer_${emp._id}_clock_out`);
+        localStorage.removeItem(`ems_timer_${emp._id}_clockout_time`);
       }
 
       // Persist attendance directly to MongoDB & Local Storage
@@ -493,14 +503,23 @@ export const TeamOperationsPage = () => {
         console.warn('Backend adminForceClockOut warning:', backendErr);
       }
 
+      localStorage.setItem(`ems_timer_${empKey}_work_session_date`, todayStr);
       localStorage.setItem(`ems_timer_${empKey}_is_clocked_in`, 'false');
       localStorage.setItem(`ems_timer_${empKey}_is_running`, 'false');
       localStorage.setItem(`ems_timer_${empKey}_is_on_break`, 'false');
+      localStorage.setItem(`ems_timer_${empKey}_had_clocked_out`, 'true');
       localStorage.setItem(`ems_timer_${empKey}_clock_out`, punchTime);
+      localStorage.setItem(`ems_timer_${empKey}_clockout_time`, punchTime);
+      localStorage.setItem(`ems_timer_${empKey}_clock_out_timestamp`, Date.now().toString());
 
       if (emp._id) {
+        localStorage.setItem(`ems_timer_${emp._id}_work_session_date`, todayStr);
         localStorage.setItem(`ems_timer_${emp._id}_is_clocked_in`, 'false');
+        localStorage.setItem(`ems_timer_${emp._id}_is_running`, 'false');
+        localStorage.setItem(`ems_timer_${emp._id}_is_on_break`, 'false');
+        localStorage.setItem(`ems_timer_${emp._id}_had_clocked_out`, 'true');
         localStorage.setItem(`ems_timer_${emp._id}_clock_out`, punchTime);
+        localStorage.setItem(`ems_timer_${emp._id}_clockout_time`, punchTime);
       }
 
       // Pause running tasks for this employee

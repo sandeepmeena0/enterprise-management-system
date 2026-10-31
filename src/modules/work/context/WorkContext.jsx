@@ -1389,7 +1389,11 @@ export const WorkProvider = ({ children }) => {
     // If targetTask was already worked today (sessionDate === today), resume today's portion.
     // If it's a new day, today's session starts fresh at 0!
     let existingSecs = 0;
-    if (targetTask.sessionDate === today) {
+    if (targetTask.dailySessions && typeof targetTask.dailySessions === 'object' && targetTask.dailySessions[today] !== undefined) {
+      existingSecs = Number(targetTask.dailySessions[today]) || 0;
+    } else if (targetTask.sessionDate === today && targetTask.todayWorkSeconds !== undefined) {
+      existingSecs = Number(targetTask.todayWorkSeconds) || 0;
+    } else if (targetTask.sessionDate === today) {
       const rawSecs = (targetTask.accumulatedSeconds !== undefined && targetTask.accumulatedSeconds !== null)
         ? Number(targetTask.accumulatedSeconds)
         : (Number(targetTask.timerSeconds) || 0);
@@ -1621,22 +1625,33 @@ export const WorkProvider = ({ children }) => {
       String(assignedEmpId) !== String(currentUser?._id);
     const targetUserKey = isForOtherEmployee ? String(assignedEmpId) : String(userKey);
 
-    let currentSecs = (targetTask.accumulatedSeconds !== undefined && targetTask.accumulatedSeconds !== null)
-      ? Number(targetTask.accumulatedSeconds)
-      : (Number(targetTask.timerSeconds) || 0);
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const todayMidnightMs = todayMidnight.getTime();
 
+    let sessionElapsed = 0;
     if (targetTask.timerRunning && targetTask.startedAt) {
-      const elapsed = Math.max(0, Math.floor((now - Number(targetTask.startedAt)) / 1000));
-      currentSecs = currentSecs + elapsed;
+      const effectiveStart = Math.max(Number(targetTask.startedAt), todayMidnightMs);
+      sessionElapsed = Math.max(0, Math.floor((now - effectiveStart) / 1000));
     } else if (activeTimer && (String(activeTimer.taskId) === String(taskId) || String(activeTimer._id) === String(taskId)) && !isForOtherEmployee) {
-      currentSecs = getElapsedSeconds(activeTimer);
+      sessionElapsed = getElapsedSeconds(activeTimer);
     }
+
+    const currentSecs = (Number(targetTask.accumulatedSeconds) || Number(targetTask.timerSeconds) || 0) + sessionElapsed;
+
+    // Isolate today session seconds strictly from prior days
+    const dailySessionsMap = (targetTask.dailySessions && typeof targetTask.dailySessions === 'object') ? { ...targetTask.dailySessions } : {};
+    const priorTodaySecs = Number(dailySessionsMap[today]) || (targetTask.sessionDate === today ? Number(targetTask.todayWorkSeconds || 0) : 0);
+    const updatedTodaySecs = priorTodaySecs + sessionElapsed;
+    dailySessionsMap[today] = updatedTodaySecs;
 
     const pausedTimerState = {
       taskId: targetTask._id,
       timerRunning: false,
       startedAt: null,
       accumulatedSeconds: currentSecs,
+      todayWorkSeconds: updatedTodaySecs,
+      dailySessions: dailySessionsMap,
       date: today
     };
 
@@ -1661,6 +1676,8 @@ export const WorkProvider = ({ children }) => {
           startedAt: null,
           accumulatedSeconds: currentSecs,
           timerSeconds: currentSecs,
+          todayWorkSeconds: updatedTodaySecs,
+          dailySessions: dailySessionsMap,
           sessionDate: today,
           liveDurationText: formatSeconds(currentSecs)
         };
@@ -1688,6 +1705,8 @@ export const WorkProvider = ({ children }) => {
           startedAt: null,
           accumulatedSeconds: currentSecs,
           timerSeconds: currentSecs,
+          todayWorkSeconds: updatedTodaySecs,
+          dailySessions: dailySessionsMap,
           sessionDate: today,
           liveDurationText: formatSeconds(currentSecs)
         };
@@ -1702,6 +1721,8 @@ export const WorkProvider = ({ children }) => {
         startedAt: null,
         accumulatedSeconds: currentSecs,
         timerSeconds: currentSecs,
+        todayWorkSeconds: updatedTodaySecs,
+        dailySessions: dailySessionsMap,
         sessionDate: today,
         hoursLogged: +(currentSecs / 3600).toFixed(2),
         hoursLoggedText: formatSeconds(currentSecs)
@@ -1888,23 +1909,71 @@ export const WorkProvider = ({ children }) => {
         const prevDaysLogged = allTimesheets
           .filter(ts => (String(ts.taskId) === String(targetTask._id || taskId) || (targetTask.taskCode && ts.taskCode === targetTask.taskCode)) && ts.date !== todayStr)
           .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
-        const todaySessionSecs = Math.max(0, durationSecs - prevDaysLogged);
-        const durationToLog = todaySessionSecs > 0 ? todaySessionSecs : durationSecs;
 
-        try {
-          await workService.stopTimer({
-            taskId: targetTask._id || taskId,
-            taskCode: targetTask.taskCode,
-            taskTitle: targetTask.title,
-            projectName: targetTask.projectName,
-            totalDurationSeconds: durationToLog,
-            date: todayStr,
-            employeeId: assignedEmpId,
-            employeeName: assignedEmpName,
-            memo: customMemo || `Completed task: ${targetTask.title}${isForOtherEmployee ? ` (completed by ${currentUser?.name || 'Admin'})` : ''}`
-          });
-        } catch (stopErr) {
-          console.warn('Timesheet log error during task completion:', stopErr);
+        // Calculate strictly today's work portion
+        let todaySessionSecs = 0;
+        if (targetTask.dailySessions && typeof targetTask.dailySessions === 'object' && targetTask.dailySessions[todayStr] !== undefined) {
+          todaySessionSecs = Number(targetTask.dailySessions[todayStr]) || 0;
+        } else if (targetTask.sessionDate === todayStr && targetTask.todayWorkSeconds !== undefined) {
+          todaySessionSecs = Number(targetTask.todayWorkSeconds) || 0;
+        } else if (targetTask.sessionDate === todayStr) {
+          todaySessionSecs = Math.max(0, durationSecs - prevDaysLogged);
+        }
+
+        // Add any running timer elapsed today
+        if (targetTask.timerRunning && targetTask.startedAt) {
+          const todayMidnight = new Date();
+          todayMidnight.setHours(0, 0, 0, 0);
+          const effectiveStart = Math.max(Number(targetTask.startedAt), todayMidnight.getTime());
+          todaySessionSecs += Math.max(0, Math.floor((now - effectiveStart) / 1000));
+        }
+
+        // If task was worked on previous days without timesheets, archive those past days to their respective dates
+        if (targetTask.dailySessions && typeof targetTask.dailySessions === 'object') {
+          for (const [sessDate, sessSecs] of Object.entries(targetTask.dailySessions)) {
+            if (sessDate !== todayStr && Number(sessSecs) > 0) {
+              const alreadyLoggedOnDate = allTimesheets
+                .filter(ts => (String(ts.taskId) === String(targetTask._id || taskId) || (targetTask.taskCode && ts.taskCode === targetTask.taskCode)) && ts.date === sessDate)
+                .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
+              const unloggedOnDate = Math.max(0, Number(sessSecs) - alreadyLoggedOnDate);
+              if (unloggedOnDate > 0) {
+                workService.stopTimer({
+                  taskId: targetTask._id || taskId,
+                  taskCode: targetTask.taskCode,
+                  taskTitle: targetTask.title,
+                  projectName: targetTask.projectName,
+                  totalDurationSeconds: unloggedOnDate,
+                  date: sessDate,
+                  employeeId: assignedEmpId,
+                  employeeName: assignedEmpName,
+                  memo: `Session worked on ${sessDate}`
+                }).catch(err => console.warn('Archive past date timesheet error:', err));
+              }
+            }
+          }
+        }
+
+        const todayTimesheetsLogged = allTimesheets
+          .filter(ts => (String(ts.taskId) === String(targetTask._id || taskId) || (targetTask.taskCode && ts.taskCode === targetTask.taskCode)) && ts.date === todayStr)
+          .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
+        const durationToLogToday = Math.max(0, (todaySessionSecs || (targetTask.sessionDate === todayStr ? Math.max(0, durationSecs - prevDaysLogged) : 0)) - todayTimesheetsLogged);
+
+        if (durationToLogToday > 0) {
+          try {
+            await workService.stopTimer({
+              taskId: targetTask._id || taskId,
+              taskCode: targetTask.taskCode,
+              taskTitle: targetTask.title,
+              projectName: targetTask.projectName,
+              totalDurationSeconds: durationToLogToday,
+              date: todayStr,
+              employeeId: assignedEmpId,
+              employeeName: assignedEmpName,
+              memo: customMemo || `Completed task: ${targetTask.title}${isForOtherEmployee ? ` (completed by ${currentUser?.name || 'Admin'})` : ''}`
+            });
+          } catch (stopErr) {
+            console.warn('Timesheet log error during task completion:', stopErr);
+          }
         }
       }
 

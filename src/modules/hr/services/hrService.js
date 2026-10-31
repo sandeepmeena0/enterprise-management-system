@@ -846,7 +846,7 @@ export const hrService = {
   },
 
   async markAttendance(attendanceData) {
-    return fetchWithFallback(`${API_BASE}/attendance/mark`, {
+    const result = await fetchWithFallback(`${API_BASE}/attendance/mark`, {
       method: 'POST',
       body: JSON.stringify(attendanceData)
     }, async () => {
@@ -946,6 +946,33 @@ export const hrService = {
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
       return record;
     });
+
+    if (result && typeof result === 'object') {
+      try {
+        let attendance = getCollection(KEYS.ATTENDANCE) || [];
+        const savedEmpId = String(result.employee?._id || result.employeeId || result.employee || attendanceData.employeeId || attendanceData.employee || '');
+        const savedEmpCode = String(result.employeeCode || attendanceData.employeeCode || '');
+        const savedDate = result.date || attendanceData.date;
+
+        const idx = attendance.findIndex(a =>
+          a.date === savedDate && (
+            (result._id && String(a._id) === String(result._id)) ||
+            (savedEmpId && (String(a.employeeId) === savedEmpId || String(a.employee) === savedEmpId || String(a.employeeCode) === savedEmpId)) ||
+            (savedEmpCode && (String(a.employeeCode) === savedEmpCode || String(a.employeeId) === savedEmpCode))
+          )
+        );
+
+        if (idx >= 0) {
+          attendance[idx] = { ...attendance[idx], ...result };
+        } else {
+          attendance.unshift(result);
+        }
+        saveCollection(KEYS.ATTENDANCE, attendance);
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
+      } catch (_) {}
+    }
+
+    return result;
   },
 
   // =========================================================================
@@ -1037,7 +1064,7 @@ export const hrService = {
       auditNote
     };
 
-    return fetchWithFallback(`${API_BASE}/attendance/force-clock-out`, {
+    const result = await fetchWithFallback(`${API_BASE}/attendance/force-clock-out`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(payload)
@@ -1124,6 +1151,30 @@ export const hrService = {
 
       return { attendance: attendance[existingIdx], audit: auditEntry };
     });
+
+    if (result?.attendance) {
+      try {
+        let attendance = getCollection(KEYS.ATTENDANCE) || [];
+        const attRec = result.attendance;
+        const idx = attendance.findIndex(a =>
+          a.date === attRec.date && (
+            (attRec._id && String(a._id) === String(attRec._id)) ||
+            (attRec.employee && (String(a.employee) === String(attRec.employee) || String(a.employeeId) === String(attRec.employee))) ||
+            (attRec.employeeId && (String(a.employeeId) === String(attRec.employeeId) || String(a.employee) === String(attRec.employeeId))) ||
+            (attRec.employeeCode && String(a.employeeCode) === String(attRec.employeeCode))
+          )
+        );
+        if (idx >= 0) {
+          attendance[idx] = { ...attendance[idx], ...attRec };
+        } else {
+          attendance.unshift(attRec);
+        }
+        saveCollection(KEYS.ATTENDANCE, attendance);
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
+      } catch (_) {}
+    }
+
+    return result;
   },
 
   // =========================================================================
