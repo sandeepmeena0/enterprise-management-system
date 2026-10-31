@@ -179,8 +179,9 @@ export const TimerProvider = ({ children }) => {
       const rawActiveTimer = localStorage.getItem(`ems_active_task_timer_${userKey}`);
       if (rawActiveTimer) {
         const at = JSON.parse(rawActiveTimer);
-        if (at && at.date === today) {
-          let atSecs = Number(at.accumulatedSeconds) || 0;
+        if (at && (at.date === today || at.sessionDate === today)) {
+          // Strictly take today's session seconds, NOT all-time lifetime accumulatedSeconds!
+          let atSecs = Number(at.todayWorkSeconds) || Number(at.dailySessions?.[today]) || 0;
           if (at.timerRunning && at.startedAt) {
             const todayMidnight = new Date();
             todayMidnight.setHours(0, 0, 0, 0);

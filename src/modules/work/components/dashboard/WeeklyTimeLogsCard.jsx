@@ -152,12 +152,9 @@ export const WeeklyTimeLogsCard = ({
                         tSecs = Number(t.dailySessions[dateStr]) || 0;
                     } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
                         tSecs = Number(t.todayWorkSeconds) || 0;
-                    } else {
-                        const otherDaysLogged = (timesheets || [])
-                            .filter(ts => (String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode)) && ts.date !== dateStr)
-                            .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
-                        const rawSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
-                        tSecs = Math.max(0, rawSecs - otherDaysLogged);
+                    } else if (t.completedOn === dateStr && !timesheets?.some(ts => ts.date !== dateStr && String(ts.taskId) === String(t._id || t.id))) {
+                        const rawSecs = Number(t.todayWorkSeconds) || Number(t.timerSeconds) || 0;
+                        tSecs = Math.min(rawSecs, 12 * 3600);
                     }
                     tSecs = Math.min(tSecs, 12 * 3600);
                     if (tSecs > 0) {
@@ -194,7 +191,7 @@ export const WeeklyTimeLogsCard = ({
                     // Guard against runaway multi-day timer: clamp startMs to today midnight
                     const startMs = Math.max(rawStartMs, todayMidnightMs);
                     const liveRunSecs = Math.min(Math.max(0, Math.floor((nowMs - startMs) / 1000)), 14 * 3600);
-                    const baseSecs = Math.min(Number(activeRunningTask.accumulatedSeconds) || 0, 14 * 3600);
+                    const baseSecs = Math.min(Number(activeRunningTask.todayWorkSeconds) || Number(activeRunningTask.dailySessions?.[currentTodayStr]) || 0, 14 * 3600);
                     const totalLiveSecs = Math.min(baseSecs + liveRunSecs, 14 * 3600);
                     const unsubmitted = Math.max(0, totalLiveSecs - alreadyLoggedToday);
 
@@ -236,9 +233,9 @@ export const WeeklyTimeLogsCard = ({
                             todayPortion = Number(t.dailySessions[dateStr]) || 0;
                         } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
                             todayPortion = Number(t.todayWorkSeconds) || 0;
-                        } else {
-                            const rawTaskSecs = Math.min(Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0, 12 * 3600);
-                            todayPortion = Math.max(0, rawTaskSecs - prevDaysLogged);
+                        } else if (t.completedOn === dateStr && !timesheets?.some(ts => ts.date !== dateStr && String(ts.taskId) === String(t._id || t.id))) {
+                            const rawTaskSecs = Math.min(Number(t.todayWorkSeconds) || Number(t.timerSeconds) || 0, 12 * 3600);
+                            todayPortion = Math.min(rawTaskSecs, 12 * 3600);
                         }
                         const unsubmitted = Math.max(0, todayPortion - alreadyLoggedToday);
 

@@ -1396,9 +1396,10 @@ export const DashboardPage = () => {
       todayPortion = Number(t.dailySessions[todayStr]) || 0;
     } else if (t.sessionDate === todayStr && t.todayWorkSeconds !== undefined) {
       todayPortion = Number(t.todayWorkSeconds) || 0;
-    } else if (t.sessionDate === todayStr) {
-      const rawSecs = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
-      todayPortion = Math.max(0, rawSecs - prevDaysLogged);
+    } else if (wasStartedToday && !prevDaysLogged) {
+      // Only if the task itself was genuinely created and started today
+      const rawSecs = Number(t.todayWorkSeconds) || Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+      todayPortion = Math.min(rawSecs, 12 * 3600);
     }
 
     // Add running timer elapsed seconds for today (only time that ticked today)
@@ -1430,6 +1431,11 @@ export const DashboardPage = () => {
   let totalTaskTodaySecs = rawTotalTaskTodaySecs;
   if (totalTaskTodaySecs === 0 && todayTimesheets.length > 0) {
     totalTaskTodaySecs = totalLoggedTodaySecs;
+  }
+
+  // ⏱️ Physical Shift Invariant: Task time worked today can never exceed total shift time clocked in today
+  if (currentShiftSecs > 0) {
+    totalTaskTodaySecs = Math.min(totalTaskTodaySecs, currentShiftSecs);
   }
 
   const taskTodayH = Math.floor(totalTaskTodaySecs / 3600);
