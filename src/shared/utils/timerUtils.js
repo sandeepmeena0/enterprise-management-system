@@ -288,6 +288,10 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     } catch (_) {}
   }
 
+  const hasAttClockIn = Boolean(attRec && attRec.date === today && (attRec.clockInTime || attRec.clockIn));
+  const hasAttClockOut = Boolean(attRec && attRec.date === today && (attRec.clockOutTime || attRec.clockOut));
+  const hasAnyClockInToday = hasAttClockIn || (isTodaySession && Boolean(readTimerStorage(userOrEmp, 'login_time') || Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) > 0)) || Boolean(options.telemetry?.isClockedIn || options.telemetry?.clockInTime);
+
   // Derive first clock in timestamp of shift to strictly bound physical elapsed work time
   let firstClockInTs = Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) || Number(attRec?.clockInTimestamp) || Number(options.telemetry?.clockInTimestamp);
   const isShiftWithin24h = firstClockInTs > 0 && (nowMs - firstClockInTs) < 24 * 3600 * 1000;
