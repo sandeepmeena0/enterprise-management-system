@@ -579,27 +579,25 @@ export const CRMProvider = ({ children }) => {
           });
 
           const merged = Array.from(map.values());
-          setConversations(prev => {
-            const prevList = prev || [];
-            const isDifferent = prevList.length !== merged.length ||
-              merged.some((m, i) => {
-                const p = prevList[i];
-                if (!p || p.id !== m.id) return true;
-                if ((p.messages?.length || 0) !== (m.messages?.length || 0)) return true;
-                if (p.lastMessage !== m.lastMessage || p.lastMessageTime !== m.lastMessageTime) return true;
-                if (Boolean(p.activeHuddle?.isLive) !== Boolean(m.activeHuddle?.isLive)) return true;
-                if ((p.activeHuddle?.members?.length || 0) !== (m.activeHuddle?.members?.length || 0)) return true;
-                const pLastMsg = p.messages && p.messages[p.messages.length - 1];
-                const mLastMsg = m.messages && m.messages[m.messages.length - 1];
-                if ((pLastMsg?.readBy?.length || 0) !== (mLastMsg?.readBy?.length || 0)) return true;
-                return false;
-              });
-            if (isDifferent) {
-              saveCollection(KEYS.CONVERSATIONS, merged);
-              return merged;
-            }
-            return prev;
-          });
+          let isDifferent = false;
+          const currentConvs = getCollection(KEYS.CONVERSATIONS) || [];
+          if (currentConvs.length !== merged.length) {
+            isDifferent = true;
+          } else {
+            isDifferent = merged.some((m, i) => {
+              const p = currentConvs[i];
+              if (!p || p.id !== m.id) return true;
+              if ((p.messages?.length || 0) !== (m.messages?.length || 0)) return true;
+              if (p.lastMessage !== m.lastMessage || p.lastMessageTime !== m.lastMessageTime) return true;
+              if (Boolean(p.activeHuddle?.isLive) !== Boolean(m.activeHuddle?.isLive)) return true;
+              if ((p.activeHuddle?.members?.length || 0) !== (m.activeHuddle?.members?.length || 0)) return true;
+              return false;
+            });
+          }
+          if (isDifferent) {
+            saveCollection(KEYS.CONVERSATIONS, merged);
+            setConversations(merged);
+          }
 
           if (hasUnsynced) {
             const now = Date.now();

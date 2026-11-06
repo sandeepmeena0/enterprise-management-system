@@ -1701,8 +1701,11 @@ export const DashboardPage = () => {
   const displayedBreakType = isViewingOtherEmployee ? (activeEmpState?.breakType || 'Break') : breakType;
   const displayedLoginTime = isViewingOtherEmployee ? activeEmpState?.loginTime : loginTime;
   const displayedClockOutTime = isViewingOtherEmployee ? activeEmpState?.clockOutTime : clockOutTime;
-  const displayedWorkDuration = isViewingOtherEmployee
-    ? formatTimeDurationSafe(activeEmpState?.workSecs || 0)
+  const displayedWorkSecs = isViewingOtherEmployee
+    ? (activeEmpState?.workSecs || 0)
+    : (workSeconds || activeEmpState?.workSecs || 0);
+  const displayedWorkDuration = displayedWorkSecs > 0
+    ? formatTimeDurationSafe(displayedWorkSecs)
     : ((!displayedIsClockedIn && !displayedHadClockedOut) ? '00h 00m' : workDurationText);
   const displayedBreakDuration = isViewingOtherEmployee ? formatTimeDurationSafe(activeEmpState?.breakSecs || 0) : (breakDurationText || '0s');
 
@@ -1812,7 +1815,12 @@ export const DashboardPage = () => {
 
     const todayPortion = getTaskTodaySeconds(t, todayStr, Date.now(), displayedIsClockedIn, displayedIsOnBreak);
     const loggedForThisTaskToday = todayTimesheets
-      .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode) || (t.title && ts.taskTitle === t.title))
+      .filter(ts => {
+        const matchId = String(ts.taskId) === tId || String(ts.task) === tId || String(ts._id) === tId;
+        const matchCode = t.taskCode && ts.taskCode && String(ts.taskCode).toLowerCase() === String(t.taskCode).toLowerCase();
+        const matchTitle = t.title && ts.taskTitle && String(ts.taskTitle).toLowerCase().trim() === String(t.title).toLowerCase().trim();
+        return matchId || matchCode || matchTitle;
+      })
       .reduce((s, ts) => Math.max(s, Number(ts.totalDurationSeconds) || 0), 0);
 
     const unsubmitted = Math.max(0, todayPortion - loggedForThisTaskToday);
@@ -1926,13 +1934,22 @@ export const DashboardPage = () => {
         return false;
       });
 
-      let dayTotalSecs = dayTs.reduce((acc, curr) => acc + (Number(curr.totalDurationSeconds) || 0), 0);
+      const dayDedupeMap = new Map();
+      dayTs.forEach(ts => {
+        const taskKey = String(ts.taskId || ts.taskCode || ts.taskTitle || ts._id);
+        const dur = Number(ts.totalDurationSeconds) || 0;
+        if (!dayDedupeMap.has(taskKey) || dur > (Number(dayDedupeMap.get(taskKey).totalDurationSeconds) || 0)) {
+          dayDedupeMap.set(taskKey, ts);
+        }
+      });
+      const dedupedDayTs = Array.from(dayDedupeMap.values());
+      let dayTotalSecs = dedupedDayTs.reduce((acc, curr) => acc + (Number(curr.totalDurationSeconds) || 0), 0);
 
       // Check tasks completed on this date that might not be in timesheets (strictly isolate to this date)
       (tasks || []).forEach(t => {
         if (!isTaskAssignedToUser(t, effectiveWeekUser)) return;
         const isCompletedOnDate = t.completedOn === dateStr || (t.completedAt && String(t.completedAt).startsWith(dateStr));
-        const alreadyInTs = dayTs.some(ts => String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode));
+        const alreadyInTs = dedupedDayTs.some(ts => String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode) || (t.title && ts.taskTitle === t.title));
         if (isCompletedOnDate && !alreadyInTs) {
           const tSecs = getTaskTodaySeconds(t, dateStr, Date.now(), isCurrentDay && displayedIsClockedIn, isCurrentDay && displayedIsOnBreak);
           if (tSecs > 0) dayTotalSecs += tSecs;

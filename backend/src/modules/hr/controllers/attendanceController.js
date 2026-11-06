@@ -892,9 +892,25 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
   // Update in-memory telemetry cache
   const cacheKey = targetCode || targetId;
   const existingCached = liveTelemetryCache.get(cacheKey);
+
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const nowTs = Date.now();
+  let firstClockTs = Number(payload.clockInTimestamp || 0);
+  if (!firstClockTs || firstClockTs < todayMidnight.getTime()) {
+    if (payload.clockInTime) {
+      firstClockTs = todayMidnight.getTime() + parseTimeStringToSeconds(payload.clockInTime) * 1000;
+    }
+  }
+  const maxAllowed = (firstClockTs && firstClockTs >= todayMidnight.getTime())
+    ? Math.max(0, Math.floor((nowTs - firstClockTs) / 1000))
+    : Math.max(0, Math.floor((nowTs - todayMidnight.getTime()) / 1000));
+
   if (existingCached && Number(existingCached.workSeconds || 0) > payload.workSeconds) {
     payload.workSeconds = Number(existingCached.workSeconds);
   }
+  payload.workSeconds = Math.min(payload.workSeconds, maxAllowed);
+
   if (payload.activeTask) {
     const taskStart = Number(payload.activeTask.startedAt) ||
       (existingCached?.activeTask?.startedAt ? Number(existingCached.activeTask.startedAt) : Date.now());
@@ -911,7 +927,15 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
 
     if (orClauses.length > 0) {
       Attendance.findOne({ date: today, $or: orClauses }).then(async existing => {
-        const safeWorkSecs = existing ? Math.max(Number(existing.workSeconds || 0), Number(payload.workSeconds || 0)) : Number(payload.workSeconds || 0);
+        let safeWorkSecs = existing ? Math.max(Number(existing.workSeconds || 0), Number(payload.workSeconds || 0)) : Number(payload.workSeconds || 0);
+        if (safeWorkSecs <= 0 && existing && existing.clockInTimestamp && (existing.clockOutTimestamp || payload.clockOutTimestamp)) {
+          const outTs = Number(existing.clockOutTimestamp || payload.clockOutTimestamp);
+          const inTs = Number(existing.clockInTimestamp);
+          const reconstructed = Math.max(0, Math.floor((outTs - inTs) / 1000) - (Number(existing.breakSeconds) || 0));
+          if (reconstructed > 0) safeWorkSecs = reconstructed;
+        }
+        safeWorkSecs = Math.min(safeWorkSecs, maxAllowed);
+
         const updateObj = {
           isClockedIn: payload.isClockedIn,
           workSeconds: safeWorkSecs,
@@ -993,23 +1017,20 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     const id = String(r.employee?._id || r.employee || r.employeeId || r._id);
     const key = code || id;
 
-    const inTs = Number(r.clockInTimestamp || 0);
-    const sessStart = Number(r.currentSessionStartTimestamp || inTs);
     const isClockedIn = Boolean((r.isClockedIn || (r.clockInTime && r.clockInTime !== '--' && !r.clockOutTime)) && !r.clockOutTime);
     const isClockedOut = Boolean(r.clockOutTime || r.clockOut);
     const isOnBreak = Boolean(r.isOnBreak);
+    const inTimeStr = r.clockInTime || r.clockIn;
 
     // Dynamic shift status calibration against company policy (e.g. 10:00 AM + 15m grace)
     let recStatus = r.status || 'present';
     let recIsLate = Boolean(r.isLate);
-    const inTimeStr = r.clockInTime || r.clockIn;
     if (inTimeStr && inTimeStr !== '--' && inTimeStr !== '—') {
       const inSecs = parseTimeStringToSeconds(inTimeStr);
       if (inSecs > 0) {
         if (inSecs <= graceLimitSecs && (recStatus === 'late' || !recStatus)) {
           recStatus = 'present';
           recIsLate = false;
-          // Asynchronously update MongoDB Atlas so database reflects on-time present status
           Attendance.updateOne({ _id: r._id }, { $set: { status: 'present', isLate: false, lateByMinutes: 0 } }).catch(() => {});
         } else if (inSecs > graceLimitSecs && recStatus === 'present') {
           recStatus = 'late';
@@ -1020,27 +1041,57 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       }
     }
 
+    let clockInTs = Number(r.clockInTimestamp || 0);
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
-    const maxPossibleGrossToday = Math.max(0, Math.floor((now - todayMidnight.getTime()) / 1000));
+    const todayMidnightMs = todayMidnight.getTime();
+    const maxPossibleGrossToday = Math.max(0, Math.floor((now - todayMidnightMs) / 1000));
 
-    const pastSessionsSecs = Array.isArray(r.punchSessions)
-      ? r.punchSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0)
+    if (!clockInTs || clockInTs < todayMidnightMs) {
+      if (inTimeStr && inTimeStr !== '--' && inTimeStr !== '—') {
+        clockInTs = todayMidnightMs + parseTimeStringToSeconds(inTimeStr) * 1000;
+      }
+    }
+    const maxAllowedSinceClockIn = (clockInTs && clockInTs >= todayMidnightMs)
+      ? Math.max(0, Math.floor((now - clockInTs) / 1000))
+      : maxPossibleGrossToday;
+
+    const validSessions = Array.isArray(r.punchSessions)
+      ? r.punchSessions.filter(s => Number(s.inTimestamp || 0) >= todayMidnightMs)
+      : [];
+    const pastSessionsSecs = validSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+    const lastSessionOut = validSessions.length > 0
+      ? Math.max(...validSessions.map(s => Number(s.outTimestamp || s.inTimestamp || 0)))
       : 0;
 
-    let liveWorkSecs = Math.max(Number(r.workSeconds) || 0, pastSessionsSecs);
+    let liveWorkSecs = 0;
     if (isClockedIn) {
       if (isOnBreak) {
-        liveWorkSecs = Math.min(liveWorkSecs, maxPossibleGrossToday);
+        const frozen = pastSessionsSecs > 0 ? pastSessionsSecs : (Number(r.workSeconds) || 0);
+        liveWorkSecs = Math.min(frozen, maxAllowedSinceClockIn);
       } else {
+        let sessStart = Number(r.currentSessionStartTimestamp || 0);
+        if (lastSessionOut > 0 && sessStart < lastSessionOut) {
+          sessStart = lastSessionOut;
+        }
+        if (!sessStart || sessStart < clockInTs) {
+          sessStart = lastSessionOut > 0 ? lastSessionOut : (clockInTs || now);
+        }
         const curSessionElapsed = (sessStart > 0 && sessStart <= now) ? Math.max(0, Math.floor((now - sessStart) / 1000)) : 0;
-        const elapsedSinceHeartbeat = (r.lastHeartbeatAt && Number(r.lastHeartbeatAt) <= now) ? Math.max(0, Math.floor((now - Number(r.lastHeartbeatAt)) / 1000)) : 0;
-        const heartbeatBased = (Number(r.workSeconds) || 0) + elapsedSinceHeartbeat;
         const sessionBased = pastSessionsSecs + curSessionElapsed;
-        liveWorkSecs = Math.min(Math.max(heartbeatBased, sessionBased), maxPossibleGrossToday);
+        liveWorkSecs = Math.min(sessionBased, maxAllowedSinceClockIn);
       }
     } else if (isClockedOut) {
-      liveWorkSecs = Math.min(liveWorkSecs, maxPossibleGrossToday);
+      let finalSecs = pastSessionsSecs > 0 ? pastSessionsSecs : (Number(r.workSeconds) || 0);
+      if (finalSecs <= 0 && r.totalWorkingHours) {
+        finalSecs = Math.round(Number(r.totalWorkingHours) * 3600);
+      }
+      if (finalSecs <= 0 && clockInTs > 0 && r.clockOutTimestamp) {
+        finalSecs = Math.max(0, Math.floor((Number(r.clockOutTimestamp) - clockInTs) / 1000) - (Number(r.breakSeconds) || 0));
+      }
+      liveWorkSecs = Math.min(finalSecs, maxAllowedSinceClockIn);
+    } else {
+      liveWorkSecs = pastSessionsSecs > 0 ? Math.min(pastSessionsSecs, maxAllowedSinceClockIn) : 0;
     }
 
     // Match any actively running task for this employee from Task collection
@@ -1094,10 +1145,10 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       isOnBreak,
       breakType: r.breakType || null,
       clockInTime: r.clockInTime || r.clockIn || null,
-      clockInTimestamp: inTs,
+      clockInTimestamp: clockInTs,
       clockOutTime: r.clockOutTime || r.clockOut || null,
       clockOutTimestamp: r.clockOutTimestamp || null,
-      currentSessionStartTimestamp: sessStart,
+      currentSessionStartTimestamp: Number(r.currentSessionStartTimestamp || clockInTs || 0),
       workSeconds: liveWorkSecs,
       totalWorkingHours: +(liveWorkSecs / 3600).toFixed(2),
       activeTask: runningTask,
@@ -1158,8 +1209,32 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         clockInTimestamp: cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || null,
         clockOutTime: cachedVal.clockOutTime || existingTelem?.clockOutTime || null,
         currentSessionStartTimestamp: cachedVal.currentSessionStartTimestamp || existingTelem?.currentSessionStartTimestamp || null,
-        workSeconds: Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)),
-        totalWorkingHours: +(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)) / 3600).toFixed(2),
+        workSeconds: (() => {
+          let cacheClockInTs = Number(cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || 0);
+          if (!cacheClockInTs || cacheClockInTs < todayMidnight.getTime()) {
+            const inStr = cachedVal.clockInTime || existingTelem?.clockInTime;
+            if (inStr && inStr !== '--' && inStr !== '—') {
+              cacheClockInTs = todayMidnight.getTime() + parseTimeStringToSeconds(inStr) * 1000;
+            }
+          }
+          const maxAllowedForMerged = (cacheClockInTs && cacheClockInTs >= todayMidnight.getTime())
+            ? Math.max(0, Math.floor((now - cacheClockInTs) / 1000))
+            : maxPossibleGrossToday;
+          return Math.min(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)), maxAllowedForMerged);
+        })(),
+        totalWorkingHours: +((() => {
+          let cacheClockInTs = Number(cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || 0);
+          if (!cacheClockInTs || cacheClockInTs < todayMidnight.getTime()) {
+            const inStr = cachedVal.clockInTime || existingTelem?.clockInTime;
+            if (inStr && inStr !== '--' && inStr !== '—') {
+              cacheClockInTs = todayMidnight.getTime() + parseTimeStringToSeconds(inStr) * 1000;
+            }
+          }
+          const maxAllowedForMerged = (cacheClockInTs && cacheClockInTs >= todayMidnight.getTime())
+            ? Math.max(0, Math.floor((now - cacheClockInTs) / 1000))
+            : maxPossibleGrossToday;
+          return Math.min(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)), maxAllowedForMerged) / 3600;
+        })()).toFixed(2),
         activeTask: effectiveActiveTask,
         lastHeartbeatAt: cachedVal.lastHeartbeatAt || now,
         timestamp: now,

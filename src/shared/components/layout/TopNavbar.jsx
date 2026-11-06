@@ -198,8 +198,11 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
 
   useEffect(() => {
     const handleModeUpdate = (e) => {
+      if (e?.type === 'hrms_storage_change' && e?.detail?.key && e.detail.key !== 'ems_working_mode') {
+        return; // Ignore unrelated storage events to prevent cascading re-renders
+      }
       const mode = e.detail?.mode || localStorage.getItem('ems_working_mode') || 'Office';
-      setWorkingMode(mode);
+      setWorkingMode(prev => (prev === mode ? prev : mode));
     };
     window.addEventListener('ems_working_mode_changed', handleModeUpdate);
     window.addEventListener('hrms_storage_change', handleModeUpdate);

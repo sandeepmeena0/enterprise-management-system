@@ -663,10 +663,22 @@ export const TimerProvider = ({ children }) => {
         writeTimerStorage(currentUser, 'work_seconds', String(resolvedWorkSecs));
         setWorkSeconds(resolvedWorkSecs);
       } else if (inVal !== null || attRec) {
-        // Confirmed not clocked in today: strictly 0!
-        resolvedWorkSecs = 0;
-        writeTimerStorage(currentUser, 'work_seconds', '0');
-        setWorkSeconds(0);
+        const existingAttSecs = Number(attRec?.workSeconds) || Math.round((Number(attRec?.totalWorkingHours) || 0) * 3600);
+        const existingStoredSecs = Number(secVal) || 0;
+        const pastSessSecs = cleanLocalSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+        const preservedSecs = Math.max(existingAttSecs, existingStoredSecs, pastSessSecs);
+
+        if (preservedSecs > 0) {
+          resolvedWorkSecs = Math.min(preservedSecs, maxElapsedSinceIn);
+          writeTimerStorage(currentUser, 'work_seconds', String(resolvedWorkSecs));
+          writeTimerStorage(currentUser, 'had_clocked_out', 'true');
+          setHadClockedOutToday(true);
+          setWorkSeconds(resolvedWorkSecs);
+        } else {
+          resolvedWorkSecs = 0;
+          writeTimerStorage(currentUser, 'work_seconds', '0');
+          setWorkSeconds(0);
+        }
       } else {
         // Fresh device boot / unhydrated storage: do not wipe with 0, immediately trigger live sync!
         syncLiveShiftState();
@@ -1422,9 +1434,25 @@ export const TimerProvider = ({ children }) => {
           localStorage.setItem(`ems_timer_${userKey}_reclock_session_seconds`, rSecs.toString());
         }
       } else if (!hadOutVal) {
-        // Not clocked in and haven't clocked out today
-        setWorkSeconds(0);
-        writeTimerStorage(currentUser, 'work_seconds', '0');
+        // Not clocked in and haven't marked had_clocked_out: check if there are verified hours worked today
+        const curStoredWork = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || 0;
+        let pastSessSecs = 0;
+        try {
+          const rawSess = localStorage.getItem(`ems_timer_${userKey}_punch_sessions`);
+          if (rawSess) {
+            const parsed = JSON.parse(rawSess) || [];
+            pastSessSecs = parsed.filter(s => Number(s.inTimestamp || 0) >= todayMidnightMs).reduce((a, b) => a + (Number(b.durationSeconds) || 0), 0);
+          }
+        } catch (_) {}
+        const preserved = Math.max(curStoredWork, pastSessSecs);
+        if (preserved > 0) {
+          setWorkSeconds(preserved);
+          setHadClockedOutToday(true);
+          localStorage.setItem(`ems_timer_${userKey}_had_clocked_out`, 'true');
+        } else {
+          setWorkSeconds(0);
+          writeTimerStorage(currentUser, 'work_seconds', '0');
+        }
       }
     };
 

@@ -1152,38 +1152,76 @@ export const TeamOperationsPage = () => {
         )
       );
 
+      // Deduplicate timesheets by canonical task to prevent double counting multiple logs
+      const taskMap = new Map();
       userTs.forEach(ts => {
+        const key = String(ts.taskId || ts.taskCode || ts.taskTitle || ts._id);
         const dur = Number(ts.totalDurationSeconds) || Math.round((parseFloat(ts.hours) || 0) * 3600);
-        tasksWorked.push({
-          taskId: ts.taskId || ts._id,
-          taskCode: ts.taskCode || 'TSK',
-          taskTitle: ts.taskTitle || ts.title || 'Task',
-          projectName: ts.projectName || 'General Work',
-          durationSeconds: dur,
-          durationText: ts.totalDurationText || formatTimeDurationSafe(dur),
-          status: ts.status || 'completed'
-        });
+        if (!taskMap.has(key) || dur > (taskMap.get(key).durationSeconds || 0)) {
+          taskMap.set(key, {
+            taskId: ts.taskId || ts._id,
+            taskCode: ts.taskCode || 'TSK',
+            taskTitle: ts.taskTitle || ts.title || 'Task',
+            projectName: ts.projectName || 'General Work',
+            durationSeconds: dur,
+            durationText: ts.totalDurationText || formatTimeDurationSafe(dur),
+            status: ts.status || 'completed'
+          });
+        }
       });
 
       if (isToday) {
         const empState = getEmployeeTodayState(emp);
         if (empState.runningTask && empState.runningTask.timerRunning) {
           const rt = empState.runningTask;
-          const alreadyIn = tasksWorked.some(t => String(t.taskId) === String(rt.taskId || rt._id));
-          if (!alreadyIn) {
-            tasksWorked.push({
-              taskId: rt.taskId || rt._id,
-              taskCode: rt.taskCode || 'TSK',
-              taskTitle: rt.title || 'Active Task',
-              projectName: rt.projectName || 'General Work',
-              durationSeconds: rt.liveTaskSecs || 0,
-              durationText: formatTimeDurationSafe(rt.liveTaskSecs || 0),
+          const rtKey = String(rt.taskId || rt._id || rt.id || rt.taskCode);
+          const liveSecs = Number(rt.liveTaskSecs) || 0;
+          if (taskMap.has(rtKey)) {
+            const ex = taskMap.get(rtKey);
+            const higher = Math.max(ex.durationSeconds, liveSecs);
+            taskMap.set(rtKey, {
+              ...ex,
+              durationSeconds: higher,
+              durationText: formatTimeDurationSafe(higher),
               status: 'in_progress',
               isLive: true
             });
+          } else {
+            // Also check by taskCode or title
+            let matchedExistingKey = null;
+            for (const [k, v] of taskMap.entries()) {
+              if ((rt.taskCode && v.taskCode === rt.taskCode) || (rt.title && v.taskTitle === rt.title)) {
+                matchedExistingKey = k;
+                break;
+              }
+            }
+            if (matchedExistingKey) {
+              const ex = taskMap.get(matchedExistingKey);
+              const higher = Math.max(ex.durationSeconds, liveSecs);
+              taskMap.set(matchedExistingKey, {
+                ...ex,
+                durationSeconds: higher,
+                durationText: formatTimeDurationSafe(higher),
+                status: 'in_progress',
+                isLive: true
+              });
+            } else {
+              taskMap.set(rtKey, {
+                taskId: rt.taskId || rt._id,
+                taskCode: rt.taskCode || 'TSK',
+                taskTitle: rt.title || 'Active Task',
+                projectName: rt.projectName || 'General Work',
+                durationSeconds: liveSecs,
+                durationText: formatTimeDurationSafe(liveSecs),
+                status: 'in_progress',
+                isLive: true
+              });
+            }
           }
         }
       }
+
+      tasksWorked = Array.from(taskMap.values());
 
       const totalTaskSeconds = tasksWorked.reduce((sum, t) => sum + (Number(t.durationSeconds) || 0), 0);
       const isTaskExceedingShift = workSecs > 0 && totalTaskSeconds > (workSecs + 300);
