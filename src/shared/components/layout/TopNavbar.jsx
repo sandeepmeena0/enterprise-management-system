@@ -95,9 +95,11 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
     if (!activeRunningTask.timerRunning) {
       return Number(activeRunningTask.accumulatedSeconds) || Number(activeRunningTask.timerSeconds) || 0;
     }
-    const started = Number(activeRunningTask.startedAt) || Date.now();
-    const elapsed = Math.max(0, Math.floor((Date.now() - started) / 1000));
-    return (Number(activeRunningTask.accumulatedSeconds) || 0) + elapsed;
+    const started = Number(activeRunningTask.startedAt);
+    const base = Number(activeRunningTask.accumulatedSeconds || 0);
+    const elapsed = started > 0 ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
+    const computed = base + elapsed;
+    return Math.max(Number(activeRunningTask.timerSeconds) || 0, computed);
   }, [activeRunningTask, taskTick]);
 
   // Dropdown States

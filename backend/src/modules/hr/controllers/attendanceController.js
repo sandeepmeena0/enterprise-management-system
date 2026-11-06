@@ -895,6 +895,12 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
   if (existingCached && Number(existingCached.workSeconds || 0) > payload.workSeconds) {
     payload.workSeconds = Number(existingCached.workSeconds);
   }
+  if (payload.activeTask) {
+    const taskStart = Number(payload.activeTask.startedAt) ||
+      (existingCached?.activeTask?.startedAt ? Number(existingCached.activeTask.startedAt) : Date.now());
+    payload.activeTask.startedAt = taskStart;
+    payload.activeTask.accumulatedSeconds = Number(payload.activeTask.accumulatedSeconds || payload.activeTask.timerSeconds || 0);
+  }
   liveTelemetryCache.set(cacheKey, payload);
 
   // Background upsert in MongoDB Atlas to persist live state (Monotonic Shield: never degrade workSeconds)
@@ -1122,6 +1128,20 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       const id = String(cachedVal.employeeId || '');
       const existingTelem = telemetryMap[code] || telemetryMap[id] || null;
 
+      let effectiveActiveTask = cachedVal.activeTask || existingTelem?.activeTask || null;
+      if (effectiveActiveTask && effectiveActiveTask.startedAt && cachedVal.isClockedIn && !cachedVal.isOnBreak) {
+        const taskStart = Number(effectiveActiveTask.startedAt);
+        const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
+        const accum = Number(effectiveActiveTask.accumulatedSeconds || 0);
+        effectiveActiveTask = {
+          ...effectiveActiveTask,
+          startedAt: taskStart,
+          accumulatedSeconds: accum,
+          liveTaskSecs: accum + elapsedTask,
+          timerRunning: true
+        };
+      }
+
       const mergedState = {
         ...(existingTelem || {}),
         employeeId: id || existingTelem?.employeeId,
@@ -1140,7 +1160,7 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         currentSessionStartTimestamp: cachedVal.currentSessionStartTimestamp || existingTelem?.currentSessionStartTimestamp || null,
         workSeconds: Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)),
         totalWorkingHours: +(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)) / 3600).toFixed(2),
-        activeTask: cachedVal.activeTask || existingTelem?.activeTask || null,
+        activeTask: effectiveActiveTask,
         lastHeartbeatAt: cachedVal.lastHeartbeatAt || now,
         timestamp: now,
         fetchedAt: now

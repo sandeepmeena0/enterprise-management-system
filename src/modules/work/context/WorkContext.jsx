@@ -214,6 +214,7 @@ export const WorkProvider = ({ children }) => {
       if (state) {
         const payload = JSON.stringify(state);
         localStorage.setItem(activeTimerKey, payload);
+        localStorage.setItem('ems_active_task_timer', payload);
         if (currentUser?.employeeCode) {
           localStorage.setItem(`ems_active_task_timer_${currentUser.employeeCode}`, payload);
         }
@@ -522,7 +523,22 @@ export const WorkProvider = ({ children }) => {
       }
 
       setProjects(prjs || []);
-      setTasks(cleanMergedTasks);
+      setTasks(prevTasks => {
+        // Monotonic Shield: if a task is currently ticking in memory, do not let server response downgrade its seconds!
+        return cleanMergedTasks.map(ct => {
+          const prevMatch = (prevTasks || []).find(pt => String(pt._id || pt.id) === String(ct._id || ct.id));
+          if (prevMatch && prevMatch.timerRunning && ct.timerRunning) {
+            const maxSecs = Math.max(Number(prevMatch.timerSeconds) || 0, Number(ct.timerSeconds) || 0);
+            return {
+              ...ct,
+              timerSeconds: maxSecs,
+              liveDurationText: formatSeconds(maxSecs),
+              hoursLoggedText: formatSeconds(maxSecs)
+            };
+          }
+          return ct;
+        });
+      });
       setTimesheets(times || []);
       if (Array.isArray(times) && times.length > 0) {
         localStorage.setItem(KEYS.TIMESHEETS, JSON.stringify(times));

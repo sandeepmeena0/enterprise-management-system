@@ -2080,10 +2080,24 @@ export const TimerProvider = ({ children }) => {
                           Number(localStorage.getItem(`ems_timer_${uKey}_clock_in_timestamp`)) || undefined;
         let activeTaskData = null;
         try {
-          const rawTask = localStorage.getItem(`ems_active_task_timer_${uKey}`) || localStorage.getItem('ems_active_task_timer');
-          if (rawTask) {
-            const p = JSON.parse(rawTask);
-            if (p && p.taskId) activeTaskData = p;
+          const keysToTry = [
+            `ems_active_task_timer_${uKey}`,
+            state.targetEmpCode ? `ems_active_task_timer_${state.targetEmpCode}` : null,
+            state.targetEmpId ? `ems_active_task_timer_${state.targetEmpId}` : null,
+            'ems_active_task_timer'
+          ].filter(Boolean);
+          for (const k of keysToTry) {
+            const rawTask = localStorage.getItem(k);
+            if (rawTask) {
+              const p = JSON.parse(rawTask);
+              if (p && (p.taskId || p._id)) {
+                activeTaskData = {
+                  ...p,
+                  timerRunning: p.timerRunning !== false
+                };
+                break;
+              }
+            }
           }
         } catch (_) {}
 

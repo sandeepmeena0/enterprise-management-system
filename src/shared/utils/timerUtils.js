@@ -233,6 +233,9 @@ export const getLocalDateStr = (d = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
+// Monotonic cache for cross-browser live telemetry workSeconds to eliminate backward resets/flickering
+const monotonicTelemetryWorkSecsMap = new Map();
+
 /**
  * Single Source of Truth: Calculate shift work seconds for an employee on a given date.
  * Strictly guarantees:
@@ -254,16 +257,24 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   // Multi-User Live Telemetry Support (cross-browser / incognito realtime sync)
   if (options.telemetry && (options.telemetry.isClockedIn || options.telemetry.clockOutTime || Number(options.telemetry.workSeconds) > 0)) {
     const telem = options.telemetry;
+    const empKey = getCanonicalTimerKey(userOrEmp) || String(userOrEmp?._id || userOrEmp?.id || userOrEmp?.employeeCode || '');
     if (telem.isClockedIn) {
       if (telem.isOnBreak) {
         return Math.min(Number(telem.workSeconds) || 0, maxPossibleGrossToday);
       }
-      // Smoothly tick forward every second between backend telemetry polls
-      const baseTs = Number(telem.fetchedAt || telem.timestamp || nowMs);
-      const elapsedBetweenPolls = Math.max(0, Math.floor((nowMs - baseTs) / 1000));
-      const liveTelemSecs = (Number(telem.workSeconds) || 0) + elapsedBetweenPolls;
+      // Smoothly tick forward every second between backend telemetry polls without resetting
+      const heartbeatTs = Number(telem.lastHeartbeatAt || telem.timestamp || telem.fetchedAt || nowMs);
+      const elapsedSinceHeartbeat = Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000));
+      const rawTelemSecs = (Number(telem.workSeconds) || 0) + elapsedSinceHeartbeat;
+
+      // Monotonic Shield: Telemetry work seconds for an active employee can NEVER decrease between polls!
+      const prevMonotonic = monotonicTelemetryWorkSecsMap.get(empKey) || 0;
+      const liveTelemSecs = Math.max(prevMonotonic, rawTelemSecs);
+      monotonicTelemetryWorkSecsMap.set(empKey, liveTelemSecs);
+
       return Math.min(liveTelemSecs, maxPossibleGrossToday);
-    } else if (telem.clockOutTime) {
+    } else if (telem.clockOutTime || options.isClockedOut) {
+      if (empKey) monotonicTelemetryWorkSecsMap.delete(empKey);
       return Math.min(Number(telem.workSeconds) || 0, maxPossibleGrossToday);
     }
   }

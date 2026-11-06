@@ -128,6 +128,7 @@ export const TeamOperationsPage = () => {
 
   const todayStr = useMemo(() => getLocalDateStr(), []);
   const [liveTelemetryMap, setLiveTelemetryMap] = useState({});
+  const liveTaskMemoryRef = useRef(new Map());
 
   // ── Multi-User Live Telemetry Poller (Every 3.5s for real-time remote sync) ──
   useEffect(() => {
@@ -377,30 +378,62 @@ export const TeamOperationsPage = () => {
 
     let activeTimer = null;
     try {
-      const rawTimer = localStorage.getItem(`ems_active_task_timer_${empKey}`) ||
-                       (empId ? localStorage.getItem(`ems_active_task_timer_${empId}`) : null) ||
-                       (isSelf ? localStorage.getItem('ems_active_task_timer') : null);
-      if (rawTimer) activeTimer = JSON.parse(rawTimer);
+      const keysToTry = [
+        `ems_active_task_timer_${empKey}`,
+        empId ? `ems_active_task_timer_${empId}` : null,
+        emp.employeeCode ? `ems_active_task_timer_${emp.employeeCode}` : null,
+        isSelf ? 'ems_active_task_timer' : null
+      ].filter(Boolean);
+      for (const k of keysToTry) {
+        const rawTimer = localStorage.getItem(k);
+        if (rawTimer) {
+          const parsed = JSON.parse(rawTimer);
+          if (parsed && (parsed.taskId || parsed._id)) {
+            activeTimer = parsed;
+            break;
+          }
+        }
+      }
     } catch {}
 
-    const localRunningTask = (activeTimer && activeTimer.timerRunning)
+    const localRunningTask = (activeTimer && activeTimer.timerRunning !== false)
       ? activeTimer
       : (empTasks.find(t => t.timerRunning) || null);
 
-    const telemRunningTask = (telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
+    const telemRunningTask = (telem?.activeTask && (telem.activeTask.timerRunning !== false || telem.activeTask.startedAt))
       ? telem.activeTask
       : null;
 
     const candidateTask = localRunningTask || telemRunningTask;
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave) {
-      const startedAtMs = Number(candidateTask.startedAt) || nowMs;
       const isTimerRunning = Boolean(candidateTask.timerRunning !== false && !effectiveOnBreak);
+      const taskIdentityKey = String(candidateTask.taskId || candidateTask._id || candidateTask.id || candidateTask.taskCode || empKey);
+
+      let startedAtMs = Number(candidateTask.startedAt) || (typeof candidateTask.startedAt === 'string' ? new Date(candidateTask.startedAt).getTime() : 0);
+      if (!startedAtMs || isNaN(startedAtMs)) {
+        const cached = liveTaskMemoryRef.current.get(taskIdentityKey);
+        if (cached?.startedAt) {
+          startedAtMs = cached.startedAt;
+        } else {
+          startedAtMs = nowMs;
+        }
+      }
+
       const elapsed = isTimerRunning
         ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
         : 0;
       const baseAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
-      const liveTaskSecs = baseAccum + elapsed;
+      const rawLiveSecs = Math.max(Number(candidateTask.timerSeconds || 0), Number(candidateTask.liveTaskSecs || 0), baseAccum + elapsed);
+
+      // Monotonic Shield: timer seconds can NEVER jump backwards or reset to 1-2-3s!
+      const prevSecs = liveTaskMemoryRef.current.get(taskIdentityKey)?.lastLiveSecs || 0;
+      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : rawLiveSecs;
+
+      liveTaskMemoryRef.current.set(taskIdentityKey, {
+        startedAt: startedAtMs,
+        lastLiveSecs: liveTaskSecs
+      });
 
       runningTask = {
         _id: candidateTask.taskId || candidateTask._id || candidateTask.id,
