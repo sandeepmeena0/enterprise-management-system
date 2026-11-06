@@ -254,7 +254,7 @@ const markAttendance = asyncHandler(async (req, res) => {
     console.warn('[attendanceController] Could not fetch CompanySettings, using defaults:', err.message);
   }
 
-  const shiftStartTime = companySettings?.shiftStartTime || '09:30 AM';
+  const shiftStartTime = companySettings?.shiftStartTime || '10:00 AM';
   const graceMins = companySettings?.gracePeriodMinutes !== undefined ? Number(companySettings.gracePeriodMinutes) : 15;
   const standardWorkHours = companySettings?.standardWorkHours !== undefined ? Number(companySettings.standardWorkHours) : 9;
   const halfDayThresholdHours = companySettings?.halfDayThresholdHours !== undefined ? Number(companySettings.halfDayThresholdHours) : 4.5;
@@ -264,7 +264,7 @@ const markAttendance = asyncHandler(async (req, res) => {
 
   // Compute working hours and late calculation dynamically based on company policy
   let totalWorkingHours = 0;
-  let isLate = status === 'late';
+  let isLate = false;
   let lateByMinutes = 0;
   let calculatedStatus = status;
 
@@ -273,8 +273,12 @@ const markAttendance = asyncHandler(async (req, res) => {
     if (inSecs > graceLimitSecs) {
       isLate = true;
       lateByMinutes = Math.floor((inSecs - shiftStartSecs) / 60);
-      if (calculatedStatus === 'present') {
-        calculatedStatus = 'late';
+      calculatedStatus = 'late';
+    } else {
+      isLate = false;
+      lateByMinutes = 0;
+      if (calculatedStatus === 'late' || !calculatedStatus) {
+        calculatedStatus = 'present';
       }
     }
   }
@@ -883,34 +887,38 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
 
   // Update in-memory telemetry cache
   const cacheKey = targetCode || targetId;
+  const existingCached = liveTelemetryCache.get(cacheKey);
+  if (existingCached && Number(existingCached.workSeconds || 0) > payload.workSeconds) {
+    payload.workSeconds = Number(existingCached.workSeconds);
+  }
   liveTelemetryCache.set(cacheKey, payload);
 
-  // Background upsert in MongoDB Atlas to persist live state
+  // Background upsert in MongoDB Atlas to persist live state (Monotonic Shield: never degrade workSeconds)
   try {
-    const updateObj = {
-      isClockedIn: payload.isClockedIn,
-      workSeconds: payload.workSeconds,
-      totalWorkingHours: +(payload.workSeconds / 3600).toFixed(2),
-      isOnBreak: payload.isOnBreak,
-      breakType: payload.breakType,
-      activeTask: payload.activeTask,
-      lastHeartbeatAt: payload.lastHeartbeatAt
-    };
-    if (payload.clockInTime) updateObj.clockInTime = payload.clockInTime;
-    if (payload.clockInTimestamp) updateObj.clockInTimestamp = payload.clockInTimestamp;
-    if (payload.currentSessionStartTimestamp) updateObj.currentSessionStartTimestamp = payload.currentSessionStartTimestamp;
-    if (payload.breakStartTimestamp) updateObj.breakStartTimestamp = payload.breakStartTimestamp;
-
     const orClauses = [];
     if (targetId && mongoose.Types.ObjectId.isValid(targetId)) orClauses.push({ employee: targetId });
     if (targetCode) orClauses.push({ employeeCode: targetCode });
 
     if (orClauses.length > 0) {
-      Attendance.findOneAndUpdate(
-        { date: today, $or: orClauses },
-        { $set: updateObj },
-        { new: true }
-      ).catch(e => console.warn('[heartbeat] DB update notice:', e.message));
+      Attendance.findOne({ date: today, $or: orClauses }).then(existing => {
+        if (!existing) return;
+        const safeWorkSecs = Math.max(Number(existing.workSeconds || 0), Number(payload.workSeconds || 0));
+        const updateObj = {
+          isClockedIn: payload.isClockedIn,
+          workSeconds: safeWorkSecs,
+          totalWorkingHours: +(safeWorkSecs / 3600).toFixed(2),
+          isOnBreak: payload.isOnBreak,
+          breakType: payload.breakType,
+          activeTask: payload.activeTask,
+          lastHeartbeatAt: payload.lastHeartbeatAt
+        };
+        if (payload.clockInTime) updateObj.clockInTime = payload.clockInTime;
+        if (payload.clockInTimestamp) updateObj.clockInTimestamp = payload.clockInTimestamp;
+        if (payload.currentSessionStartTimestamp) updateObj.currentSessionStartTimestamp = payload.currentSessionStartTimestamp;
+        if (payload.breakStartTimestamp) updateObj.breakStartTimestamp = payload.breakStartTimestamp;
+
+        return Attendance.updateOne({ _id: existing._id }, { $set: updateObj });
+      }).catch(e => console.warn('[heartbeat] DB update notice:', e.message));
     }
   } catch (_) {}
 
@@ -922,6 +930,17 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
 const getLiveTelemetry = asyncHandler(async (req, res) => {
   const today = req.query.date || getLocalTodayStr();
   const now = Date.now();
+
+  // Load dynamically CompanySettings for shift timing & grace period
+  const CompanySettings = require('../../settings/models/CompanySettings');
+  let companySettings = null;
+  try {
+    companySettings = await CompanySettings.findOne().lean();
+  } catch (err) {}
+  const shiftStartTime = companySettings?.shiftStartTime || '10:00 AM';
+  const graceMins = companySettings?.gracePeriodMinutes !== undefined ? Number(companySettings.gracePeriodMinutes) : 15;
+  const shiftStartSecs = parseTimeStringToSeconds(shiftStartTime);
+  const graceLimitSecs = shiftStartSecs + (graceMins * 60);
 
   // Load all today's attendance records from MongoDB
   const query = { date: today };
@@ -942,6 +961,27 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     const isClockedIn = Boolean(r.isClockedIn && !r.clockOutTime);
     const isClockedOut = Boolean(r.clockOutTime || r.clockOut);
     const isOnBreak = Boolean(r.isOnBreak);
+
+    // Dynamic shift status calibration against company policy (e.g. 10:00 AM + 15m grace)
+    let recStatus = r.status || 'present';
+    let recIsLate = Boolean(r.isLate);
+    const inTimeStr = r.clockInTime || r.clockIn;
+    if (inTimeStr && inTimeStr !== '--' && inTimeStr !== '—') {
+      const inSecs = parseTimeStringToSeconds(inTimeStr);
+      if (inSecs > 0) {
+        if (inSecs <= graceLimitSecs && (recStatus === 'late' || !recStatus)) {
+          recStatus = 'present';
+          recIsLate = false;
+          // Asynchronously update MongoDB Atlas so database reflects on-time present status
+          Attendance.updateOne({ _id: r._id }, { $set: { status: 'present', isLate: false, lateByMinutes: 0 } }).catch(() => {});
+        } else if (inSecs > graceLimitSecs && recStatus === 'present') {
+          recStatus = 'late';
+          recIsLate = true;
+          const lateMins = Math.floor((inSecs - shiftStartSecs) / 60);
+          Attendance.updateOne({ _id: r._id }, { $set: { status: 'late', isLate: true, lateByMinutes: lateMins } }).catch(() => {});
+        }
+      }
+    }
 
     let liveWorkSecs = Number(r.workSeconds) || 0;
     if (isClockedIn) {
@@ -1001,7 +1041,8 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       employeeCode: code,
       employeeName: r.employeeName,
       date: r.date,
-      status: r.status,
+      status: recStatus,
+      isLate: recIsLate,
       isClockedIn,
       isClockedOut,
       isOnBreak,
@@ -1020,8 +1061,17 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     };
 
     telemetryMap[key] = state;
-    if (code) telemetryMap[code] = state;
-    if (id) telemetryMap[id] = state;
+    if (code) {
+      telemetryMap[code] = state;
+      telemetryMap[code.toLowerCase()] = state;
+    }
+    if (id) {
+      telemetryMap[id] = state;
+    }
+    const empEmail = String(r.employeeEmail || r.email || '').trim().toLowerCase();
+    if (empEmail) {
+      telemetryMap[empEmail] = state;
+    }
   });
 
   res.json({

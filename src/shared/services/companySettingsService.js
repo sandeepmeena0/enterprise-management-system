@@ -27,8 +27,8 @@ export const DEFAULT_COMPANY_SETTINGS = {
   
   // ⏱️ Admin Configurable Shift Timing & Working Hours (Strictly followed across company)
   standardWorkHours: 9, // Standard daily work hours (default 9h)
-  shiftStartTime: '09:30 AM', // Shift start time (e.g. 09:30 AM)
-  shiftEndTime: '06:30 PM', // Shift end time (e.g. 06:30 PM)
+  shiftStartTime: '10:00 AM', // Shift start time (e.g. 10:00 AM)
+  shiftEndTime: '07:00 PM', // Shift end time (e.g. 07:00 PM)
   gracePeriodMinutes: 15, // Grace period before marked Late (e.g. 15 mins)
   halfDayThresholdHours: 4.5, // Work hours below which is marked Half Day
   minOvertimeMinutes: 30, // Minimum minutes past shift to qualify for overtime

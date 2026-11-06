@@ -3,7 +3,7 @@ import { getCollection, saveCollection, KEYS, syncDatabaseToStorage } from '../s
 import { ROLES, ROLE_CONFIGS, getUserRole, isAdmin, isHR, isTeamMember, isHRorAdmin, isLeaderOrAbove, getRoleConfig } from '../utils/permissionUtils';
 import { API_BASE } from '../config/apiConfig';
 import { subscribeToSyncEvents } from '../services/realtimeSyncService';
-import { performShiftClockOut } from '../utils/timerUtils';
+import { performShiftClockOut, hydrateUserCloudState } from '../utils/timerUtils';
 
 const AuthContext = createContext();
 
@@ -174,6 +174,8 @@ export const AuthProvider = ({ children }) => {
             }
           }
         }
+        // Continuous cloud hydration to keep shift state & settings synchronized across devices
+        hydrateUserCloudState(parsed).catch(() => {});
       } catch (_) {}
     };
 
@@ -183,6 +185,10 @@ export const AuthProvider = ({ children }) => {
     // Re-verify immediately whenever browser window gains focus
     const onWindowFocus = () => {
       syncCurrentSessionUser();
+      try {
+        const saved = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (saved) hydrateUserCloudState(JSON.parse(saved)).catch(() => {});
+      } catch (_) {}
     };
     window.addEventListener('focus', onWindowFocus);
 
@@ -380,6 +386,8 @@ export const AuthProvider = ({ children }) => {
           }
           saveCollection(KEYS.EMPLOYEES, localEmps);
           window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+          // Authoritative pre-mount cloud hydration so Browser 2 immediately wakes up clocked in
+          await hydrateUserCloudState(dbUser);
           syncDatabaseToStorage().catch(() => {});
           return dbUser;
         }

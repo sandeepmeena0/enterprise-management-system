@@ -218,6 +218,7 @@ export const removeTimerStorage = (user, subKey) => {
 import { API_BASE } from '../config/apiConfig.js';
 import { hrService } from '../../modules/hr/services/hrService.js';
 import { workService } from '../../modules/work/services/workService.js';
+import { fetchCompanySettingsFromDB } from '../services/companySettingsService.js';
 
 export const getLocalDateStr = (d = new Date()) => {
   const dateObj = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
@@ -872,5 +873,147 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
   }));
   window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
 };
+
+/**
+ * Authoritative Pre-Mount Cloud Hydrator (The "Instagram" Cloud Sync Engine).
+ * Pre-populates localStorage with live shift status, live ticking work seconds,
+ * active task timers, and company settings from MongoDB Atlas before any component mounts.
+ * Guarantees zero-flicker and 100% multi-device uniformity for the same employee ID.
+ *
+ * @param {Object} user - The authenticated employee object
+ * @returns {Promise<Object|null>} The live telemetry record or null
+ */
+export const hydrateUserCloudState = async (user) => {
+  if (!user) return null;
+  const today = getLocalDateStr();
+
+  try {
+    // 1. Fetch Company Settings in background to ensure shift rules & grace periods are accurate
+    fetchCompanySettingsFromDB().catch(() => {});
+
+    // 2. Fetch Live Telemetry SSOT from MongoDB Atlas
+    const telemRes = await hrService.getLiveTelemetry(today);
+    const telemMap = (telemRes && typeof telemRes === 'object') ? (telemRes.data || telemRes) : {};
+
+    const empKeys = [
+      getCanonicalTimerKey(user),
+      user.employeeCode,
+      user._id,
+      user.id,
+      user.email
+    ].filter(Boolean).map(String);
+
+    let telemRec = null;
+    for (const k of empKeys) {
+      if (telemMap[k]) { telemRec = telemMap[k]; break; }
+      if (telemMap[k.toUpperCase()]) { telemRec = telemMap[k.toUpperCase()]; break; }
+      if (telemMap[k.toLowerCase()]) { telemRec = telemMap[k.toLowerCase()]; break; }
+    }
+    if (!telemRec) {
+      const allVals = Object.values(telemMap);
+      telemRec = allVals.find(v => {
+        const vCode = String(v?.employeeCode || '').toUpperCase();
+        const vId = String(v?.employeeId || '');
+        const vEmail = String(v?.employeeEmail || '').toLowerCase();
+        return empKeys.some(k => {
+          const str = String(k);
+          return str.toUpperCase() === vCode || str === vId || str.toLowerCase() === vEmail;
+        });
+      }) || null;
+    }
+
+    if (telemRec) {
+      const mirrorKeys = getTimerMirrorKeys(user);
+      const isClockedIn = Boolean(telemRec.isClockedIn && !telemRec.clockOutTime);
+      const isClockedOut = Boolean(telemRec.clockOutTime || telemRec.isClockedOut);
+      const isOnBreak = Boolean(telemRec.isOnBreak);
+      const liveSecs = Number(telemRec.workSeconds) || 0;
+      const breakSecs = Number(telemRec.breakSeconds) || 0;
+      const loginTime = telemRec.clockInTime || telemRec.clockIn || null;
+      const clockInTs = Number(telemRec.clockInTimestamp || 0);
+      const sessStart = Number(telemRec.currentSessionStartTimestamp || clockInTs || 0);
+
+      for (const uk of mirrorKeys) {
+        localStorage.setItem(`ems_timer_${uk}_work_session_date`, today);
+        localStorage.setItem(`ems_timer_${uk}_is_clocked_in`, isClockedIn ? 'true' : 'false');
+        localStorage.setItem(`ems_timer_${uk}_is_running`, (isClockedIn && !isOnBreak) ? 'true' : 'false');
+        localStorage.setItem(`ems_timer_${uk}_is_on_break`, isOnBreak ? 'true' : 'false');
+        localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, isClockedOut ? 'true' : 'false');
+        if (loginTime) localStorage.setItem(`ems_timer_${uk}_login_time`, loginTime);
+        if (clockInTs > 0) localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(clockInTs));
+        if (sessStart > 0) localStorage.setItem(`ems_timer_${uk}_current_session_start_timestamp`, String(sessStart));
+
+        // Never downgrade local work seconds if higher
+        const curLocalWork = Number(localStorage.getItem(`ems_timer_${uk}_work_seconds`)) || 0;
+        localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(Math.max(curLocalWork, liveSecs)));
+        localStorage.setItem(`ems_timer_${uk}_saved_official_seconds`, String(Math.max(curLocalWork, liveSecs)));
+        localStorage.setItem(`ems_timer_${uk}_break_seconds`, String(breakSecs));
+        if (telemRec.breakType) localStorage.setItem(`ems_timer_${uk}_break_type`, telemRec.breakType);
+        if (telemRec.clockOutTime) {
+          localStorage.setItem(`ems_timer_${uk}_clockout_time`, telemRec.clockOutTime);
+          localStorage.setItem(`ems_timer_${uk}_clock_out`, telemRec.clockOutTime);
+        } else if (isClockedIn) {
+          localStorage.removeItem(`ems_timer_${uk}_clockout_time`);
+          localStorage.removeItem(`ems_timer_${uk}_clock_out`);
+        }
+      }
+
+      // If active task running on cloud, hydrate active task timer snapshot
+      if (telemRec.activeTask && telemRec.activeTask.timerRunning) {
+        const at = telemRec.activeTask;
+        const taskPayload = JSON.stringify({
+          taskId: at._id || at.id || at.taskId,
+          taskCode: at.taskCode || 'TSK',
+          title: at.title || 'Task',
+          projectName: at.projectName || '',
+          assignedToId: at.assignedToId || user.employeeCode || user._id,
+          assignedToName: at.assignedToName || user.name,
+          timerRunning: true,
+          startedAt: at.startedAt,
+          accumulatedSeconds: Number(at.accumulatedSeconds || 0),
+          timerSeconds: Number(at.accumulatedSeconds || 0),
+          date: today,
+          sessionDate: today
+        });
+        mirrorKeys.forEach(uk => {
+          localStorage.setItem(`ems_active_task_timer_${uk}`, taskPayload);
+        });
+      }
+
+      // Mirror attendance record to localStorage.hrms_attendance
+      try {
+        const attRaw = localStorage.getItem('hrms_attendance');
+        let attList = attRaw ? JSON.parse(attRaw) : [];
+        if (!Array.isArray(attList)) attList = [];
+        const idx = attList.findIndex(a => a.date === today && (
+          String(a.employeeCode) === String(user.employeeCode) ||
+          String(a.employeeId) === String(user._id) ||
+          String(a.employee) === String(user._id)
+        ));
+        const cleanRec = {
+          ...telemRec,
+          _id: telemRec._id || (idx >= 0 ? attList[idx]._id : `att_${user._id}_${Date.now()}`),
+          employeeId: user._id,
+          employeeCode: user.employeeCode,
+          employeeName: user.name
+        };
+        if (idx >= 0) {
+          attList[idx] = { ...attList[idx], ...cleanRec };
+        } else {
+          attList.unshift(cleanRec);
+        }
+        localStorage.setItem('hrms_attendance', JSON.stringify(attList));
+      } catch (_) {}
+
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'hrms_attendance' } }));
+      window.dispatchEvent(new CustomEvent('ems_shift_telemetry_synced', { detail: { user, telemRec } }));
+      return telemRec;
+    }
+  } catch (err) {
+    console.warn('[hydrateUserCloudState] Offline fallback or notice:', err.message);
+  }
+  return null;
+};
+
 
 

@@ -115,7 +115,7 @@ export const WorkProvider = ({ children }) => {
       ? String(t.assignedTo._id || t.assignedTo.id || '')
       : String(t.assignedTo || '');
 
-    const directIds = [t.assignedToId, directAssignedTo, t.employeeId, t.assignedToEmail]
+    const directIds = [t.assignedToId, directAssignedTo, t.employeeId, t.assignedToEmail, t.activeUserId]
       .filter(Boolean)
       .map(s => String(s).toLowerCase());
     if (myIds.some(uid => directIds.includes(uid))) return true;

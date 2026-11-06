@@ -38,7 +38,7 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
   const startRecording = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        addToast('Microphone access is not supported on this browser.', 'error');
+        addToast('Microphone requires HTTPS or localhost. If on mobile LAN, open chrome://flags and add origin to unsafely-treat-insecure-origin-as-secure.', 'warning');
         return;
       }
 
@@ -74,7 +74,7 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
       }, 1000);
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      addToast('Microphone permission denied or device not found. Please allow microphone access in browser settings.', 'error');
+      addToast('Microphone permission required. Please allow microphone in browser site settings.', 'warning');
       setIsRecording(false);
     }
   };
@@ -183,18 +183,8 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
       type="button"
       onClick={startRecording}
       disabled={disabled}
-      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all border shadow-xs shrink-0 ${
-        isClockedIn && !isOnBreak
-          ? 'bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-sky-400'
-          : 'bg-slate-100/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed opacity-75'
-      }`}
-      title={
-        !isClockedIn
-          ? '🔒 Shift Clock-In Required to speak or send voice memos'
-          : isOnBreak
-          ? `☕ Paused on ${breakType || 'Break'}`
-          : 'Walkie-Talkie & Voice Memo (Click to speak)'
-      }
+      className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all border shadow-xs shrink-0 bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:text-blue-600 dark:hover:text-sky-400"
+      title="Walkie-Talkie & Voice Memo (Click to speak & record)"
     >
       <Mic size={18} />
     </button>

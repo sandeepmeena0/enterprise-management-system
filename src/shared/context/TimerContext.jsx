@@ -661,12 +661,16 @@ export const TimerProvider = ({ children }) => {
         resolvedWorkSecs = secVal ? Math.min(maxElapsedSinceIn, Math.max(0, parseInt(secVal, 10))) : (Number(attRec?.workSeconds) || 0);
         resolvedWorkSecs = Math.min(resolvedWorkSecs, maxElapsedSinceIn);
         writeTimerStorage(currentUser, 'work_seconds', String(resolvedWorkSecs));
-      } else {
-        // Not clocked in and not clocked out yet today: must be strictly 0!
+        setWorkSeconds(resolvedWorkSecs);
+      } else if (inVal !== null || attRec) {
+        // Confirmed not clocked in today: strictly 0!
         resolvedWorkSecs = 0;
         writeTimerStorage(currentUser, 'work_seconds', '0');
+        setWorkSeconds(0);
+      } else {
+        // Fresh device boot / unhydrated storage: do not wipe with 0, immediately trigger live sync!
+        syncLiveShiftState();
       }
-      setWorkSeconds(resolvedWorkSecs);
 
       // Clean up hrms_attendance in localStorage if it contains dirty past-day seconds
       if (attRec && (Number(attRec.workSeconds) > maxElapsedSinceIn || (Array.isArray(attRec.punchSessions) && attRec.punchSessions.some(s => Number(s.inTimestamp || 0) < todayMidnightMs)))) {
@@ -731,7 +735,8 @@ export const TimerProvider = ({ children }) => {
           targetEmpId,
           targetEmpCode,
           currentUser?._id,
-          currentUser?.employeeCode
+          currentUser?.employeeCode,
+          currentUser?.email
         ].filter(Boolean).map(String);
 
         let telemRec = null;
@@ -740,6 +745,28 @@ export const TimerProvider = ({ children }) => {
             telemRec = telemMap[k];
             break;
           }
+          const lowerK = k.toLowerCase();
+          if (telemMap[lowerK]) {
+            telemRec = telemMap[lowerK];
+            break;
+          }
+          const upperK = k.toUpperCase();
+          if (telemMap[upperK]) {
+            telemRec = telemMap[upperK];
+            break;
+          }
+        }
+        if (!telemRec) {
+          const telemValues = Object.values(telemMap);
+          telemRec = telemValues.find(v => {
+            const vCode = String(v?.employeeCode || '').toUpperCase();
+            const vId = String(v?.employeeId || '');
+            const vEmail = String(v?.employeeEmail || '').toLowerCase();
+            return empKeys.some(k => {
+              const str = String(k);
+              return str.toUpperCase() === vCode || str === vId || str.toLowerCase() === vEmail;
+            });
+          }) || null;
         }
 
         if (telemRec) {
@@ -890,8 +917,8 @@ export const TimerProvider = ({ children }) => {
           : (bSecs > 0 ? bSecs : localStoredBreakSecs);
         setBreakSeconds(prev => (effectiveOnBreak ? Math.max(prev, effectiveBreakSecs) : effectiveBreakSecs));
 
-        // 🌟 Synchronize authoritative workSeconds if state was unhydrated
-        setWorkSeconds(prev => (prev > 0 ? prev : effectiveWorkSecs));
+        // 🌟 Synchronize authoritative workSeconds monotonically (Never downgrade live hours!)
+        setWorkSeconds(prev => Math.max(prev, effectiveWorkSecs));
 
         if (rec?.breakType) setBreakType(rec.breakType);
         if (Array.isArray(rec?.breakHistory) && rec.breakHistory.length > 0) {
@@ -909,14 +936,12 @@ export const TimerProvider = ({ children }) => {
           localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(inTs));
           localStorage.setItem(`ems_timer_${uk}_current_session_start_timestamp`, String(sessStartTs));
           localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, 'false');
-          localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(effectiveWorkSecs));
+          const curLocalWorkSecs = Number(localStorage.getItem(`ems_timer_${uk}_work_seconds`)) || 0;
+          const safeWorkSecs = Math.max(curLocalWorkSecs, effectiveWorkSecs);
+          localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(safeWorkSecs));
           const curStoredBreak = Number(localStorage.getItem(`ems_timer_${uk}_break_seconds`)) || 0;
           const breakToPersist = effectiveOnBreak ? Math.max(curStoredBreak, effectiveBreakSecs) : effectiveBreakSecs;
           localStorage.setItem(`ems_timer_${uk}_break_seconds`, String(breakToPersist));
-          const curLocalWorkSecs = Number(localStorage.getItem(`ems_timer_${uk}_work_seconds`)) || 0;
-          if (curLocalWorkSecs === 0 && effectiveWorkSecs > 0) {
-            localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(effectiveWorkSecs));
-          }
           localStorage.removeItem(`ems_timer_${uk}_clockout_time`);
           localStorage.removeItem(`ems_timer_${uk}_clock_out_timestamp`);
         }
@@ -1877,9 +1902,9 @@ export const TimerProvider = ({ children }) => {
       const existingPunchSessions = existingRec?.punchSessions || punchSessions || [];
       const currentWorkSeconds = isFirstClockIn ? 0 : preservedWorkSecs;
 
-      // ⏱️ Dynamic Shift Policy Calculation from Company Settings
+      // ⏱️ Dynamic Shift Policy Calculation from Company Settings (e.g. 10:00 AM + 15m grace)
       const companySettings = getCompanySettings();
-      const shiftStartTime = companySettings.shiftStartTime || '09:30 AM';
+      const shiftStartTime = companySettings.shiftStartTime || '10:00 AM';
       const graceMins = Number(companySettings.gracePeriodMinutes) || 15;
       const shiftStartSecs = parseTimeToSeconds(shiftStartTime);
       const graceLimitSecs = shiftStartSecs + (graceMins * 60);
@@ -1889,7 +1914,7 @@ export const TimerProvider = ({ children }) => {
 
       const computedStatus = isLateCheckIn
         ? 'late'
-        : (existingRec?.status === 'absent' ? 'present' : (existingRec?.status || 'present'));
+        : (existingRec?.status === 'absent' ? 'present' : 'present');
 
       const record = {
         _id: existingRec ? existingRec._id : `att_${targetEmpId}_${Date.now()}`,
