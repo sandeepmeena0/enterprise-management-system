@@ -529,10 +529,19 @@ export const AuthProvider = ({ children }) => {
       performShiftClockOut(currentUser, { reason: 'User Logout' });
     }
 
+    // Clean up temporary unscoped keys so shared computers have clean slate
+    try {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem('ems_active_task_timer');
+      localStorage.removeItem('ems_active_chat_conv_id');
+      localStorage.removeItem('ems_active_call_room');
+      localStorage.removeItem('ems_active_live_talk');
+    } catch (_) {}
+
     setIsAuthenticated(false);
     setCurrentUser(null);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+    window.dispatchEvent(new CustomEvent('ems_user_logged_out', { detail: { timestamp: Date.now() } }));
   }, [currentUser]);
 
   const role = getUserRole(currentUser);

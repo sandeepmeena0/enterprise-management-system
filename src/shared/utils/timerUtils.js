@@ -948,6 +948,16 @@ export const hydrateUserCloudState = async (user) => {
         localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(Math.max(curLocalWork, liveSecs)));
         localStorage.setItem(`ems_timer_${uk}_saved_official_seconds`, String(Math.max(curLocalWork, liveSecs)));
         localStorage.setItem(`ems_timer_${uk}_break_seconds`, String(breakSecs));
+        if (isOnBreak) {
+          const bStartTs = Number(telemRec.breakStartTimestamp) || Number(localStorage.getItem(`ems_timer_${uk}_break_start_timestamp`)) || Date.now();
+          localStorage.setItem(`ems_timer_${uk}_break_start_timestamp`, String(bStartTs));
+          if (telemRec.breakStartTime) localStorage.setItem(`ems_timer_${uk}_break_start_time`, telemRec.breakStartTime);
+          if (telemRec.breakType) localStorage.setItem(`ems_timer_${uk}_break_type`, telemRec.breakType);
+        } else {
+          localStorage.removeItem(`ems_timer_${uk}_break_start_timestamp`);
+          localStorage.removeItem(`ems_timer_${uk}_break_start_time`);
+          localStorage.setItem(`ems_timer_${uk}_current_break_seconds`, '0');
+        }
         if (telemRec.breakType) localStorage.setItem(`ems_timer_${uk}_break_type`, telemRec.breakType);
         if (telemRec.clockOutTime) {
           localStorage.setItem(`ems_timer_${uk}_clockout_time`, telemRec.clockOutTime);

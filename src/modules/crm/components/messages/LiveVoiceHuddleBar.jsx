@@ -63,7 +63,8 @@ export const LiveVoiceHuddleBar = ({
   // WebRTC Peer connections map: key = peerId, value = RTCPeerConnection
   const peerConnectionsRef = useRef({});
   const remoteAudioElementsRef = useRef({});
-  const lastSignalTsRef = useRef(Date.now());
+  const lastSignalTsRef = useRef(Date.now() - 5000);
+  const processedSignalIdsRef = useRef(new Set());
 
   // Keep huddle members in sync with activeConv from CRMContext
   useEffect(() => {
@@ -116,19 +117,21 @@ export const LiveVoiceHuddleBar = ({
         }
       };
 
-      // Handle remote audio stream
+      // Handle remote audio stream with mobile-compliant DOM attachment
       pc.ontrack = (event) => {
         if (event.streams && event.streams[0]) {
           let audioEl = remoteAudioElementsRef.current[peerId];
           if (!audioEl) {
-            audioEl = new Audio();
+            audioEl = document.createElement('audio');
             audioEl.autoplay = true;
             audioEl.playsInline = true;
+            audioEl.style.display = 'none';
+            document.body.appendChild(audioEl);
             remoteAudioElementsRef.current[peerId] = audioEl;
           }
           audioEl.srcObject = event.streams[0];
           audioEl.muted = isDeafened;
-          audioEl.play().catch(e => console.warn('[Huddle] Audio autoplay blocked:', e));
+          audioEl.play().catch(e => console.warn('[Huddle] Audio autoplay notice:', e));
         }
       };
 
@@ -147,8 +150,9 @@ export const LiveVoiceHuddleBar = ({
     let isMounted = true;
     const pollSignals = async () => {
       try {
-        const since = lastSignalTsRef.current;
-        const res = await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle/signals?userId=${myId}&since=${since}`);
+        const since = Math.max(0, lastSignalTsRef.current - 12000);
+        const userCode = encodeURIComponent(currentUser?.employeeCode || '');
+        const res = await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle/signals?userId=${encodeURIComponent(myId)}&userCode=${userCode}&since=${since}`);
         if (!res.ok) return;
 
         const data = await res.json();
@@ -160,9 +164,16 @@ export const LiveVoiceHuddleBar = ({
 
         if (Array.isArray(data.signals) && data.signals.length > 0) {
           for (const sig of data.signals) {
+            if (!sig || !sig.id || processedSignalIdsRef.current.has(sig.id)) continue;
+            processedSignalIdsRef.current.add(sig.id);
+            if (processedSignalIdsRef.current.size > 200) {
+              const arr = Array.from(processedSignalIdsRef.current);
+              processedSignalIdsRef.current = new Set(arr.slice(-100));
+            }
+
             lastSignalTsRef.current = Math.max(lastSignalTsRef.current, sig.createdAt || Date.now());
             const peerId = String(sig.from);
-            if (peerId === myId) continue;
+            if (peerId === myId || (currentUser?.employeeCode && peerId === currentUser.employeeCode)) continue;
 
             const pc = getOrCreatePeerConnection(peerId);
             if (!pc) continue;
@@ -272,9 +283,13 @@ export const LiveVoiceHuddleBar = ({
     });
     peerConnectionsRef.current = {};
 
-    // Pause audio elements
+    // Pause and clean up audio elements from DOM
     Object.values(remoteAudioElementsRef.current).forEach(el => {
-      try { el.srcObject = null; el.pause(); } catch (_) {}
+      try {
+        el.srcObject = null;
+        el.pause();
+        if (el.parentNode) el.parentNode.removeChild(el);
+      } catch (_) {}
     });
     remoteAudioElementsRef.current = {};
 

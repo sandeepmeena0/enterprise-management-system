@@ -217,6 +217,15 @@ exports.sendMessage = async (req, res) => {
     const message = req.body;
 
     let conv = await Conversation.findOne({ id });
+    const dmTokens = id.startsWith('dm_') ? id.replace('dm_', '').split('_').filter(Boolean) : [];
+    const derivedParticipants = Array.from(new Set([
+      ...(Array.isArray(message.participants) ? message.participants : []),
+      message.senderId,
+      message.senderCode,
+      message.senderEmail,
+      ...dmTokens
+    ].filter(Boolean)));
+
     if (!conv) {
       // Auto-upsert conversation container if missing
       conv = new Conversation({
@@ -224,13 +233,31 @@ exports.sendMessage = async (req, res) => {
         type: id.startsWith('channel_') ? 'channel' : 'dm',
         channelName: id.startsWith('channel_') ? `#${id.replace('channel_', '')}` : undefined,
         name: id.startsWith('channel_') ? id.replace('channel_', '') : undefined,
-        participants: message.participants || [message.senderId],
+        participants: derivedParticipants,
         messages: [message],
         lastMessage: message.text || (message.attachments?.length ? `📎 Shared ${message.attachments.length} file(s)` : 'Attachment'),
         lastMessageTime: message.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
       await conv.save();
       return res.status(201).json({ success: true, data: conv });
+    }
+
+    // Ensure participants array is complete on existing DM conversation
+    if (conv.type === 'dm') {
+      const existingParts = new Set((conv.participants || []).map(p => String(p).toLowerCase().trim()));
+      let partsChanged = false;
+      derivedParticipants.forEach(p => {
+        const pLower = String(p).toLowerCase().trim();
+        if (!existingParts.has(pLower)) {
+          if (!Array.isArray(conv.participants)) conv.participants = [];
+          conv.participants.push(p);
+          existingParts.add(pLower);
+          partsChanged = true;
+        }
+      });
+      if (partsChanged) {
+        conv.markModified('participants');
+      }
     }
 
     // Deduplicate existing messages in MongoDB document
@@ -475,18 +502,21 @@ exports.sendHuddleSignal = async (req, res) => {
 exports.getHuddleSignals = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = String(req.query.userId || '');
+    const userId = String(req.query.userId || '').toLowerCase().trim();
+    const userCode = String(req.query.userCode || '').toLowerCase().trim();
     const since = Number(req.query.since || 0);
 
     const conv = await Conversation.findOne({ id }).lean();
     if (!conv || !conv.activeHuddle) return res.json({ success: true, signals: [], activeHuddle: null });
 
     const allSignals = Array.isArray(conv.activeHuddle.signals) ? conv.activeHuddle.signals : [];
-    const signals = allSignals.filter(s =>
-      s.createdAt > since &&
-      String(s.from) !== userId &&
-      (s.to === 'all' || String(s.to) === userId)
-    );
+    const signals = allSignals.filter(s => {
+      if (s.createdAt < since) return false;
+      const sFrom = String(s.from || '').toLowerCase().trim();
+      if (sFrom === userId || (userCode && sFrom === userCode)) return false;
+      const sTo = String(s.to || '').toLowerCase().trim();
+      return sTo === 'all' || sTo === userId || (userCode && sTo === userCode);
+    });
 
     res.json({ success: true, signals, activeHuddle: conv.activeHuddle });
   } catch (err) {

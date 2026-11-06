@@ -4,7 +4,7 @@
  * Events with Automatic Birthday Generation from employee DOB, Team Chat/Messages, Notices, and Dark Mode.
  */
 
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { getCollection, saveCollection, KEYS } from '../services/storageService';
 import { useToast } from './ToastContext';
 import { useAuth } from './AuthContext';
@@ -329,6 +329,9 @@ export const CRMProvider = ({ children }) => {
     }
   });
 
+  const knownMsgIdsRef = useRef(new Set());
+  const lastSyncBatchTsRef = useRef(0);
+
   const setActiveConversationId = (id) => {
     if (!id) return;
     setActiveConversationIdState(id);
@@ -540,8 +543,26 @@ export const CRMProvider = ({ children }) => {
             } else {
               const remote = map.get(c.id);
               const msgMap = new Map();
+              const myId = String(currentUser?._id || '').toLowerCase();
+              const myCode = String(currentUser?.employeeCode || '').toLowerCase();
+              const myEmail = String(currentUser?.email || '').toLowerCase();
+
               (remote.messages || []).forEach(m => {
-                if (m.id) msgMap.set(m.id, m);
+                if (m && m.id) {
+                  msgMap.set(m.id, m);
+                  const sId = String(m.senderId || '').toLowerCase();
+                  const sCode = String(m.senderCode || '').toLowerCase();
+                  const sEmail = String(m.senderEmail || '').toLowerCase();
+                  const isFromMe = (myId && sId === myId) || (myCode && sCode === myCode) || (myEmail && sEmail === myEmail);
+                  if (!isFromMe && !knownMsgIdsRef.current.has(m.id)) {
+                    knownMsgIdsRef.current.add(m.id);
+                    if (Date.now() - (m.createdAt || 0) < 25000) {
+                      playChatNotificationSound();
+                    }
+                  } else if (m.id) {
+                    knownMsgIdsRef.current.add(m.id);
+                  }
+                }
               });
               (c.messages || []).forEach(m => {
                 if (m.id) {
@@ -587,11 +608,15 @@ export const CRMProvider = ({ children }) => {
           });
 
           if (hasUnsynced) {
-            fetch(`${API_BASE}/conversations/sync-batch`, {
-              method: 'POST',
-              headers: getAuthHeaders(),
-              body: JSON.stringify({ conversations: merged })
-            }).catch(() => {});
+            const now = Date.now();
+            if (!lastSyncBatchTsRef.current || (now - lastSyncBatchTsRef.current > 30000)) {
+              lastSyncBatchTsRef.current = now;
+              fetch(`${API_BASE}/conversations/sync-batch`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ conversations: merged })
+              }).catch(() => {});
+            }
           }
           return;
         }
@@ -1864,12 +1889,21 @@ export const CRMProvider = ({ children }) => {
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.CONVERSATIONS } }));
     window.dispatchEvent(new CustomEvent('ems_chat_message_sent', { detail: { message: newMsg, conversationId } }));
 
-    // Persist message to MongoDB Atlas database
+    // Persist message and ensure conversation participants are synchronized in MongoDB Atlas
     try {
+      const payload = {
+        ...newMsg,
+        participants: currentConvs[idx].participants || [],
+        participantId: currentConvs[idx].participantId,
+        participantCode: currentConvs[idx].participantCode,
+        participantName: currentConvs[idx].participantName,
+        createdBy: currentConvs[idx].createdBy,
+        creatorCode: currentConvs[idx].creatorCode
+      };
       fetch(`${API_BASE}/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(newMsg)
+        body: JSON.stringify(payload)
       }).catch(err => console.warn('[CRMContext] Offline message sync queued:', err));
     } catch (err) {
       console.warn('[CRMContext] Message database persistence failed:', err);

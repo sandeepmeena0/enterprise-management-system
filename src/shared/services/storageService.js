@@ -358,7 +358,32 @@ export const saveCollection = (key, data) => {
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
     broadcastSyncEvent(SYNC_EVENTS.STORAGE_MUTATION, { key });
   } catch (error) {
-    console.error(`Error saving ${key} to storage:`, error);
+    console.warn(`[storageService] Storage quota notice for ${key}:`, error.message);
+    if (key === KEYS.CONVERSATIONS && Array.isArray(data)) {
+      try {
+        const pruned = data.map(conv => {
+          if (!Array.isArray(conv.messages)) return conv;
+          const msgCount = conv.messages.length;
+          const cleanMsgs = conv.messages.map((m, idx) => {
+            if (idx < msgCount - 8 && Array.isArray(m.attachments)) {
+              return {
+                ...m,
+                attachments: m.attachments.map(a => ({
+                  ...a,
+                  dataUrl: (a.dataUrl && a.dataUrl.length > 200) ? a.dataUrl.substring(0, 100) + '...[cloud]' : a.dataUrl
+                }))
+              };
+            }
+            return m;
+          });
+          return { ...conv, messages: cleanMsgs };
+        });
+        localStorage.setItem(key, JSON.stringify(pruned));
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
+      } catch (innerErr) {
+        console.error('[storageService] Failed saving pruned conversations:', innerErr);
+      }
+    }
   }
 };
 

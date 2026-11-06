@@ -202,8 +202,12 @@ const markAttendance = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'employee, date, and status are required' });
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  if (date > todayStr && ['present', 'late', 'half_day', 'absent'].includes(status)) {
+  const todayStr = getLocalTodayStr();
+  // Allow midnight / time zone shifts: only reject if date is strictly > tomorrow in local time
+  const tomorrowObj = new Date();
+  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+  const tomorrowStr = getLocalTodayStr(tomorrowObj);
+  if (date > tomorrowStr && ['present', 'late', 'half_day', 'absent'].includes(status)) {
     return res.status(400).json({
       success: false,
       message: `Cannot mark attendance as '${status}' for a future date (${date}). Attendance can only be recorded for today or past dates.`
@@ -862,7 +866,7 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
 
   const targetId = String(employeeId || req.user?.id || req.user?._id || '').trim();
   const targetCode = String(employeeCode || req.user?.employeeCode || '').trim().toUpperCase();
-  const today = req.body.date || new Date().toISOString().split('T')[0];
+  const today = req.body.date || getLocalTodayStr();
 
   if (!targetId && !targetCode) {
     return res.status(400).json({ success: false, message: 'employeeId or employeeCode is required' });
@@ -900,9 +904,8 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     if (targetCode) orClauses.push({ employeeCode: targetCode });
 
     if (orClauses.length > 0) {
-      Attendance.findOne({ date: today, $or: orClauses }).then(existing => {
-        if (!existing) return;
-        const safeWorkSecs = Math.max(Number(existing.workSeconds || 0), Number(payload.workSeconds || 0));
+      Attendance.findOne({ date: today, $or: orClauses }).then(async existing => {
+        const safeWorkSecs = existing ? Math.max(Number(existing.workSeconds || 0), Number(payload.workSeconds || 0)) : Number(payload.workSeconds || 0);
         const updateObj = {
           isClockedIn: payload.isClockedIn,
           workSeconds: safeWorkSecs,
@@ -917,7 +920,21 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
         if (payload.currentSessionStartTimestamp) updateObj.currentSessionStartTimestamp = payload.currentSessionStartTimestamp;
         if (payload.breakStartTimestamp) updateObj.breakStartTimestamp = payload.breakStartTimestamp;
 
-        return Attendance.updateOne({ _id: existing._id }, { $set: updateObj });
+        if (existing) {
+          return Attendance.updateOne({ _id: existing._id }, { $set: updateObj });
+        } else if (payload.isClockedIn) {
+          // If no existing record yet today and user is clocked in, create attendance record in MongoDB immediately!
+          const newRec = {
+            ...updateObj,
+            employee: targetId && mongoose.Types.ObjectId.isValid(targetId) ? targetId : new mongoose.Types.ObjectId(),
+            employeeId: targetId,
+            employeeCode: targetCode,
+            employeeName: payload.employeeName || req.user?.name || 'Employee',
+            date: today,
+            status: 'present'
+          };
+          return Attendance.create(newRec);
+        }
       }).catch(e => console.warn('[heartbeat] DB update notice:', e.message));
     }
   } catch (_) {}
@@ -1071,6 +1088,48 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     const empEmail = String(r.employeeEmail || r.email || '').trim().toLowerCase();
     if (empEmail) {
       telemetryMap[empEmail] = state;
+    }
+  });
+
+  // Merge ultra-fresh entries from in-memory heartbeat cache (0ms instant live reflection)
+  liveTelemetryCache.forEach((cachedVal, cacheKey) => {
+    if (!cachedVal) return;
+    if (cachedVal.date === today && (now - (cachedVal.lastHeartbeatAt || 0)) < 30000) {
+      const code = String(cachedVal.employeeCode || '').trim().toUpperCase();
+      const id = String(cachedVal.employeeId || '');
+      const existingTelem = telemetryMap[code] || telemetryMap[id] || null;
+
+      const mergedState = {
+        ...(existingTelem || {}),
+        employeeId: id || existingTelem?.employeeId,
+        employeeCode: code || existingTelem?.employeeCode,
+        employeeName: cachedVal.employeeName || existingTelem?.employeeName,
+        date: today,
+        status: existingTelem?.status || 'present',
+        isLate: existingTelem?.isLate || false,
+        isClockedIn: cachedVal.isClockedIn,
+        isClockedOut: Boolean(!cachedVal.isClockedIn && (cachedVal.clockOutTime || existingTelem?.clockOutTime)),
+        isOnBreak: Boolean(cachedVal.isOnBreak),
+        breakType: cachedVal.breakType || existingTelem?.breakType || null,
+        clockInTime: cachedVal.clockInTime || existingTelem?.clockInTime || null,
+        clockInTimestamp: cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || null,
+        clockOutTime: cachedVal.clockOutTime || existingTelem?.clockOutTime || null,
+        currentSessionStartTimestamp: cachedVal.currentSessionStartTimestamp || existingTelem?.currentSessionStartTimestamp || null,
+        workSeconds: Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)),
+        totalWorkingHours: +(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)) / 3600).toFixed(2),
+        activeTask: cachedVal.activeTask || existingTelem?.activeTask || null,
+        lastHeartbeatAt: cachedVal.lastHeartbeatAt || now,
+        timestamp: now,
+        fetchedAt: now
+      };
+
+      if (code) {
+        telemetryMap[code] = mergedState;
+        telemetryMap[code.toLowerCase()] = mergedState;
+      }
+      if (id) {
+        telemetryMap[id] = mergedState;
+      }
     }
   });
 

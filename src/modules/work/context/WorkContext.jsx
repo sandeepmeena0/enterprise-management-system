@@ -604,12 +604,14 @@ export const WorkProvider = ({ children }) => {
     };
 
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       clearInterval(syncInterval);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('hrms_storage_change', handleStorageUpdate);
       window.removeEventListener('storage', handleStorageUpdate);

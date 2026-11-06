@@ -33,7 +33,7 @@ export const getFileCategory = (filename = '', mimeType = '') => {
  * Reduces high-res photos (>10MB) to lightweight ~150-300KB JPEGs
  * so local storage never exceeds quota while maintaining crisp quality.
  */
-export const compressImage = (file, maxDimension = 1280, quality = 0.78) => {
+export const compressImage = (file, maxDimension = 960, quality = 0.68) => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;

@@ -926,6 +926,16 @@ export const TimerProvider = ({ children }) => {
           localStorage.setItem(`ems_timer_${userKey}_break_history`, JSON.stringify(rec.breakHistory));
         }
 
+        // 🌟 Universal Break State & Elapsed Timer Synchronization across devices
+        const bStartTs = Number(rec?.breakStartTimestamp) || Number(localStorage.getItem(`ems_timer_${userKey}_break_start_timestamp`)) || (effectiveOnBreak ? Date.now() : 0);
+        if (effectiveOnBreak && bStartTs > 0) {
+          setBreakStartTime(rec?.breakStartTime || new Date(bStartTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          setCurrentBreakSeconds(Math.max(0, Math.floor((Date.now() - bStartTs) / 1000)));
+        } else if (!effectiveOnBreak) {
+          setBreakStartTime(null);
+          setCurrentBreakSeconds(0);
+        }
+
         const mirrorKeys = [userKey, targetEmpId, targetEmpCode, currentUser?._id, currentUser?.employeeCode].filter(Boolean);
         for (const uk of mirrorKeys) {
           localStorage.setItem(`ems_timer_${uk}_work_session_date`, today);
@@ -942,6 +952,15 @@ export const TimerProvider = ({ children }) => {
           const curStoredBreak = Number(localStorage.getItem(`ems_timer_${uk}_break_seconds`)) || 0;
           const breakToPersist = effectiveOnBreak ? Math.max(curStoredBreak, effectiveBreakSecs) : effectiveBreakSecs;
           localStorage.setItem(`ems_timer_${uk}_break_seconds`, String(breakToPersist));
+          if (effectiveOnBreak && bStartTs > 0) {
+            localStorage.setItem(`ems_timer_${uk}_break_start_timestamp`, String(bStartTs));
+            if (rec?.breakStartTime) localStorage.setItem(`ems_timer_${uk}_break_start_time`, rec.breakStartTime);
+            if (rec?.breakType) localStorage.setItem(`ems_timer_${uk}_break_type`, rec.breakType);
+          } else if (!effectiveOnBreak) {
+            localStorage.removeItem(`ems_timer_${uk}_break_start_timestamp`);
+            localStorage.removeItem(`ems_timer_${uk}_break_start_time`);
+            localStorage.setItem(`ems_timer_${uk}_current_break_seconds`, '0');
+          }
           localStorage.removeItem(`ems_timer_${uk}_clockout_time`);
           localStorage.removeItem(`ems_timer_${uk}_clock_out_timestamp`);
         }
@@ -949,6 +968,7 @@ export const TimerProvider = ({ children }) => {
         const outTime = rec?.clockOutTime || rec?.clockOut || localStorage.getItem(`ems_timer_${userKey}_clockout_time`) || null;
         const inTime = rec?.clockInTime || rec?.clockIn || loginTime || localStorage.getItem(`ems_timer_${userKey}_login_time`) || null;
         const finalWorkSecs = Number(rec?.workSeconds) || Math.round((Number(rec?.totalWorkingHours) || 0) * 3600) || Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || 0;
+        const wasClockedInLocally = isClockedIn || isRunning;
 
         if (Array.isArray(rec?.punchSessions) && rec.punchSessions.length > 0) {
           setPunchSessions(rec.punchSessions);
@@ -963,14 +983,38 @@ export const TimerProvider = ({ children }) => {
         if (inTime) setLoginTime(inTime);
         if (finalWorkSecs > 0) setWorkSeconds(finalWorkSecs);
 
-        localStorage.setItem(`ems_timer_${userKey}_work_session_date`, today);
-        localStorage.setItem(`ems_timer_${userKey}_is_clocked_in`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_is_running`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_is_on_break`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_had_clocked_out`, 'true');
-        if (outTime) localStorage.setItem(`ems_timer_${userKey}_clockout_time`, outTime);
-        if (inTime) localStorage.setItem(`ems_timer_${userKey}_login_time`, inTime);
-        if (finalWorkSecs > 0) localStorage.setItem(`ems_timer_${userKey}_work_seconds`, String(finalWorkSecs));
+        const mirrorKeys = [userKey, targetEmpId, targetEmpCode, currentUser?._id, currentUser?.employeeCode].filter(Boolean);
+        for (const uk of mirrorKeys) {
+          localStorage.setItem(`ems_timer_${uk}_work_session_date`, today);
+          localStorage.setItem(`ems_timer_${uk}_is_clocked_in`, 'false');
+          localStorage.setItem(`ems_timer_${uk}_is_running`, 'false');
+          localStorage.setItem(`ems_timer_${uk}_is_on_break`, 'false');
+          localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, 'true');
+          if (outTime) localStorage.setItem(`ems_timer_${uk}_clockout_time`, outTime);
+          if (inTime) localStorage.setItem(`ems_timer_${uk}_login_time`, inTime);
+          if (finalWorkSecs > 0) localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(finalWorkSecs));
+          localStorage.removeItem(`ems_timer_${uk}_break_start_timestamp`);
+          localStorage.removeItem(`ems_timer_${uk}_break_start_time`);
+          localStorage.setItem(`ems_timer_${uk}_current_break_seconds`, '0');
+        }
+
+        // 🌟 Remote Clock-Out Event Dispatcher: If this device was still locally active, trigger events so task timers immediately freeze!
+        if (wasClockedInLocally) {
+          window.dispatchEvent(new CustomEvent('ems_clocked_out', {
+            detail: {
+              userKey,
+              employeeId: targetEmpId,
+              employeeCode: targetEmpCode,
+              logoutTime: outTime,
+              date: today,
+              reason: 'Remote device shift clock-out'
+            }
+          }));
+          window.dispatchEvent(new CustomEvent('ems_task_timer_stopped', {
+            detail: { reason: 'remote_device_clock_out' }
+          }));
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'hrms_attendance' } }));
+        }
       } else {
         // User has not clocked in today: Ensure state is cleanly reset to 0:00 and not clocked in
         setIsClockedIn(false);
@@ -997,6 +1041,7 @@ export const TimerProvider = ({ children }) => {
     };
 
     window.addEventListener('focus', handleSync);
+    window.addEventListener('online', handleSync);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('hrms_storage_change', handleSync);
     window.addEventListener('ems_clocked_in', handleSync);
@@ -1004,6 +1049,7 @@ export const TimerProvider = ({ children }) => {
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleSync);
+      window.removeEventListener('online', handleSync);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('hrms_storage_change', handleSync);
       window.removeEventListener('ems_clocked_in', handleSync);
