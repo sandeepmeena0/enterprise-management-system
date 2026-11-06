@@ -303,7 +303,7 @@ export const CRMProvider = ({ children }) => {
       }
     });
 
-    return sanitized;
+    return sanitizeConversationMessages(convs);
   };
 
   // Core Storage States

@@ -86,7 +86,7 @@ export const Sidebar = ({ mobileMenuOpen = false, onCloseMobile = () => {} }) =>
     };
     const handlePermChange = (e) => {
       const key = e?.detail?.key;
-      if (!key || ['EMS_USER_PERMISSIONS', 'ems_auth_session', KEYS.EMPLOYEES, 'all'].includes(key)) {
+      if (!key || ['EMS_USER_PERMISSIONS', 'ems_auth_session', 'hrms_employees', 'all'].includes(key)) {
         setTimeout(() => setPermTick(t => t + 1), 0);
       }
     };
