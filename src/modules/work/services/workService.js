@@ -294,12 +294,16 @@ export const workService = {
             localList.forEach(lt => {
               const id = String(lt._id || lt.id);
               if (id) localMap.set(id, lt);
+              if (lt.taskCode && lt.taskCode.trim()) {
+                localMap.set(`code_${lt.taskCode.trim().toLowerCase()}`, lt);
+              }
             });
 
             // Map authoritative remote tasks, overlaying live ticking timer only if running locally
             const merged = remoteList.map(rt => {
               const id = String(rt._id || rt.id);
-              const local = localMap.get(id);
+              const codeKey = rt.taskCode && rt.taskCode.trim() ? `code_${rt.taskCode.trim().toLowerCase()}` : null;
+              const local = localMap.get(id) || (codeKey ? localMap.get(codeKey) : null);
               if (local) {
                 const localTimerSecs = Number(local.timerSeconds) || 0;
                 const remoteTimerSecs = Number(rt.timerSeconds) || 0;
@@ -313,8 +317,9 @@ export const workService = {
 
                 const effectiveRunning = isRemoteActive || isLocalActive;
                 const effectiveStartedAt = isLocalActive ? local.startedAt : (isRemoteActive ? rt.startedAt : null);
+                const localElapsed = isLocalActive ? Math.max(0, Math.floor((Date.now() - Number(local.startedAt)) / 1000)) : 0;
                 // Invariant: Task timer seconds and accumulated seconds can never run backwards!
-                const effectiveSecs = Math.max(localTimerSecs, remoteTimerSecs);
+                const effectiveSecs = Math.max(localTimerSecs, remoteTimerSecs, localAccum + localElapsed);
                 const effectiveAccum = Math.max(localAccum, remoteAccum);
                 const maxHours = Math.max(localHoursLogged, remoteHoursLogged, +(effectiveSecs / 3600).toFixed(2));
 
@@ -325,10 +330,12 @@ export const workService = {
                   startedAt: effectiveStartedAt,
                   timerSeconds: effectiveSecs,
                   accumulatedSeconds: effectiveAccum,
+                  todayWorkSeconds: Math.max(Number(local.todayWorkSeconds) || 0, Number(rt.todayWorkSeconds) || 0),
+                  dailySessions: { ...(rt.dailySessions || {}), ...(local.dailySessions || {}) },
                   hoursLogged: maxHours,
                   hoursLoggedText: maxHours > 0 ? (local.hoursLoggedText || `${maxHours}h`) : (local.hoursLoggedText || rt.hoursLoggedText || '0s'),
                   sessionDate: rt.sessionDate || local.sessionDate,
-                  status: rt.status || local.status
+                  status: (rt.status === 'completed' || !!rt.completedAt) ? 'completed' : (local.status || rt.status)
                 };
               }
               return rt;

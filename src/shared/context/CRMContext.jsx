@@ -956,19 +956,17 @@ export const CRMProvider = ({ children }) => {
 
       const todayAttRec = isCurrentDay ? (attendance || []).find(a => a.date === dateStr && isMyAttRecord(a)) : null;
 
-      const hadClockedOutToday = Boolean(
-        readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-        readTimerStorage(currentUser, 'had_clocked_out') === true ||
-        readTimerStorage(currentUser, 'clock_out') ||
-        readTimerStorage(currentUser, 'clockout_time') ||
-        localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true' ||
-        todayAttRec?.clockOutTime ||
-        todayAttRec?.clockOut
-      );
-      const isClockedInToday = !hadClockedOutToday && Boolean(
+      const isClockedInToday = Boolean(
         readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
         readTimerStorage(currentUser, 'is_clocked_in') === true ||
         localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true'
+      );
+      const hadClockedOutToday = !isClockedInToday && Boolean(
+        readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
+        readTimerStorage(currentUser, 'had_clocked_out') === true ||
+        localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true' ||
+        todayAttRec?.clockOutTime ||
+        todayAttRec?.clockOut
       );
       const rawBreakSecs = Number(readTimerStorage(currentUser, 'break_seconds') || localStorage.getItem(`ems_timer_${userKey}_break_seconds`)) || 0;
       let todayBreakHistory = [];

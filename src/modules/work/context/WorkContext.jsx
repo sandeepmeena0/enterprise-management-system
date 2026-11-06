@@ -385,7 +385,12 @@ export const WorkProvider = ({ children }) => {
         }
 
         const isAssignedToMe = isTaskAssignedToMe(t);
-        const isActive = activeTimer && activeTimer.timerRunning && (String(activeTimer.taskId) === tId || String(activeTimer._id) === tId);
+        const isTaskIdMatch = activeTimer && (
+          String(activeTimer.taskId) === tId ||
+          String(activeTimer._id) === tId ||
+          (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
+        );
+        const isActive = Boolean(activeTimer && activeTimer.timerRunning && isTaskIdMatch);
         const isStartedToday = t.startedAt && Number(t.startedAt) >= todayMidnightMs;
         const isRemoteActive = Boolean(t.timerRunning && isStartedToday);
 
@@ -502,7 +507,10 @@ export const WorkProvider = ({ children }) => {
           });
         }
       } else if (curSnapshot?.timerRunning) {
-        const matchTask = cleanMergedTasks.find(t => String(t._id || t.id) === String(curSnapshot.taskId));
+        const matchTask = cleanMergedTasks.find(t =>
+          String(t._id || t.id) === String(curSnapshot.taskId) ||
+          (curSnapshot.taskCode && t.taskCode && String(curSnapshot.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
+        );
         if (matchTask && (matchTask.status === 'completed' || matchTask.completedAt)) {
           saveActiveTimerSnapshot({
             ...curSnapshot,
@@ -531,17 +539,18 @@ export const WorkProvider = ({ children }) => {
   // Derived reactive active running task strictly scoped to current logged-in user
   const activeRunningTask = useMemo(() => {
     if (!currentUser) return null;
+    const isShiftClockedIn = readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
+      readTimerStorage(currentUser, 'is_clocked_in') === true ||
+      (userKey && localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true') ||
+      (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true');
+    if (!isShiftClockedIn) return null;
+
     const hadClockedOut = Boolean(
-      readTimerStorage(currentUser, 'clock_out') ||
-      readTimerStorage(currentUser, 'clockout_time') ||
       readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
       readTimerStorage(currentUser, 'had_clocked_out') === true
     );
     if (hadClockedOut) return null;
 
-    const isShiftClockedIn = readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
-      readTimerStorage(currentUser, 'is_clocked_in') === true;
-    if (!isShiftClockedIn) return null;
     return tasks.find(t => t.timerRunning && t.status !== 'completed' && !t.completedAt && isTaskAssignedToMe(t)) || null;
   }, [tasks, currentUser, isTaskAssignedToMe, userKey]);
 
@@ -620,19 +629,14 @@ export const WorkProvider = ({ children }) => {
       const isShiftOnBreak = readTimerStorage(currentUser, 'is_on_break') === 'true' ||
         readTimerStorage(currentUser, 'is_on_break') === true;
 
-      const hadClockedOut = Boolean(
-        readTimerStorage(currentUser, 'clock_out') ||
-        readTimerStorage(currentUser, 'clockout_time') ||
-        readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-        readTimerStorage(currentUser, 'had_clocked_out') === true
-      );
-
-      let isShiftClockedIn = !hadClockedOut && (
+      let isShiftClockedIn = Boolean(
         readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
-        readTimerStorage(currentUser, 'is_clocked_in') === true
+        readTimerStorage(currentUser, 'is_clocked_in') === true ||
+        (userKey && localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true') ||
+        (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true')
       );
 
-      if (!isShiftClockedIn && !hadClockedOut) {
+      if (!isShiftClockedIn) {
         try {
           const attRaw = localStorage.getItem('hrms_attendance');
           if (attRaw) {
@@ -651,6 +655,11 @@ export const WorkProvider = ({ children }) => {
         } catch (_) {}
       }
 
+      const hadClockedOut = !isShiftClockedIn && Boolean(
+        readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
+        readTimerStorage(currentUser, 'had_clocked_out') === true
+      );
+
       // Auto-pause task timer strictly when employee is on break OR not clocked in OR clocked out!
       if ((isShiftOnBreak || !isShiftClockedIn || hadClockedOut) && activeTimer?.timerRunning) {
         const today = getTodayStr();
@@ -664,8 +673,12 @@ export const WorkProvider = ({ children }) => {
         saveActiveTimerSnapshot(pausedTimer);
 
         const allTasks = getCollection(KEYS.TASKS) || [];
+        const isMatchActive = (t) => (
+          String(t._id || t.id) === String(activeTimer.taskId) ||
+          (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
+        );
         const updatedAll = allTasks.map(t => {
-          if (String(t._id || t.id) === String(activeTimer.taskId)) {
+          if (isMatchActive(t)) {
             return {
               ...t,
               ...pausedTimer,
@@ -678,7 +691,7 @@ export const WorkProvider = ({ children }) => {
         saveCollection(KEYS.TASKS, updatedAll);
 
         setTasks(prevTasks => prevTasks.map(t => {
-          if (String(t._id || t.id) === String(activeTimer.taskId)) {
+          if (isMatchActive(t)) {
             return {
               ...t,
               ...pausedTimer,
@@ -728,7 +741,11 @@ export const WorkProvider = ({ children }) => {
           }
 
           const isAssignedToMe = isTaskAssignedToMe(t);
-          const isMyActive = activeTimer && activeTimer.timerRunning && (String(activeTimer.taskId) === tId || String(activeTimer._id) === tId);
+          const isMyActive = activeTimer && activeTimer.timerRunning && (
+            String(activeTimer.taskId) === tId ||
+            String(activeTimer._id) === tId ||
+            (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
+          );
 
           if (isAssignedToMe && (!isMyActive || !isShiftClockedIn || isShiftOnBreak) && t.timerRunning) {
             changed = true;

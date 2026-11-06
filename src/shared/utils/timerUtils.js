@@ -182,7 +182,7 @@ export const readTimerStorage = (user, subKey, fallback = null) => {
   for (const k of keys) {
     if (isSessionScoped) {
       const sDate = localStorage.getItem(`ems_timer_${k}_work_session_date`);
-      if (sDate && sDate !== localToday) {
+      if (!sDate || sDate !== localToday) {
         continue; // Stale session from a prior date! Strictly isolate to today
       }
     }
@@ -199,7 +199,12 @@ export const writeTimerStorage = (user, subKey, value) => {
   if (typeof localStorage === 'undefined') return;
   const keys = getTimerMirrorKeys(user);
   const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const isSessionScoped = SESSION_SCOPED_KEYS.has(subKey);
+  const localToday = getLocalDateStr();
   for (const k of keys) {
+    if (isSessionScoped) {
+      localStorage.setItem(`ems_timer_${k}_work_session_date`, localToday);
+    }
     localStorage.setItem(`ems_timer_${k}_${subKey}`, valStr);
   }
 };
@@ -273,7 +278,7 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   const storedOnBreak = options.isOnBreak !== undefined ? Boolean(options.isOnBreak) : (isTodaySession && (readTimerStorage(userOrEmp, 'is_on_break') === 'true' || readTimerStorage(userOrEmp, 'is_on_break') === true));
   const storedWorkSecs = isTodaySession ? (Number(readTimerStorage(userOrEmp, 'work_seconds')) || 0) : 0;
   const storedBreakSecs = isTodaySession ? (Number(readTimerStorage(userOrEmp, 'break_seconds')) || 0) : 0;
-  const storedHadClockOut = isTodaySession && (
+  const storedHadClockOut = !storedClockedIn && isTodaySession && (
     readTimerStorage(userOrEmp, 'had_clocked_out') === 'true' ||
     readTimerStorage(userOrEmp, 'is_clocked_in') === 'false' ||
     Boolean(readTimerStorage(userOrEmp, 'clock_out')) ||
@@ -340,20 +345,22 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     return 0;
   }
 
+  // Strict Clock-In resolution: Local active status or options priority
+  const isEffectivelyClockedIn = Boolean(
+    options.isClockedIn === true ||
+    (options.isClockedIn !== false && (
+      storedClockedIn ||
+      (hasAttClockIn && !hasAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent')
+    ))
+  );
+
   // Strict Clock-Out resolution:
-  const isExplicitlyClockedOut = Boolean(
+  const isExplicitlyClockedOut = !isEffectivelyClockedIn && Boolean(
     options.isClockedOut === true ||
-    (options.isClockedIn === false && options.isClockedOut !== false) ||
+    options.isClockedIn === false ||
     storedHadClockOut ||
     hasAttClockOut ||
     (hasAttClockIn && attRec?.isClockedIn === false)
-  );
-
-  // Strict Clock-In resolution:
-  const isEffectivelyClockedIn = (options.isClockedIn !== false) && !isExplicitlyClockedOut && (
-    options.isClockedIn === true ||
-    (storedClockedIn && !hasAttClockOut) ||
-    (hasAttClockIn && !hasAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent')
   );
 
   const isEffectivelyClockedOut = isExplicitlyClockedOut || (

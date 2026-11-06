@@ -599,7 +599,7 @@ export const DashboardPage = () => {
     const hasTodayStoredClockIn = Boolean(hasTodayStoredSession && (storedLogin || rawClockInTs > 0));
     const hasTodayStoredClockOut = Boolean(hasTodayStoredSession && (storedClockOut || readTimerKey('had_clocked_out') === 'true' || readTimerKey('had_clocked_out') === true));
 
-    const isExplicitlyStoredClockedOut = hasTodayStoredSession && (
+    const isExplicitlyStoredClockedOut = !storedClockedIn && hasTodayStoredSession && (
       readTimerKey('is_clocked_in') === 'false' ||
       readTimerKey('had_clocked_out') === 'true' ||
       Boolean(storedClockOut)
@@ -616,28 +616,28 @@ export const DashboardPage = () => {
 
     // Strict Clock-In validation: Local browser state takes top priority for current logged-in user
     const isClockedIn = isSelf
-      ? (!isStaleFromPreviousDay && !isExplicitlyStoredClockedOut && (
-          (hasTodayStoredSession && storedClockedIn && hasTodayStoredClockIn) ||
+      ? (!isStaleFromPreviousDay && (
+          (hasTodayStoredSession && storedClockedIn) ||
           (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true) ||
           Boolean(telem?.isClockedIn)
         ))
-      : (telem ? Boolean(telem.isClockedIn) : (!isStaleFromPreviousDay && !isExplicitlyStoredClockedOut && (
-          (hasTodayStoredSession && storedClockedIn && hasTodayStoredClockIn) ||
+      : (telem ? Boolean(telem.isClockedIn) : (!isStaleFromPreviousDay && (
+          (hasTodayStoredSession && storedClockedIn) ||
           (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent')
         )));
 
-    const isClockedOut = isSelf
-      ? (!isClockedIn && !isStaleFromPreviousDay && (
+    const isClockedOut = !isClockedIn && (isSelf
+      ? (!isStaleFromPreviousDay && (
           isExplicitlyStoredClockedOut ||
           (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
           (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
           Boolean(telem?.clockOutTime)
         ))
-      : (telem ? Boolean(!telem.isClockedIn && telem.clockOutTime) : (!isClockedIn && !isStaleFromPreviousDay && (
+      : (telem ? Boolean(!telem.isClockedIn && telem.clockOutTime) : (!isStaleFromPreviousDay && (
           isExplicitlyStoredClockedOut ||
           (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
           (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn)
-        )));
+        ))));
 
     const effectiveOnBreak = telem ? Boolean(telem.isOnBreak) : storedOnBreak;
     const effectiveBreakType = telem ? (telem.breakType || 'Break') : storedBreakType;
@@ -1721,8 +1721,8 @@ export const DashboardPage = () => {
 
   // Resolved live shift state for currently displayed user perspective
   const displayedIsOnLeave = isViewingOtherEmployee ? Boolean(activeEmpState?.isOnLeave) : Boolean(isOnLeaveToday || activeEmpState?.isOnLeave);
-  const displayedHadClockedOut = isViewingOtherEmployee ? activeEmpState?.isClockedOut : hadClockedOutToday;
-  const displayedIsClockedIn = !displayedHadClockedOut && (isViewingOtherEmployee ? activeEmpState?.isClockedIn : isClockedIn);
+  const displayedIsClockedIn = isViewingOtherEmployee ? activeEmpState?.isClockedIn : isClockedIn;
+  const displayedHadClockedOut = !displayedIsClockedIn && (isViewingOtherEmployee ? activeEmpState?.isClockedOut : hadClockedOutToday);
   const displayedIsOnBreak = isViewingOtherEmployee ? activeEmpState?.isOnBreak : isOnBreak;
   const displayedBreakType = isViewingOtherEmployee ? (activeEmpState?.breakType || 'Break') : breakType;
   const displayedLoginTime = isViewingOtherEmployee ? activeEmpState?.loginTime : loginTime;

@@ -622,11 +622,11 @@ export const TimerProvider = ({ children }) => {
       const lTime = readTimerStorage(currentUser, 'login_time') || attRec?.clockInTime || attRec?.clockIn || null;
       setLoginTime(lTime);
 
-      const cTime = readTimerStorage(currentUser, 'clockout_time') || readTimerStorage(currentUser, 'clock_out') || attRec?.clockOutTime || attRec?.clockOut || null;
+      const cTime = resolvedIsClockedIn ? null : (readTimerStorage(currentUser, 'clockout_time') || readTimerStorage(currentUser, 'clock_out') || attRec?.clockOutTime || attRec?.clockOut || null);
       setClockOutTime(cTime);
 
       const hadOut = readTimerStorage(currentUser, 'had_clocked_out');
-      const resolvedHadClockedOut = hadOut !== null ? (hadOut === 'true' || hadOut === true) : Boolean(cTime || hasAttClockOut);
+      const resolvedHadClockedOut = resolvedIsClockedIn ? false : (hadOut !== null ? (hadOut === 'true' || hadOut === true) : Boolean(cTime || hasAttClockOut));
       setHadClockedOutToday(resolvedHadClockedOut);
 
       const todayMidnight = new Date();

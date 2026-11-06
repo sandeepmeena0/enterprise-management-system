@@ -321,7 +321,7 @@ export const TeamOperationsPage = () => {
     const hasTodayStoredClockIn = Boolean(isTodaySession && (storedLogin || Number(localStorage.getItem(`ems_timer_${empKey}_clock_in_timestamp`)) > 0));
     const hasTodayStoredClockOut = Boolean(isTodaySession && (storedClockOut || localStorage.getItem(`ems_timer_${empKey}_had_clocked_out`) === 'true'));
 
-    const isExplicitlyStoredClockedOut = isTodaySession && (
+    const isExplicitlyStoredClockedOut = !storedClockedIn && isTodaySession && (
       localStorage.getItem(`ems_timer_${empKey}_is_clocked_in`) === 'false' ||
       localStorage.getItem(`ems_timer_${empKey}_had_clocked_out`) === 'true' ||
       (empId && (localStorage.getItem(`ems_timer_${empId}_is_clocked_in`) === 'false' || localStorage.getItem(`ems_timer_${empId}_had_clocked_out`) === 'true')) ||
@@ -339,24 +339,24 @@ export const TeamOperationsPage = () => {
 
     // Strict Clock-In validation: Local browser state takes top priority for current logged-in user
     const isClockedIn = isSelf
-      ? (!isExplicitlyStoredClockedOut && (
-          (isTodaySession && storedClockedIn && hasTodayStoredClockIn) ||
+      ? (
+          (isTodaySession && storedClockedIn) ||
           (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true) ||
           Boolean(telem?.isClockedIn)
-        ))
-      : (telem ? Boolean(telem.isClockedIn) : (!isExplicitlyStoredClockedOut && (
-          (isTodaySession && storedClockedIn && hasTodayStoredClockIn) ||
+        )
+      : (telem ? Boolean(telem.isClockedIn) : (
+          (isTodaySession && storedClockedIn) ||
           (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent')
-        )));
+        ));
 
-    const isClockedOut = isSelf
-      ? (!isClockedIn && (
+    const isClockedOut = !isClockedIn && (isSelf
+      ? (
           isExplicitlyStoredClockedOut ||
           (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
           (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
           Boolean(telem?.clockOutTime)
-        ))
-      : (telem ? Boolean(!telem.isClockedIn && telem.clockOutTime) : (!isClockedIn && (
+        )
+      : (telem ? Boolean(!telem.isClockedIn && telem.clockOutTime) : (
           isExplicitlyStoredClockedOut ||
           (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
           (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn)
@@ -394,8 +394,17 @@ export const TeamOperationsPage = () => {
       if (rawTimer) activeTimer = JSON.parse(rawTimer);
     } catch {}
 
+    const isTaskTimerActive = (t) => Boolean(
+      t.timerRunning && (
+        !activeTimer ||
+        !activeTimer.timerRunning ||
+        String(t._id || t.id) === String(activeTimer.taskId) ||
+        (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
+      )
+    );
+
     const selfActiveRunningTask = (isSelf && isClockedIn && !isClockedOut && !isOnLeave)
-      ? ((activeTimer && activeTimer.timerRunning) ? activeTimer : empTasks.find(t => t.timerRunning))
+      ? ((activeTimer && activeTimer.timerRunning) ? activeTimer : empTasks.find(isTaskTimerActive))
       : null;
 
     if (selfActiveRunningTask) {
