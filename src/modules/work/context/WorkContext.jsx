@@ -413,7 +413,7 @@ export const WorkProvider = ({ children }) => {
             isRunning = false;
           }
         } else {
-          isRunning = Boolean(t.timerRunning && isStartedToday);
+          isRunning = Boolean(t.timerRunning && isStartedRecent);
         }
 
         if (isRunning) {

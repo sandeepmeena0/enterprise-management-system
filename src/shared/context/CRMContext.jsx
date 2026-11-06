@@ -1054,8 +1054,8 @@ export const CRMProvider = ({ children }) => {
 
         if (activeTimer && activeTimer.date === dateStr && isClockedInToday && !hadClockedOutToday) {
           const nowMs = Date.now();
-          const isStartedToday = activeTimer.startedAt && Number(activeTimer.startedAt) >= todayMidnightMs;
-          const runningElapsed = (activeTimer.timerRunning && isClockedInToday && !hadClockedOutToday && isStartedToday)
+          const isStartedRecent = activeTimer.startedAt && (nowMs - Number(activeTimer.startedAt)) < 24 * 3600 * 1000;
+          const runningElapsed = (activeTimer.timerRunning && isClockedInToday && !hadClockedOutToday && isStartedRecent)
             ? Math.max(0, Math.floor((nowMs - Number(activeTimer.startedAt)) / 1000))
             : 0;
 
