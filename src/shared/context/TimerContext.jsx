@@ -2055,16 +2055,32 @@ export const TimerProvider = ({ children }) => {
   };
 
   // ── Periodic Live Heartbeat to Backend (Every 12s while clocked in) ──
+  const heartbeatStateRef = useRef({});
+  useEffect(() => {
+    heartbeatStateRef.current = {
+      userKey,
+      targetEmpId,
+      targetEmpCode,
+      loginTime,
+      isOnBreak,
+      breakType,
+      workSeconds,
+      breakSeconds
+    };
+  });
+
   useEffect(() => {
     if (!isClockedIn || !userKey) return;
 
     const pulseHeartbeat = () => {
       try {
-        const sessStart = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`)) ||
-                          Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`)) || undefined;
+        const state = heartbeatStateRef.current || {};
+        const uKey = state.userKey || userKey;
+        const sessStart = Number(localStorage.getItem(`ems_timer_${uKey}_current_session_start_timestamp`)) ||
+                          Number(localStorage.getItem(`ems_timer_${uKey}_clock_in_timestamp`)) || undefined;
         let activeTaskData = null;
         try {
-          const rawTask = localStorage.getItem(`ems_active_task_timer_${userKey}`) || localStorage.getItem('ems_active_task_timer');
+          const rawTask = localStorage.getItem(`ems_active_task_timer_${uKey}`) || localStorage.getItem('ems_active_task_timer');
           if (rawTask) {
             const p = JSON.parse(rawTask);
             if (p && p.taskId) activeTaskData = p;
@@ -2072,15 +2088,15 @@ export const TimerProvider = ({ children }) => {
         } catch (_) {}
 
         hrService.sendHeartbeat({
-          employeeId: targetEmpId || userKey,
-          employeeCode: targetEmpCode || userKey,
+          employeeId: state.targetEmpId || uKey,
+          employeeCode: state.targetEmpCode || uKey,
           isClockedIn: true,
-          clockInTime: loginTime,
+          clockInTime: state.loginTime || loginTime,
           currentSessionStartTimestamp: sessStart,
-          isOnBreak: Boolean(isOnBreak),
-          breakType: isOnBreak ? breakType : null,
-          workSeconds,
-          breakSeconds,
+          isOnBreak: Boolean(state.isOnBreak),
+          breakType: state.isOnBreak ? state.breakType : null,
+          workSeconds: state.workSeconds !== undefined ? state.workSeconds : workSeconds,
+          breakSeconds: state.breakSeconds !== undefined ? state.breakSeconds : breakSeconds,
           activeTask: activeTaskData
         }).catch(() => {});
       } catch (_) {}
@@ -2089,7 +2105,7 @@ export const TimerProvider = ({ children }) => {
     pulseHeartbeat();
     const hbInterval = setInterval(pulseHeartbeat, 12000);
     return () => clearInterval(hbInterval);
-  }, [isClockedIn, isOnBreak, userKey, targetEmpId, targetEmpCode, loginTime, workSeconds, breakSeconds, breakType]);
+  }, [isClockedIn, userKey]);
 
     // ── Auto Clock-In Event Listener (called when employee starts a task timer) ──
   useEffect(() => {

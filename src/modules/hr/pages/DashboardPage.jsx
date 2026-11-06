@@ -614,30 +614,19 @@ export const DashboardPage = () => {
       String(emp.employeeCode) === String(currentUser.employeeCode)
     ));
 
-    // Strict Clock-In validation: Local browser state takes top priority for current logged-in user
-    const isClockedIn = isSelf
-      ? (!isStaleFromPreviousDay && (
-          (hasTodayStoredSession && storedClockedIn) ||
-          (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true) ||
-          Boolean(telem?.isClockedIn)
-        ))
-      : (telem ? Boolean(telem.isClockedIn) : (!isStaleFromPreviousDay && (
-          (hasTodayStoredSession && storedClockedIn) ||
-          (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent')
-        )));
+    // Strict Clock-In validation: Local browser state & telemetry unified
+    const isClockedIn = !isStaleFromPreviousDay && Boolean(
+      (hasTodayStoredSession && storedClockedIn) ||
+      (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.status !== 'absent' && attRec?.isClockedIn !== false) ||
+      telem?.isClockedIn
+    );
 
-    const isClockedOut = !isClockedIn && (isSelf
-      ? (!isStaleFromPreviousDay && (
-          isExplicitlyStoredClockedOut ||
-          (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
-          (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
-          Boolean(telem?.clockOutTime)
-        ))
-      : (telem ? Boolean(!telem.isClockedIn && telem.clockOutTime) : (!isStaleFromPreviousDay && (
-          isExplicitlyStoredClockedOut ||
-          (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
-          (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn)
-        ))));
+    const isClockedOut = !isClockedIn && !isStaleFromPreviousDay && Boolean(
+      isExplicitlyStoredClockedOut ||
+      (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
+      (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
+      telem?.clockOutTime
+    );
 
     const effectiveOnBreak = telem ? Boolean(telem.isOnBreak) : storedOnBreak;
     const effectiveBreakType = telem ? (telem.breakType || 'Break') : storedBreakType;
@@ -690,88 +679,38 @@ export const DashboardPage = () => {
       activeTimer = null;
     }
 
-    const selfActiveRunningTask = (isSelf && isClockedIn && !isClockedOut && !isOnLeave)
-      ? ((activeTimer && activeTimer.timerRunning && !isTimerTaskCompleted) ? activeTimer : empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)))
+    const localRunningTask = (activeTimer && activeTimer.timerRunning && !isTimerTaskCompleted)
+      ? activeTimer
+      : (empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)) || null);
+
+    const telemRunningTask = (telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
+      ? telem.activeTask
       : null;
 
-    if (selfActiveRunningTask) {
-      const startedAtMs = Number(selfActiveRunningTask.startedAt) || Date.now();
-      const elapsed = Boolean(selfActiveRunningTask.timerRunning && !effectiveOnBreak)
+    const candidateTask = localRunningTask || telemRunningTask;
+
+    if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave && !isTaskActuallyCompleted(candidateTask)) {
+      const startedAtMs = Number(candidateTask.startedAt) || Date.now();
+      const isTimerRunning = Boolean(candidateTask.timerRunning !== false && !effectiveOnBreak);
+      const elapsed = isTimerRunning
         ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
         : 0;
-      const baseAccum = Number(selfActiveRunningTask.accumulatedSeconds !== undefined ? selfActiveRunningTask.accumulatedSeconds : (selfActiveRunningTask.timerSeconds || 0));
+      const baseAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
       const liveTaskSecs = baseAccum + elapsed;
       runningTask = {
-        ...selfActiveRunningTask,
-        timerRunning: Boolean(selfActiveRunningTask.timerRunning && !effectiveOnBreak),
+        _id: candidateTask.taskId || candidateTask._id || candidateTask.id,
+        id: candidateTask.taskId || candidateTask._id || candidateTask.id,
+        taskId: candidateTask.taskId || candidateTask._id || candidateTask.id,
+        taskCode: candidateTask.taskCode || 'TSK',
+        title: candidateTask.title || 'Live Task',
+        projectName: candidateTask.projectName || 'General Work',
+        timerRunning: isTimerRunning,
         startedAt: startedAtMs,
         accumulatedSeconds: baseAccum,
         liveTaskSecs,
         liveTaskFormatted: formatSeconds(liveTaskSecs),
         liveDurationText: formatSeconds(liveTaskSecs)
       };
-    } else if ((telem?.activeTask?.taskId || telem?.activeTask?._id || telem?.activeTask?.id) && isClockedIn && !isClockedOut && !isOnLeave) {
-      const at = telem.activeTask;
-      const atTaskId = at.taskId || at._id || at.id;
-      const isTaskTimerActuallyRunning = Boolean(at.timerRunning);
-      if (isTaskTimerActuallyRunning) {
-        const startedAtMs = Number(at.startedAt) || Date.now();
-        const elapsed = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
-        const liveTaskSecs = (Number(at.accumulatedSeconds) || 0) + elapsed;
-        runningTask = {
-          _id: atTaskId,
-          id: atTaskId,
-          taskId: atTaskId,
-          taskCode: at.taskCode || 'TSK',
-          title: at.title || 'Live Task',
-          projectName: at.projectName || 'General Work',
-          timerRunning: true,
-          startedAt: startedAtMs,
-          accumulatedSeconds: Number(at.accumulatedSeconds) || 0,
-          liveTaskSecs,
-          liveTaskFormatted: formatSeconds(liveTaskSecs),
-          liveDurationText: formatSeconds(liveTaskSecs)
-        };
-      } else {
-        const liveTaskSecs = Number(at.accumulatedSeconds) || 0;
-        runningTask = {
-          _id: atTaskId,
-          id: atTaskId,
-          taskId: atTaskId,
-          taskCode: at.taskCode || 'TSK',
-          title: at.title || 'Task (Paused)',
-          projectName: at.projectName || 'General Work',
-          timerRunning: false,
-          startedAt: null,
-          accumulatedSeconds: liveTaskSecs,
-          liveTaskSecs,
-          liveTaskFormatted: formatSeconds(liveTaskSecs),
-          liveDurationText: formatSeconds(liveTaskSecs)
-        };
-      }
-    } else {
-      const baseRunningTask = (isClockedIn && !isClockedOut && !isOnLeave)
-        ? (empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)) ||
-           (activeTimer?.timerRunning && !isTimerTaskCompleted && !isTaskActuallyCompleted(activeTimer) ? activeTimer : null))
-        : null;
-
-      if (baseRunningTask && isClockedIn && !isClockedOut && !isOnLeave && !isTaskActuallyCompleted(baseRunningTask)) {
-        const startedAtMs = Number(baseRunningTask.startedAt) || Date.now();
-        const elapsed = Boolean(baseRunningTask.timerRunning && !effectiveOnBreak)
-          ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
-          : 0;
-        const baseAccum = Number(baseRunningTask.accumulatedSeconds !== undefined ? baseRunningTask.accumulatedSeconds : (baseRunningTask.timerSeconds || 0));
-        const liveTaskSecs = baseAccum + elapsed;
-        runningTask = {
-          ...baseRunningTask,
-          timerRunning: Boolean(baseRunningTask.timerRunning && !effectiveOnBreak),
-          startedAt: startedAtMs,
-          accumulatedSeconds: baseAccum,
-          liveTaskSecs,
-          liveTaskFormatted: formatSeconds(liveTaskSecs),
-          liveDurationText: formatSeconds(liveTaskSecs)
-        };
-      }
     }
 
     // Completed tasks today

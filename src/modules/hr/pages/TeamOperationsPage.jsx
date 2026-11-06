@@ -337,30 +337,19 @@ export const TeamOperationsPage = () => {
       String(emp.employeeCode) === String(currentUser.employeeCode)
     ));
 
-    // Strict Clock-In validation: Local browser state takes top priority for current logged-in user
-    const isClockedIn = isSelf
-      ? (
-          (isTodaySession && storedClockedIn) ||
-          (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true) ||
-          Boolean(telem?.isClockedIn)
-        )
-      : (telem ? Boolean(telem.isClockedIn) : (
-          (isTodaySession && storedClockedIn) ||
-          (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.isClockedIn === true && attRec?.status !== 'absent')
-        ));
+    // Strict Clock-In validation: Local browser state & telemetry unified
+    const isClockedIn = Boolean(
+      (isTodaySession && storedClockedIn) ||
+      (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.status !== 'absent' && attRec?.isClockedIn !== false) ||
+      telem?.isClockedIn
+    );
 
-    const isClockedOut = !isClockedIn && (isSelf
-      ? (
-          isExplicitlyStoredClockedOut ||
-          (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
-          (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
-          Boolean(telem?.clockOutTime)
-        )
-      : (telem ? Boolean(!telem.isClockedIn && telem.clockOutTime) : (
-          isExplicitlyStoredClockedOut ||
-          (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
-          (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn)
-        )));
+    const isClockedOut = !isClockedIn && Boolean(
+      isExplicitlyStoredClockedOut ||
+      (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
+      (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
+      telem?.clockOutTime
+    );
 
     const effectiveOnBreak = telem ? Boolean(telem.isOnBreak) : storedOnBreak;
     const effectiveBreakType = telem ? (telem.breakType || 'Break') : storedBreakType;
@@ -382,104 +371,50 @@ export const TeamOperationsPage = () => {
       telemetry: isSelf ? null : telem
     });
 
-    // Active Running Task (prioritize live activeTimer for isSelf, and Atlas telemetry for teammates)
+    // Active Running Task: seamless resolution across local activeTimer, task collections, and Atlas telemetry
     let runningTask = null;
     const empTasks = (tasks || []).filter(t => isTaskAssignedToUser(t, emp));
 
     let activeTimer = null;
     try {
       const rawTimer = localStorage.getItem(`ems_active_task_timer_${empKey}`) ||
-                       localStorage.getItem(`ems_active_task_timer_${empId}`) ||
+                       (empId ? localStorage.getItem(`ems_active_task_timer_${empId}`) : null) ||
                        (isSelf ? localStorage.getItem('ems_active_task_timer') : null);
       if (rawTimer) activeTimer = JSON.parse(rawTimer);
     } catch {}
 
-    const isTaskTimerActive = (t) => Boolean(
-      t.timerRunning && (
-        !activeTimer ||
-        !activeTimer.timerRunning ||
-        String(t._id || t.id) === String(activeTimer.taskId) ||
-        (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
-      )
-    );
+    const localRunningTask = (activeTimer && activeTimer.timerRunning)
+      ? activeTimer
+      : (empTasks.find(t => t.timerRunning) || null);
 
-    const selfActiveRunningTask = (isSelf && isClockedIn && !isClockedOut && !isOnLeave)
-      ? ((activeTimer && activeTimer.timerRunning) ? activeTimer : empTasks.find(isTaskTimerActive))
+    const telemRunningTask = (telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
+      ? telem.activeTask
       : null;
 
-    if (selfActiveRunningTask) {
-      const startedAtMs = Number(selfActiveRunningTask.startedAt) || nowMs;
-      const elapsed = Boolean(selfActiveRunningTask.timerRunning && !effectiveOnBreak)
+    const candidateTask = localRunningTask || telemRunningTask;
+
+    if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave) {
+      const startedAtMs = Number(candidateTask.startedAt) || nowMs;
+      const isTimerRunning = Boolean(candidateTask.timerRunning !== false && !effectiveOnBreak);
+      const elapsed = isTimerRunning
         ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
         : 0;
-      const baseAccum = Number(selfActiveRunningTask.accumulatedSeconds !== undefined ? selfActiveRunningTask.accumulatedSeconds : (selfActiveRunningTask.timerSeconds || 0));
+      const baseAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
       const liveTaskSecs = baseAccum + elapsed;
+
       runningTask = {
-        ...selfActiveRunningTask,
-        timerRunning: Boolean(selfActiveRunningTask.timerRunning && !effectiveOnBreak),
+        _id: candidateTask.taskId || candidateTask._id || candidateTask.id,
+        id: candidateTask.taskId || candidateTask._id || candidateTask.id,
+        taskId: candidateTask.taskId || candidateTask._id || candidateTask.id,
+        taskCode: candidateTask.taskCode || 'TSK',
+        title: candidateTask.title || 'Live Task',
+        projectName: candidateTask.projectName || 'General Work',
+        timerRunning: isTimerRunning,
         startedAt: startedAtMs,
         accumulatedSeconds: baseAccum,
         liveTaskSecs,
         liveDurationText: formatSeconds(liveTaskSecs)
       };
-    } else if ((telem?.activeTask?.taskId || telem?.activeTask?._id || telem?.activeTask?.id) && isClockedIn && !isClockedOut && !isOnLeave) {
-      const at = telem.activeTask;
-      const atTaskId = at.taskId || at._id || at.id;
-      const isTaskTimerActuallyRunning = Boolean(at.timerRunning);
-      if (isTaskTimerActuallyRunning) {
-        const startedAtMs = Number(at.startedAt) || nowMs;
-        const elapsed = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
-        const liveTaskSecs = (Number(at.accumulatedSeconds) || 0) + elapsed;
-        runningTask = {
-          _id: atTaskId,
-          id: atTaskId,
-          taskId: atTaskId,
-          taskCode: at.taskCode || 'TSK',
-          title: at.title || 'Live Task',
-          projectName: at.projectName || 'General Work',
-          timerRunning: true,
-          startedAt: startedAtMs,
-          accumulatedSeconds: Number(at.accumulatedSeconds) || 0,
-          liveTaskSecs,
-          liveDurationText: formatSeconds(liveTaskSecs)
-        };
-      } else {
-        const liveTaskSecs = Number(at.accumulatedSeconds) || 0;
-        runningTask = {
-          _id: atTaskId,
-          id: atTaskId,
-          taskId: atTaskId,
-          taskCode: at.taskCode || 'TSK',
-          title: at.title || 'Task (Paused)',
-          projectName: at.projectName || 'General Work',
-          timerRunning: false,
-          startedAt: null,
-          accumulatedSeconds: liveTaskSecs,
-          liveTaskSecs,
-          liveDurationText: formatSeconds(liveTaskSecs)
-        };
-      }
-    } else {
-      const baseRunningTask = (isClockedIn && !isClockedOut && !isOnLeave)
-        ? (empTasks.find(t => t.timerRunning) || (activeTimer?.timerRunning ? activeTimer : null))
-        : null;
-
-      if (baseRunningTask && isClockedIn && !isClockedOut && !isOnLeave) {
-        const startedAtMs = Number(baseRunningTask.startedAt) || nowMs;
-        const elapsed = Boolean(baseRunningTask.timerRunning && !effectiveOnBreak)
-          ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
-          : 0;
-        const baseAccum = Number(baseRunningTask.accumulatedSeconds !== undefined ? baseRunningTask.accumulatedSeconds : (baseRunningTask.timerSeconds || 0));
-        const liveTaskSecs = baseAccum + elapsed;
-        runningTask = {
-          ...baseRunningTask,
-          timerRunning: Boolean(baseRunningTask.timerRunning && !effectiveOnBreak),
-          startedAt: startedAtMs,
-          accumulatedSeconds: baseAccum,
-          liveTaskSecs,
-          liveDurationText: formatSeconds(liveTaskSecs)
-        };
-      }
     }
 
     return {

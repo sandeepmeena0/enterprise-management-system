@@ -752,7 +752,9 @@ export const WorkProvider = ({ children }) => {
             return { ...t, timerRunning: false, startedAt: null };
           }
 
-          const isTaskRunning = isAssignedToMe ? Boolean(isMyActive && isShiftClockedIn && !isShiftOnBreak) : false;
+          const isTaskRunning = isAssignedToMe
+            ? Boolean(isMyActive && isShiftClockedIn && !isShiftOnBreak)
+            : Boolean(t.timerRunning && t.startedAt);
 
           if (isTaskRunning) {
             changed = true;
@@ -1718,6 +1720,8 @@ export const WorkProvider = ({ children }) => {
           taskId,
           taskCode: targetTask.taskCode,
           title: targetTask.title,
+          projectName: targetTask.projectName,
+          timerRunning: true,
           startedAt: now,
           accumulatedSeconds: existingSecs
         }

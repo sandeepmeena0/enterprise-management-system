@@ -885,7 +885,7 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     isOnBreak: Boolean(isOnBreak),
     breakType: breakType || null,
     breakStartTimestamp: breakStartTimestamp ? Number(breakStartTimestamp) : null,
-    activeTask: activeTask || null,
+    activeTask: activeTask ? { ...activeTask, timerRunning: activeTask.timerRunning !== false } : null,
     lastHeartbeatAt: Date.now()
   };
 
@@ -989,7 +989,7 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
 
     const inTs = Number(r.clockInTimestamp || 0);
     const sessStart = Number(r.currentSessionStartTimestamp || inTs);
-    const isClockedIn = Boolean(r.isClockedIn && !r.clockOutTime);
+    const isClockedIn = Boolean((r.isClockedIn || (r.clockInTime && r.clockInTime !== '--' && !r.clockOutTime)) && !r.clockOutTime);
     const isClockedOut = Boolean(r.clockOutTime || r.clockOut);
     const isOnBreak = Boolean(r.isOnBreak);
 

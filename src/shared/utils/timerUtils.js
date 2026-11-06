@@ -252,7 +252,7 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   const maxPossibleGrossToday = Math.max(0, Math.floor((nowMs - todayMidnightMs) / 1000));
 
   // Multi-User Live Telemetry Support (cross-browser / incognito realtime sync)
-  if (options.telemetry) {
+  if (options.telemetry && (options.telemetry.isClockedIn || options.telemetry.clockOutTime || Number(options.telemetry.workSeconds) > 0)) {
     const telem = options.telemetry;
     if (telem.isClockedIn) {
       if (telem.isOnBreak) {
@@ -265,9 +265,6 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       return Math.min(liveTelemSecs, maxPossibleGrossToday);
     } else if (telem.clockOutTime) {
       return Math.min(Number(telem.workSeconds) || 0, maxPossibleGrossToday);
-    } else {
-      // Telemetry exists and employee has neither clocked in nor clocked out today on server
-      return 0;
     }
   }
 
