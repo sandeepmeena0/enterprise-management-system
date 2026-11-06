@@ -192,8 +192,14 @@ export const DashboardPage = () => {
     const fetchTelemetry = async () => {
       try {
         const res = await hrService.getLiveTelemetry(todayStr);
-        if (isMounted && res && res.data) {
-          setLiveTelemetryMap(res.data);
+        if (isMounted && res) {
+          const map = (res.data && typeof res.data === 'object') ? res.data : res;
+          const now = Date.now();
+          const enriched = {};
+          Object.keys(map).forEach(k => {
+            enriched[k] = { ...map[k], fetchedAt: map[k].fetchedAt || now };
+          });
+          setLiveTelemetryMap(enriched);
         }
       } catch (_) {}
     };
@@ -525,11 +531,12 @@ export const DashboardPage = () => {
     const rawClockInTs = Number(readTimerKey('clock_in_timestamp')) || Number(attRec?.clockInTimestamp);
     let isStaleFromPreviousDay = false;
     let inDate = '';
-    if (storedSessionDate && storedSessionDate !== todayStr) {
+    const isUnder16h = rawClockInTs > 0 && (Date.now() - rawClockInTs) < 16 * 3600 * 1000;
+    if (storedSessionDate && storedSessionDate !== todayStr && !isUnder16h) {
       isStaleFromPreviousDay = true;
       inDate = storedSessionDate;
-    } else if (rawClockInTs > 0) {
-      inDate = new Date(rawClockInTs).toISOString().split('T')[0];
+    } else if (rawClockInTs > 0 && !isUnder16h) {
+      inDate = getLocalDateStr(rawClockInTs);
       if (inDate !== todayStr) {
         isStaleFromPreviousDay = true;
       }
@@ -631,13 +638,18 @@ export const DashboardPage = () => {
     const todayMidnightMs = todayMidnight.getTime();
     const maxPossibleGrossToday = Math.max(0, Math.floor((Date.now() - todayMidnightMs) / 1000));
 
+    const isSelf = currentUser && (
+      String(empId) === String(currentUser._id) ||
+      String(emp.employeeCode) === String(currentUser.employeeCode)
+    );
+
     // Calculate dynamic live work seconds strictly using SSOT engine
     const workSecs = calculateShiftWorkSeconds(emp, todayStr, Date.now(), {
       isClockedIn,
       isClockedOut,
       isOnBreak: effectiveOnBreak,
       attRec,
-      telemetry: telem
+      telemetry: isSelf ? null : telem
     });
 
     // Active running task with live ticking calculation (prioritize Atlas telemetry for remote/incognito sync)

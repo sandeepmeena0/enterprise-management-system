@@ -341,3 +341,155 @@ exports.syncBatch = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+exports.updateHuddle = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action, member, isMuted } = req.body;
+    const now = Date.now();
+
+    let conv = await Conversation.findOne({ id });
+    if (!conv) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    if (!conv.activeHuddle) {
+      conv.activeHuddle = {
+        isLive: false,
+        startedBy: null,
+        startedAt: null,
+        members: [],
+        signals: []
+      };
+    }
+
+    let members = Array.isArray(conv.activeHuddle.members) ? conv.activeHuddle.members : [];
+
+    // Purge members who haven't sent a heartbeat in > 25 seconds
+    members = members.filter(m => (now - (m.lastHeartbeat || m.joinedAt || 0)) < 25000);
+
+    if (action === 'join' && member) {
+      const myId = String(member.id || member._id || member.employeeCode);
+      const existingIdx = members.findIndex(m => String(m.id) === myId);
+      const cleanMember = {
+        id: myId,
+        name: member.name || 'Team Member',
+        avatar: member.avatar || '',
+        role: member.role || 'Member',
+        isMuted: Boolean(member.isMuted),
+        joinedAt: existingIdx >= 0 ? members[existingIdx].joinedAt : now,
+        lastHeartbeat: now
+      };
+      if (existingIdx >= 0) {
+        members[existingIdx] = cleanMember;
+      } else {
+        members.push(cleanMember);
+      }
+      conv.activeHuddle.isLive = true;
+      if (!conv.activeHuddle.startedBy) {
+        conv.activeHuddle.startedBy = cleanMember;
+        conv.activeHuddle.startedAt = now;
+      }
+    } else if (action === 'leave' && member) {
+      const myId = String(member.id || member._id || member.employeeCode);
+      members = members.filter(m => String(m.id) !== myId);
+      if (members.length === 0) {
+        conv.activeHuddle.isLive = false;
+        conv.activeHuddle.startedBy = null;
+        conv.activeHuddle.startedAt = null;
+        conv.activeHuddle.signals = [];
+      }
+    } else if (action === 'mute' && member) {
+      const myId = String(member.id || member._id || member.employeeCode);
+      const m = members.find(x => String(x.id) === myId);
+      if (m) m.isMuted = Boolean(isMuted);
+    } else if (action === 'heartbeat' && member) {
+      const myId = String(member.id || member._id || member.employeeCode);
+      const m = members.find(x => String(x.id) === myId);
+      if (m) {
+        m.lastHeartbeat = now;
+      } else if (req.body.autoRejoin) {
+        members.push({
+          id: myId,
+          name: member.name || 'Team Member',
+          avatar: member.avatar || '',
+          role: member.role || 'Member',
+          isMuted: Boolean(member.isMuted),
+          joinedAt: now,
+          lastHeartbeat: now
+        });
+        conv.activeHuddle.isLive = true;
+      }
+    }
+
+    if (members.length === 0) {
+      conv.activeHuddle.isLive = false;
+      conv.activeHuddle.startedBy = null;
+      conv.activeHuddle.startedAt = null;
+      conv.activeHuddle.signals = [];
+    }
+
+    conv.activeHuddle.members = members;
+    await conv.save();
+
+    res.json({ success: true, activeHuddle: conv.activeHuddle });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.sendHuddleSignal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { from, to, type, payload } = req.body;
+    const now = Date.now();
+
+    const conv = await Conversation.findOne({ id });
+    if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' });
+
+    if (!conv.activeHuddle) conv.activeHuddle = { isLive: false, members: [], signals: [] };
+    if (!Array.isArray(conv.activeHuddle.signals)) conv.activeHuddle.signals = [];
+
+    // Keep only recent signals (< 30s) and cap to 50
+    conv.activeHuddle.signals = conv.activeHuddle.signals.filter(s => (now - (s.createdAt || 0)) < 30000);
+    conv.activeHuddle.signals.push({
+      id: `sig_${now}_${Math.random().toString(36).substring(2, 7)}`,
+      from: String(from),
+      to: String(to || 'all'),
+      type,
+      payload,
+      createdAt: now
+    });
+
+    if (conv.activeHuddle.signals.length > 50) {
+      conv.activeHuddle.signals = conv.activeHuddle.signals.slice(-50);
+    }
+
+    await conv.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getHuddleSignals = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = String(req.query.userId || '');
+    const since = Number(req.query.since || 0);
+
+    const conv = await Conversation.findOne({ id }).lean();
+    if (!conv || !conv.activeHuddle) return res.json({ success: true, signals: [], activeHuddle: null });
+
+    const allSignals = Array.isArray(conv.activeHuddle.signals) ? conv.activeHuddle.signals : [];
+    const signals = allSignals.filter(s =>
+      s.createdAt > since &&
+      String(s.from) !== userId &&
+      (s.to === 'all' || String(s.to) === userId)
+    );
+
+    res.json({ success: true, signals, activeHuddle: conv.activeHuddle });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

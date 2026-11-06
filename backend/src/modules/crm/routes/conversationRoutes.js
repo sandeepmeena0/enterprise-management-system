@@ -10,7 +10,10 @@ const {
   createConversation,
   sendMessage,
   markAsRead,
-  syncBatch
+  syncBatch,
+  updateHuddle,
+  sendHuddleSignal,
+  getHuddleSignals
 } = require('../controllers/conversationController');
 
 router.get('/', getConversations);
@@ -18,6 +21,9 @@ router.post('/', createConversation);
 router.post('/sync-batch', syncBatch);
 router.post('/:id/messages', sendMessage);
 router.put('/:id/read', markAsRead);
+router.post('/:id/huddle', updateHuddle);
+router.post('/:id/huddle/signal', sendHuddleSignal);
+router.get('/:id/huddle/signals', getHuddleSignals);
 
 module.exports = router;
 

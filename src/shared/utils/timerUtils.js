@@ -253,7 +253,7 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
         return Number(telem.workSeconds) || 0;
       }
       // Smoothly tick forward every second between backend telemetry polls
-      const baseTs = Number(telem.timestamp) || Number(telem.lastHeartbeatAt) || nowMs;
+      const baseTs = Number(telem.fetchedAt || telem.timestamp || nowMs);
       const elapsedBetweenPolls = Math.max(0, Math.floor((nowMs - baseTs) / 1000));
       return (Number(telem.workSeconds) || 0) + elapsedBetweenPolls;
     } else if (telem.clockOutTime) {

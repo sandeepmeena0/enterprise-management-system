@@ -85,6 +85,28 @@ const ConversationSchema = new mongoose.Schema({
   lastMessage: { type: String, default: '' },
   lastMessageTime: { type: String, default: '' },
   unreadCount: { type: Number, default: 0 },
+  activeHuddle: {
+    isLive: { type: Boolean, default: false },
+    startedBy: { type: Object, default: null },
+    startedAt: { type: Number, default: null },
+    members: [{
+      id: String,
+      name: String,
+      avatar: String,
+      role: String,
+      isMuted: { type: Boolean, default: false },
+      joinedAt: Number,
+      lastHeartbeat: Number
+    }],
+    signals: [{
+      id: String,
+      from: String,
+      to: String,
+      type: String,
+      payload: mongoose.Schema.Types.Mixed,
+      createdAt: { type: Number, default: () => Date.now() }
+    }]
+  },
   messages: [MessageSchema]
 }, {
   timestamps: true

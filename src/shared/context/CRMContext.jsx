@@ -575,6 +575,8 @@ export const CRMProvider = ({ children }) => {
                 if (!p || p.id !== m.id) return true;
                 if ((p.messages?.length || 0) !== (m.messages?.length || 0)) return true;
                 if (p.lastMessage !== m.lastMessage || p.lastMessageTime !== m.lastMessageTime) return true;
+                if (Boolean(p.activeHuddle?.isLive) !== Boolean(m.activeHuddle?.isLive)) return true;
+                if ((p.activeHuddle?.members?.length || 0) !== (m.activeHuddle?.members?.length || 0)) return true;
                 return false;
               });
             if (isDifferent) {

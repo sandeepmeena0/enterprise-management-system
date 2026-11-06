@@ -48,6 +48,7 @@ import { ChatMediaViewerModal } from '../components/messages/ChatMediaViewerModa
 import { ChatVoiceRecorder } from '../components/messages/ChatVoiceRecorder';
 import { VoiceMemoPlayer } from '../components/messages/VoiceMemoPlayer';
 import { LiveVoiceHuddleBar } from '../components/messages/LiveVoiceHuddleBar';
+import { getLocalDateStr } from '../../../shared/utils/timerUtils';
 import { ScreenShareModal } from '../components/messages/ScreenShareModal';
 import { processFileForChat, downloadChatAttachment } from '../utils/chatMediaUtils';
 import { getDmPartner, getUnreadCountForUser } from '../utils/chatPrivacyUtils';
@@ -326,7 +327,7 @@ export const MessagesPage = () => {
     if (!partner) return null;
 
     const empKey = partner.employeeCode || (partner._id ? String(partner._id) : '');
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateStr();
     const hrAttendance = (attendance || []).find(a =>
       a.date === today && (
         String(a.employeeId) === String(partner._id) ||
@@ -335,8 +336,10 @@ export const MessagesPage = () => {
       )
     );
 
+    const hasClockIn = Boolean(hrAttendance?.clockInTime || hrAttendance?.clockIn || hrAttendance?.clockInTimestamp);
+    const hasClockOut = Boolean(hrAttendance?.clockOutTime || hrAttendance?.clockOut || hrAttendance?.clockOutTimestamp);
     const isPartnerClockedIn = Boolean(
-      (hrAttendance && !hrAttendance.outTime && hrAttendance.inTime && hrAttendance.status !== 'absent' && hrAttendance.status !== 'on_leave') ||
+      (hrAttendance && (hrAttendance.isClockedIn === true || (hasClockIn && !hasClockOut)) && hrAttendance.status !== 'absent' && hrAttendance.status !== 'on_leave') ||
       (typeof localStorage !== 'undefined' && (
         localStorage.getItem(`ems_timer_${partner.employeeCode}_is_clocked_in`) === 'true' ||
         localStorage.getItem(`ems_timer_${partner._id}_is_clocked_in`) === 'true'

@@ -1014,7 +1014,9 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       workSeconds: liveWorkSecs,
       totalWorkingHours: +(liveWorkSecs / 3600).toFixed(2),
       activeTask: runningTask,
-      lastHeartbeatAt: r.lastHeartbeatAt || now
+      lastHeartbeatAt: r.lastHeartbeatAt || now,
+      timestamp: now,
+      fetchedAt: now
     };
 
     telemetryMap[key] = state;
