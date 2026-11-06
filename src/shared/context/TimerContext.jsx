@@ -864,18 +864,19 @@ export const TimerProvider = ({ children }) => {
         let inTs = Number(rec?.clockInTimestamp) || Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
         const todayMidnight = new Date();
         todayMidnight.setHours(0, 0, 0, 0);
+        const isShiftWithin24h = inTs > 0 && (Date.now() - inTs) < 24 * 3600 * 1000;
 
-        if (!inTs || inTs < todayMidnight.getTime()) {
+        if (!inTs || (!isShiftWithin24h && inTs < todayMidnight.getTime())) {
           const parsedSecs = parseTimeToSeconds(inTime);
           inTs = todayMidnight.getTime() + parsedSecs * 1000;
         }
 
         const bSecs = Number(rec?.breakSeconds) || Number(localStorage.getItem(`ems_timer_${userKey}_break_seconds`)) || 0;
-        const maxGrossSecs = (inTs && inTs >= todayMidnight.getTime())
-          ? Math.max(0, Math.floor((Date.now() - inTs) / 1000))
+        const maxGrossSecs = (inTs && (isShiftWithin24h || inTs >= todayMidnight.getTime()))
+          ? Math.min(86400, Math.max(0, Math.floor((Date.now() - inTs) / 1000)))
           : Math.max(0, Math.floor((Date.now() - todayMidnight.getTime()) / 1000));
 
-        // 🌟 Option 1: Multi-session calculation for effectiveWorkSecs strictly for today
+        // 🌟 Option 1: Multi-session calculation for effectiveWorkSecs strictly for active shift
         let remoteSessions = Array.isArray(rec?.punchSessions) ? rec.punchSessions : [];
         if (remoteSessions.length === 0) {
           try {
@@ -883,14 +884,20 @@ export const TimerProvider = ({ children }) => {
             if (rawS) remoteSessions = JSON.parse(rawS) || [];
           } catch {}
         }
-        remoteSessions = remoteSessions.filter(s => Number(s.inTimestamp || 0) >= todayMidnight.getTime());
+        const minSessionTs = isShiftWithin24h ? inTs : todayMidnight.getTime();
+        remoteSessions = normalizePunchSessions((remoteSessions || []).filter(s => Number(s.inTimestamp || 0) >= minSessionTs));
         setPunchSessions(remoteSessions);
         localStorage.setItem(`ems_timer_${userKey}_punch_sessions`, JSON.stringify(remoteSessions));
 
         const pastSessionsSecs = remoteSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
         const serverSessStart = Number(rec?.currentSessionStartTimestamp || rec?.clockInTimestamp);
         let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`)) || serverSessStart || inTs;
-        sessStartTs = Math.max(sessStartTs, todayMidnight.getTime());
+        if (!isShiftWithin24h) {
+          sessStartTs = Math.max(sessStartTs, todayMidnight.getTime());
+        }
+        if (isShiftWithin24h && inTs > 0 && sessStartTs < inTs) {
+          sessStartTs = inTs;
+        }
         const curSessionGrossSecs = Math.max(0, Math.floor((Date.now() - sessStartTs) / 1000));
         const sessionBreakBaseline = Number(localStorage.getItem(`ems_timer_${userKey}_session_break_baseline`)) || 0;
         const curSessionBreaks = Math.max(0, bSecs - sessionBreakBaseline);
@@ -1201,19 +1208,7 @@ export const TimerProvider = ({ children }) => {
       const todayMidnightMs = todayMidnight.getTime();
       const maxPossibleGrossSecs = Math.max(0, Math.floor((Date.now() - todayMidnightMs) / 1000));
 
-      // 🌙 Strict Midnight Auto-Close (User Requirement): Auto-clock out at 11:59 PM if employee hasn't clocked out
-      const nowClock = new Date();
-      if (inVal && nowClock.getHours() === 23 && nowClock.getMinutes() >= 59) {
-        performShiftClockOut(currentUser, { reason: 'Midnight 11:59 PM Auto-Close', nowTs: nowClock.getTime(), nowStr: '11:59 PM' });
-        setIsClockedIn(false);
-        setIsRunning(false);
-        setIsOnBreak(false);
-        setClockOutTime('11:59 PM');
-        setHadClockedOutToday(true);
-        window.dispatchEvent(new CustomEvent('ems_task_timer_stopped', { detail: { reason: 'midnight_autoclose' } }));
-        window.dispatchEvent(new CustomEvent('ems_clocked_out', { detail: { reason: 'midnight_autoclose' } }));
-        return;
-      }
+      // Active shift protection: Allow users to work shifts that span past midnight uninterrupted
 
       // Guard: Check if active timer belongs to a prior calendar day (protect active shifts under 16h)
       const storedSessionDate = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
@@ -1352,13 +1347,16 @@ export const TimerProvider = ({ children }) => {
 
       if (inVal) {
         // ── Option 1: Cumulative Multi-Session Shift Calculation ──
-        // 1. Sum of all previous completed punch sessions strictly for today (strictly normalized)
+        // 1. Sum of all previous completed punch sessions strictly for active shift (normalized)
+        const isShiftWithin24h = clockInTs > 0 && (Date.now() - clockInTs) < 24 * 3600 * 1000;
+        const minSessionTs = isShiftWithin24h ? clockInTs : todayMidnightMs;
+
         let storedSessions = [];
         try {
           const rawSess = localStorage.getItem(`ems_timer_${userKey}_punch_sessions`);
           if (rawSess) storedSessions = JSON.parse(rawSess) || [];
         } catch {}
-        storedSessions = normalizePunchSessions((storedSessions || []).filter(s => Number(s.inTimestamp || 0) >= todayMidnightMs));
+        storedSessions = normalizePunchSessions((storedSessions || []).filter(s => Number(s.inTimestamp || 0) >= minSessionTs));
         const pastSessionsSecs = storedSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
 
         const lastSessionOut = storedSessions.length > 0
@@ -1367,10 +1365,10 @@ export const TimerProvider = ({ children }) => {
 
         // 2. Active session start timestamp (starts freshly from now on each clock in)
         let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`));
-        if (!sessStartTs || sessStartTs < todayMidnightMs) {
+        if (!sessStartTs || (!isShiftWithin24h && sessStartTs < todayMidnightMs)) {
           if (lastSessionOut > 0) {
             sessStartTs = lastSessionOut;
-          } else if (clockInTs && clockInTs >= todayMidnightMs && storedSessions.length === 0) {
+          } else if (clockInTs && isShiftWithin24h && storedSessions.length === 0) {
             sessStartTs = clockInTs;
           } else {
             sessStartTs = Date.now();
@@ -1381,6 +1379,10 @@ export const TimerProvider = ({ children }) => {
           sessStartTs = lastSessionOut;
           localStorage.setItem(`ems_timer_${userKey}_current_session_start_timestamp`, sessStartTs.toString());
         }
+        if (isShiftWithin24h && clockInTs > 0 && sessStartTs < clockInTs) {
+          sessStartTs = clockInTs;
+          localStorage.setItem(`ems_timer_${userKey}_current_session_start_timestamp`, sessStartTs.toString());
+        }
 
         const curSessionGrossSecs = Math.max(0, Math.floor((Date.now() - sessStartTs) / 1000));
         const sessionBreakBaseline = Number(localStorage.getItem(`ems_timer_${userKey}_session_break_baseline`)) || 0;
@@ -1388,18 +1390,20 @@ export const TimerProvider = ({ children }) => {
         const curSessionBreaks = Math.max(0, totalBreaks - sessionBreakBaseline);
 
         // ⏱️ Physical Upper Bound: Shift work seconds can NEVER exceed physical wall-clock time since clock-in minus breaks!
-        let firstClockInTs = (clockInTs && clockInTs >= todayMidnightMs) ? clockInTs : 0;
+        let firstClockInTs = (clockInTs && (isShiftWithin24h || clockInTs >= todayMidnightMs)) ? clockInTs : 0;
         if (!firstClockInTs) {
           const loginStr = localStorage.getItem(`ems_timer_${userKey}_login_time`);
           if (loginStr && loginStr !== '--' && loginStr !== 'Active') {
-            firstClockInTs = todayMidnightMs + parseTimeToSeconds(loginStr) * 1000;
+            firstClockInTs = (isShiftWithin24h ? (Date.now() - 3600 * 1000) : todayMidnightMs) + parseTimeToSeconds(loginStr) * 1000;
           }
         }
-        if (!firstClockInTs || firstClockInTs < todayMidnightMs) {
+        if (!firstClockInTs || (!isShiftWithin24h && firstClockInTs < todayMidnightMs)) {
           firstClockInTs = sessStartTs;
         }
 
-        const maxPossibleElapsedSinceClockIn = Math.max(0, Math.floor((Date.now() - firstClockInTs) / 1000));
+        const maxPossibleElapsedSinceClockIn = isShiftWithin24h
+          ? Math.min(86400, Math.max(0, Math.floor((Date.now() - firstClockInTs) / 1000)))
+          : Math.max(0, Math.floor((Date.now() - firstClockInTs) / 1000));
         const maxPossibleNetWorkSecs = Math.max(0, maxPossibleElapsedSinceClockIn - totalBreaks);
 
         // Total working time = completed sessions + (current active session minus active & completed breaks in this session)
@@ -1825,15 +1829,18 @@ export const TimerProvider = ({ children }) => {
       const rawS = localStorage.getItem(`ems_timer_${userKey}_punch_sessions`);
       if (rawS) existingSessions = JSON.parse(rawS) || [];
     } catch (_) {}
+    const storedClockInTsForUser = Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
+    const isShiftWithin24h = storedClockInTsForUser > 0 && (nowMs - storedClockInTsForUser) < 24 * 3600 * 1000;
+    const minSessionTs = isShiftWithin24h ? storedClockInTsForUser : todayMidnight.getTime();
+
     if (existingSessions.length === 0 && Array.isArray(existingRec?.punchSessions) && existingRec.punchSessions.length > 0) {
       existingSessions = existingRec.punchSessions;
     }
-    existingSessions = (existingSessions || []).filter(s => Number(s.inTimestamp || 0) >= todayMidnight.getTime());
+    existingSessions = (existingSessions || []).filter(s => Number(s.inTimestamp || 0) >= minSessionTs);
 
-    const userPunchSessions = (existingSessions || []).filter(s => Number(s.inTimestamp || 0) >= todayMidnight.getTime() && s.outTime);
+    const userPunchSessions = (existingSessions || []).filter(s => Number(s.inTimestamp || 0) >= minSessionTs && s.outTime);
     const storedLoginForUser = (storedSessionDate === today ? localStorage.getItem(`ems_timer_${userKey}_login_time`) : null);
-    const storedClockInTsForUser = Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
-    const hasValidStoredLogin = Boolean(storedSessionDate === today && storedLoginForUser && storedClockInTsForUser >= todayMidnight.getTime());
+    const hasValidStoredLogin = Boolean((storedSessionDate === today || isShiftWithin24h) && storedLoginForUser && (isShiftWithin24h || storedClockInTsForUser >= todayMidnight.getTime()));
 
     // User is ONLY considered having a prior clock-in if this specific employee has recorded completed sessions today
     const hasPriorClockInToday = Boolean(
@@ -1853,7 +1860,7 @@ export const TimerProvider = ({ children }) => {
     if (hasPriorClockInToday) {
       // 🌟 RESUME / RE-CLOCK IN: Preserve the original first clock-in of the day and prior work time!
       initialLoginTime = userPunchSessions[0]?.inTime || existingRec?.clockInTime || existingRec?.clockIn || storedLoginForUser || nowStr;
-      if (!clockInTs || clockInTs < todayMidnight.getTime()) {
+      if (!clockInTs || (!isShiftWithin24h && clockInTs < todayMidnight.getTime())) {
         const parsedSecs = parseTimeToSeconds(initialLoginTime);
         clockInTs = todayMidnight.getTime() + parsedSecs * 1000;
       }
@@ -1866,7 +1873,7 @@ export const TimerProvider = ({ children }) => {
       const normalizedSessions = normalizePunchSessions(existingSessions);
       const pastSessionsSecs = normalizedSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
       const curSavedWorkSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || 0;
-      const maxElapsedSinceIn = Math.max(0, Math.floor((nowMs - clockInTs) / 1000));
+      const maxElapsedSinceIn = isShiftWithin24h ? Math.min(86400, Math.max(0, Math.floor((nowMs - clockInTs) / 1000))) : Math.max(0, Math.floor((nowMs - clockInTs) / 1000));
       preservedWorkSecs = Math.min(maxElapsedSinceIn, Math.max(pastSessionsSecs, todayTaskSecs, (curSavedWorkSecs <= maxElapsedSinceIn && curSavedWorkSecs >= pastSessionsSecs) ? curSavedWorkSecs : pastSessionsSecs));
 
       setWorkSeconds(preservedWorkSecs);

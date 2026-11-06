@@ -64,6 +64,14 @@ export const isConversationVisibleToUser = (conv, user) => {
 
   // ── 2. Direct Messages (DMs) — STRICT PRIVACY ──
   // A DM must ONLY be visible to the two people involved!
+  // Fast DM Token match (e.g. dm_ADM-001_EMP-002 is always visible to ADM-001 and EMP-002)
+  const dmTokens = (conv.id && conv.id.startsWith('dm_'))
+    ? conv.id.replace('dm_', '').split('_').filter(Boolean).map(t => t.toLowerCase().trim())
+    : [];
+  if (dmTokens.length > 0 && dmTokens.some(t => myIdentifiers.includes(t))) {
+    return true;
+  }
+
   // If participants array is present, check strictly against participants
   if (Array.isArray(conv.participants) && conv.participants.length > 0) {
     return conv.participants.some(p => {

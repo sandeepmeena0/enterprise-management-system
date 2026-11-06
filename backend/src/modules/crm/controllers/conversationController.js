@@ -140,6 +140,15 @@ exports.getConversations = async (req, res) => {
     if (userIdentifiers.length > 0) {
       convs = convs.filter(c => {
         if (c.type === 'channel') return true;
+
+        // Fast DM token match from conversation ID
+        const dmTokens = (c.id && c.id.startsWith('dm_'))
+          ? c.id.replace('dm_', '').split('_').filter(Boolean).map(t => t.toLowerCase().trim())
+          : [];
+        if (dmTokens.length > 0 && dmTokens.some(t => userIdentifiers.includes(t))) {
+          return true;
+        }
+
         if (Array.isArray(c.participants) && c.participants.length > 0) {
           return c.participants.some(p => {
             const pStr = String(p).toLowerCase().trim();

@@ -924,6 +924,18 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
           return Attendance.updateOne({ _id: existing._id }, { $set: updateObj });
         } else if (payload.isClockedIn) {
           // If no existing record yet today and user is clocked in, create attendance record in MongoDB immediately!
+          let initialStatus = 'present';
+          let initialIsLate = false;
+          let initialLateMins = 0;
+          if (payload.clockInTime) {
+            const inSecs = parseTimeStringToSeconds(payload.clockInTime);
+            // Dynamic check against standard policy 10:00 AM + 15m grace = 10:15 AM (36900s)
+            if (inSecs > 36900) {
+              initialStatus = 'late';
+              initialIsLate = true;
+              initialLateMins = Math.floor((inSecs - 36000) / 60);
+            }
+          }
           const newRec = {
             ...updateObj,
             employee: targetId && mongoose.Types.ObjectId.isValid(targetId) ? targetId : new mongoose.Types.ObjectId(),
@@ -931,7 +943,9 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
             employeeCode: targetCode,
             employeeName: payload.employeeName || req.user?.name || 'Employee',
             date: today,
-            status: 'present'
+            status: initialStatus,
+            isLate: initialIsLate,
+            lateByMinutes: initialLateMins
           };
           return Attendance.create(newRec);
         }

@@ -598,6 +598,9 @@ export const CRMProvider = ({ children }) => {
                 if (p.lastMessage !== m.lastMessage || p.lastMessageTime !== m.lastMessageTime) return true;
                 if (Boolean(p.activeHuddle?.isLive) !== Boolean(m.activeHuddle?.isLive)) return true;
                 if ((p.activeHuddle?.members?.length || 0) !== (m.activeHuddle?.members?.length || 0)) return true;
+                const pLastMsg = p.messages && p.messages[p.messages.length - 1];
+                const mLastMsg = m.messages && m.messages[m.messages.length - 1];
+                if ((pLastMsg?.readBy?.length || 0) !== (mLastMsg?.readBy?.length || 0)) return true;
                 return false;
               });
             if (isDifferent) {

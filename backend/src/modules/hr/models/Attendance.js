@@ -169,11 +169,22 @@ AttendanceSchema.pre('save', function (next) {
   }
 
   if (this.clockInTime) {
-    const inTotal = parseAttendanceTime(this.clockInTime);
-    const graceLimit = 9 * 3600 + 30 * 60;
-    if (inTotal > graceLimit) {
-      this.isLate = true;
-      this.lateByMinutes = Math.floor((inTotal - graceLimit) / 60);
+    // Only calculate late status if not already explicitly calibrated by controller
+    if (this.isLate === undefined || this.isLate === null || this.isModified('clockInTime')) {
+      const inTotal = parseAttendanceTime(this.clockInTime);
+      // Standard company shift: 10:00 AM (36000s) + 15m grace (900s) = 10:15 AM (36900s)
+      const standardStart = 10 * 3600;
+      const graceLimit = standardStart + 15 * 60;
+      if (inTotal > graceLimit) {
+        this.isLate = true;
+        this.lateByMinutes = Math.floor((inTotal - standardStart) / 60);
+      } else {
+        this.isLate = false;
+        this.lateByMinutes = 0;
+        if (this.status === 'late') {
+          this.status = 'present';
+        }
+      }
     }
   }
   next();
