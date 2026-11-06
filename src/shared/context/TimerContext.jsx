@@ -69,7 +69,13 @@ export const TimerProvider = ({ children }) => {
   const { currentUser: hrUser } = useHR();
   const currentUser = authUser || hrUser;
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // Derive canonical userKey for multi-user storage isolation
   const userKey = useMemo(() => {
@@ -322,7 +328,7 @@ export const TimerProvider = ({ children }) => {
       const attRaw = localStorage.getItem('hrms_attendance');
       if (attRaw) {
         const att = JSON.parse(attRaw);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         const rec = att.find(a => isRecordForUser(a, today));
         if (rec?.clockInTime || rec?.clockIn) return rec.clockInTime || rec.clockIn;
       }
@@ -338,7 +344,7 @@ export const TimerProvider = ({ children }) => {
       const attRaw = localStorage.getItem('hrms_attendance');
       if (attRaw) {
         const att = JSON.parse(attRaw);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         const rec = att.find(a => isRecordForUser(a, today));
         const val = rec?.clockOutTime || rec?.clockOut;
         if (val && val !== '--' && val !== '—' && val !== 'null') return val;
@@ -364,7 +370,7 @@ export const TimerProvider = ({ children }) => {
       const attRaw = localStorage.getItem('hrms_attendance');
       if (attRaw) {
         const att = JSON.parse(attRaw);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         const rec = att.find(a => isRecordForUser(a, today));
         if (rec && rec.date === today && (rec.clockInTime || rec.clockIn) && !rec.clockOutTime && rec.isClockedIn !== false && rec.status !== 'on_leave') {
           return true;
@@ -395,7 +401,7 @@ export const TimerProvider = ({ children }) => {
       const attRaw = localStorage.getItem('hrms_attendance');
       if (attRaw) {
         const att = JSON.parse(attRaw);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayStr();
         const rec = att.find(a => isRecordForUser(a, today));
         if (rec && rec.date === today) {
           if (rec.clockOutTime) {

@@ -8,6 +8,7 @@ export default defineConfig({
     react()
   ],
   server: {
+    host: true, // Expose on local network (0.0.0.0) so phone on same Wi-Fi can open http://10.246.125.91:5173
     port: 5173,
     open: false,
     proxy: {

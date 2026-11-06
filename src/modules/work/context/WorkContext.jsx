@@ -92,7 +92,13 @@ export const WorkProvider = ({ children }) => {
     return currentUser?.employeeCode || (currentUser?._id ? String(currentUser._id) : '');
   }, [currentUser]);
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const [workSessionDate, setWorkSessionDate] = useState(() => {
     return localStorage.getItem(`ems_work_session_date_${userKey}`) || getTodayStr();
   });

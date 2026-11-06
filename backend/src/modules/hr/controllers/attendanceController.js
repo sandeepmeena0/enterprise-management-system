@@ -3,15 +3,37 @@ const AttendanceAudit = require('../models/AttendanceAudit');
 const Task = require('../../work/models/Task');
 const asyncHandler = require('../../../shared/middleware/asyncHandler');
 
+// Universal helper to get local date string YYYY-MM-DD for IST business operations
+const getLocalTodayStr = (d = new Date()) => {
+  const dateObj = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' });
+    return formatter.format(dateObj);
+  } catch (_) {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+};
+
 // ⏱️ Auto-close past-day unclosed shifts (runs daily at midnight or upon request)
 const autoClosePastDayShifts = async () => {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalTodayStr();
+    // Only auto-close past day shifts if the shift was initiated more than 16 hours ago!
+    // A night shift or midnight clock-in (e.g. 11:30 PM or 00:30 AM) is actively running and must NOT be closed!
+    const sixteenHoursAgo = Date.now() - 16 * 60 * 60 * 1000;
     await Attendance.updateMany(
       {
         date: { $lt: todayStr },
         isClockedIn: true,
-        clockOutTime: null
+        clockOutTime: null,
+        $or: [
+          { clockInTimestamp: { $lt: sixteenHoursAgo } },
+          { clockInTimestamp: null },
+          { currentSessionStartTimestamp: { $lt: sixteenHoursAgo } }
+        ]
       },
       {
         $set: {
@@ -21,7 +43,7 @@ const autoClosePastDayShifts = async () => {
           clockOut: '07:00 PM',
           workSeconds: 32400, // Standard 9 hrs
           totalWorkingHours: 9.0,
-          notes: 'Auto-closed at midnight (daily shift reset)'
+          notes: 'Auto-closed past-day shift (daily shift reset)'
         }
       }
     );
@@ -898,18 +920,21 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
 // ─── GET /api/attendance/live-telemetry ────────────────────────────────────────
 // Returns live status of all active employees for Live Operations & Admin Dashboard
 const getLiveTelemetry = asyncHandler(async (req, res) => {
-  const today = req.query.date || new Date().toISOString().split('T')[0];
+  const today = req.query.date || getLocalTodayStr();
   const now = Date.now();
 
   // Load all today's attendance records from MongoDB
   const query = { date: today };
   const records = await Attendance.find(query).lean();
 
+  // Also query active tasks across the company to surface live running tasks and live ticking task seconds
+  const activeTasks = await Task.find({ timerRunning: true }).lean().catch(() => []);
+
   const telemetryMap = {};
 
   records.forEach(r => {
     const code = String(r.employeeCode || '').trim().toUpperCase();
-    const id = String(r.employee?._id || r.employee || r._id);
+    const id = String(r.employee?._id || r.employee || r.employeeId || r._id);
     const key = code || id;
 
     const inTs = Number(r.clockInTimestamp || 0);
@@ -919,21 +944,54 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     const isOnBreak = Boolean(r.isOnBreak);
 
     let liveWorkSecs = Number(r.workSeconds) || 0;
-    if (isClockedIn && !isOnBreak && r.lastHeartbeatAt && Number(r.lastHeartbeatAt) <= now) {
-      // Add live elapsed seconds since last heartbeat pulse (monotonic progression without doubling session duration)
-      const elapsedSinceHeartbeat = Math.max(0, Math.floor((now - Number(r.lastHeartbeatAt)) / 1000));
-      const maxPossibleGross = inTs > 0 ? Math.max(0, Math.floor((now - inTs) / 1000)) : 14 * 3600;
-      liveWorkSecs = Math.min(liveWorkSecs + elapsedSinceHeartbeat, maxPossibleGross);
+    if (isClockedIn) {
+      if (!isOnBreak) {
+        // Calculate live ongoing session elapsed seconds from currentSessionStartTimestamp or clockInTimestamp
+        if (sessStart > 0 && sessStart <= now) {
+          const currentSessionElapsed = Math.max(0, Math.floor((now - sessStart) / 1000));
+          liveWorkSecs = (Number(r.workSeconds) || 0) + currentSessionElapsed;
+        } else if (r.lastHeartbeatAt && Number(r.lastHeartbeatAt) <= now) {
+          const elapsedSinceHeartbeat = Math.max(0, Math.floor((now - Number(r.lastHeartbeatAt)) / 1000));
+          liveWorkSecs = (Number(r.workSeconds) || 0) + elapsedSinceHeartbeat;
+        }
+      }
     }
 
-    let runningTask = r.activeTask || null;
-    if (runningTask && runningTask.startedAt && isClockedIn && !isOnBreak) {
-      const taskStart = Number(runningTask.startedAt);
+    // Match any actively running task for this employee from Task collection
+    let runningTask = null;
+    const matchedTask = (activeTasks || []).find(t => {
+      const tAssignedId = String(t.assignedToId || t.assignedTo || '').toUpperCase();
+      const tActiveUser = String(t.activeUserId || '').toUpperCase();
+      if (code && (tAssignedId === code || tActiveUser === code)) return true;
+      if (id && (tAssignedId === String(id).toUpperCase() || tActiveUser === String(id).toUpperCase())) return true;
+      if (Array.isArray(t.assignedToIds) && t.assignedToIds.some(aid => String(aid).toUpperCase() === code || String(aid).toUpperCase() === String(id).toUpperCase())) return true;
+      if (Array.isArray(t.assignees) && t.assignees.some(a => String(a.employeeCode || a._id || a.id).toUpperCase() === code || String(a._id || a.id) === String(id))) return true;
+      return false;
+    });
+
+    if (matchedTask && isClockedIn && !isOnBreak) {
+      const taskStart = Number(matchedTask.startedAt || now);
       const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
-      const accum = Number(runningTask.accumulatedSeconds) || 0;
+      const accum = Number(matchedTask.accumulatedSeconds !== undefined ? matchedTask.accumulatedSeconds : (matchedTask.timerSeconds || 0));
       runningTask = {
-        ...runningTask,
-        liveTaskSecs: Math.min(accum + elapsedTask, 14 * 3600),
+        _id: matchedTask._id,
+        id: matchedTask.id || matchedTask._id,
+        taskId: matchedTask._id,
+        taskCode: matchedTask.taskCode,
+        title: matchedTask.title,
+        projectName: matchedTask.projectName,
+        accumulatedSeconds: accum,
+        liveTaskSecs: accum + elapsedTask,
+        startedAt: matchedTask.startedAt,
+        timerRunning: true
+      };
+    } else if (r.activeTask && r.activeTask.startedAt && isClockedIn && !isOnBreak) {
+      const taskStart = Number(r.activeTask.startedAt);
+      const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
+      const accum = Number(r.activeTask.accumulatedSeconds || 0);
+      runningTask = {
+        ...r.activeTask,
+        liveTaskSecs: accum + elapsedTask,
         timerRunning: true
       };
     }

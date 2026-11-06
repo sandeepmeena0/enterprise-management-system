@@ -567,8 +567,22 @@ export const CRMProvider = ({ children }) => {
           });
 
           const merged = Array.from(map.values());
-          saveCollection(KEYS.CONVERSATIONS, merged);
-          setConversations(merged);
+          setConversations(prev => {
+            const prevList = prev || [];
+            const isDifferent = prevList.length !== merged.length ||
+              merged.some((m, i) => {
+                const p = prevList[i];
+                if (!p || p.id !== m.id) return true;
+                if ((p.messages?.length || 0) !== (m.messages?.length || 0)) return true;
+                if (p.lastMessage !== m.lastMessage || p.lastMessageTime !== m.lastMessageTime) return true;
+                return false;
+              });
+            if (isDifferent) {
+              saveCollection(KEYS.CONVERSATIONS, merged);
+              return merged;
+            }
+            return prev;
+          });
 
           if (hasUnsynced) {
             fetch(`${API_BASE}/conversations/sync-batch`, {
@@ -721,12 +735,28 @@ export const CRMProvider = ({ children }) => {
     loadNotices();
   }, [currentUser]);
 
-  // ── Multi-User Real-time Chat Sync Poller (Every 2.5s for instant message delivery & read receipts) ──
+  // ── Multi-User Real-time Chat Sync Poller (Ultra-fast 1s poll for instant live message delivery & read receipts) ──
   useEffect(() => {
     if (!currentUser) return;
     const interval = setInterval(() => {
-      loadConversations();
-    }, 2500);
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        loadConversations();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  // ── Multi-User CRM Sync Poller (Every 15s for notices, tickets, events, leads) ──
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadTickets();
+        loadNotices();
+        loadEvents();
+        loadLeads();
+      }
+    }, 15000);
     return () => clearInterval(interval);
   }, [currentUser]);
 

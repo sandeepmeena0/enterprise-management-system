@@ -41,7 +41,7 @@ import { getCollection, saveCollection, KEYS } from '../../../shared/services/st
 import { DayTimeLogModal } from '../../../shared/components/modals/DayTimeLogModal';
 import { getUserModulePermissions, isHRorAdmin as checkIsHRorAdmin, isAdmin as checkIsAdmin, canAccessModule } from '../../../shared/utils/permissionUtils';
 import { subscribeToSyncEvents } from '../../../shared/services/realtimeSyncService';
-import { calculateShiftWorkSeconds, getTaskTodaySeconds, readTimerStorage, normalizePunchSessions, performShiftClockOut } from '../../../shared/utils/timerUtils';
+import { calculateShiftWorkSeconds, getTaskTodaySeconds, readTimerStorage, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
 
 export const TeamOperationsPage = () => {
   const navigate = useNavigate();
@@ -126,7 +126,7 @@ export const TeamOperationsPage = () => {
     }
   };
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => getLocalDateStr(), []);
   const [liveTelemetryMap, setLiveTelemetryMap] = useState({});
 
   // ── Multi-User Live Telemetry Poller (Every 3.5s for real-time remote sync) ──
@@ -362,17 +362,18 @@ export const TeamOperationsPage = () => {
     let runningTask = null;
     const empTasks = (tasks || []).filter(t => isTaskAssignedToUser(t, emp));
 
-    if (telem?.activeTask?.taskId && isClockedIn && !isClockedOut && !isOnLeave) {
+    if ((telem?.activeTask?.taskId || telem?.activeTask?._id || telem?.activeTask?.id) && isClockedIn && !isClockedOut && !isOnLeave) {
       const at = telem.activeTask;
+      const atTaskId = at.taskId || at._id || at.id;
       const isTaskTimerActuallyRunning = Boolean(at.timerRunning);
       if (isTaskTimerActuallyRunning) {
         const startedAtMs = Number(at.startedAt) || nowMs;
         const elapsed = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
         const liveTaskSecs = (Number(at.accumulatedSeconds) || 0) + elapsed;
         runningTask = {
-          _id: at.taskId,
-          id: at.taskId,
-          taskId: at.taskId,
+          _id: atTaskId,
+          id: atTaskId,
+          taskId: atTaskId,
           taskCode: at.taskCode || 'TSK',
           title: at.title || 'Live Task',
           projectName: at.projectName || 'General Work',
@@ -385,9 +386,9 @@ export const TeamOperationsPage = () => {
       } else {
         const liveTaskSecs = Number(at.accumulatedSeconds) || 0;
         runningTask = {
-          _id: at.taskId,
-          id: at.taskId,
-          taskId: at.taskId,
+          _id: atTaskId,
+          id: atTaskId,
+          taskId: atTaskId,
           taskCode: at.taskCode || 'TSK',
           title: at.title || 'Task (Paused)',
           projectName: at.projectName || 'General Work',

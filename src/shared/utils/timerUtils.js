@@ -219,6 +219,14 @@ import { API_BASE } from '../config/apiConfig.js';
 import { hrService } from '../../modules/hr/services/hrService.js';
 import { workService } from '../../modules/work/services/workService.js';
 
+export const getLocalDateStr = (d = new Date()) => {
+  const dateObj = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 /**
  * Single Source of Truth: Calculate shift work seconds for an employee on a given date.
  * Strictly guarantees:
@@ -230,7 +238,7 @@ import { workService } from '../../modules/work/services/workService.js';
  */
 export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now(), options = {}) => {
   if (!userOrEmp || typeof localStorage === 'undefined') return 0;
-  const today = dateStr || new Date().toISOString().split('T')[0];
+  const today = dateStr || getLocalDateStr();
 
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
@@ -244,10 +252,10 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       if (telem.isOnBreak) {
         return Number(telem.workSeconds) || 0;
       }
-      // Between backend telemetry polls (every 3.5s), smoothly tick forward from last heartbeat timestamp
-      const heartbeatTs = Number(telem.lastHeartbeatAt) || Number(telem.timestamp) || nowMs;
-      const elapsedSinceHeartbeat = Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000));
-      return Math.min(maxPossibleGrossToday, (Number(telem.workSeconds) || 0) + elapsedSinceHeartbeat);
+      // Smoothly tick forward every second between backend telemetry polls
+      const baseTs = Number(telem.timestamp) || Number(telem.lastHeartbeatAt) || nowMs;
+      const elapsedBetweenPolls = Math.max(0, Math.floor((nowMs - baseTs) / 1000));
+      return (Number(telem.workSeconds) || 0) + elapsedBetweenPolls;
     } else if (telem.clockOutTime) {
       return Number(telem.workSeconds) || 0;
     } else {

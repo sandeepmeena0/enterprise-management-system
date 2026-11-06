@@ -246,10 +246,18 @@ export const HRProvider = ({ children }) => {
         scheduleDebouncedLoad();
       }
     };
+    // Periodic synchronization from DB (every 15s) for multi-device live sync (leaves, attendance, approvals)
+    const syncInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        loadData();
+      }
+    }, 15000);
+
     window.addEventListener('hrms_storage_change', handleStorageUpdate);
     window.addEventListener('storage', handleNativeStorage);
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      clearInterval(syncInterval);
       window.removeEventListener('hrms_storage_change', handleStorageUpdate);
       window.removeEventListener('storage', handleNativeStorage);
     };

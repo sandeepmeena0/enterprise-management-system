@@ -69,7 +69,7 @@ import { getCollection, saveCollection, KEYS } from '../../../shared/services/st
 import { hrService } from '../services/hrService';
 import { workService } from '../../work/services/workService';
 import { broadcastSyncEvent, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
-import { getCanonicalTimerKey, getTimerMirrorKeys, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, normalizePunchSessions, performShiftClockOut } from '../../../shared/utils/timerUtils';
+import { getCanonicalTimerKey, getTimerMirrorKeys, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
 
 // Modals
 import { BreakModal } from '../../../shared/components/modals/BreakModal';
@@ -182,7 +182,7 @@ export const DashboardPage = () => {
     return String(effectiveTargetUser?._id || effectiveTargetUser?.employeeCode || currentUser?._id || currentUser?.employeeCode || 'global');
   }, [effectiveTargetUser?._id, effectiveTargetUser?.employeeCode, currentUser?._id, currentUser?.employeeCode]);
 
-  const [currentDateStr, setCurrentDateStr] = useState(() => new Date().toISOString().split('T')[0]);
+  const [currentDateStr, setCurrentDateStr] = useState(() => getLocalDateStr());
   const todayStr = currentDateStr;
   const [liveTelemetryMap, setLiveTelemetryMap] = useState({});
 
@@ -650,17 +650,18 @@ export const DashboardPage = () => {
     });
     const empTasks = Array.from(empTaskMap.values());
 
-    if (telem?.activeTask?.taskId && isClockedIn && !isClockedOut && !isOnLeave) {
+    if ((telem?.activeTask?.taskId || telem?.activeTask?._id || telem?.activeTask?.id) && isClockedIn && !isClockedOut && !isOnLeave) {
       const at = telem.activeTask;
+      const atTaskId = at.taskId || at._id || at.id;
       const isTaskTimerActuallyRunning = Boolean(at.timerRunning);
       if (isTaskTimerActuallyRunning) {
         const startedAtMs = Number(at.startedAt) || Date.now();
         const elapsed = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
         const liveTaskSecs = (Number(at.accumulatedSeconds) || 0) + elapsed;
         runningTask = {
-          _id: at.taskId,
-          id: at.taskId,
-          taskId: at.taskId,
+          _id: atTaskId,
+          id: atTaskId,
+          taskId: atTaskId,
           taskCode: at.taskCode || 'TSK',
           title: at.title || 'Live Task',
           projectName: at.projectName || 'General Work',
@@ -674,9 +675,9 @@ export const DashboardPage = () => {
       } else {
         const liveTaskSecs = Number(at.accumulatedSeconds) || 0;
         runningTask = {
-          _id: at.taskId,
-          id: at.taskId,
-          taskId: at.taskId,
+          _id: atTaskId,
+          id: atTaskId,
+          taskId: atTaskId,
           taskCode: at.taskCode || 'TSK',
           title: at.title || 'Task (Paused)',
           projectName: at.projectName || 'General Work',

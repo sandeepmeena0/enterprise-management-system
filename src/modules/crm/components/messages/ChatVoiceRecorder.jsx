@@ -36,16 +36,6 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
   };
 
   const startRecording = async () => {
-    // Clock-in verification check
-    if (!isClockedIn) {
-      addToast('🔒 Shift Clock-In Required: You must clock into your shift to use the Walkie-Talkie & voice messages.', 'warning');
-      return;
-    }
-    if (isOnBreak) {
-      addToast(`☕ On ${breakType || 'Break'}: Voice communication is paused during breaks. End your break to record.`, 'warning');
-      return;
-    }
-
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         addToast('Microphone access is not supported on this browser.', 'error');
@@ -55,13 +45,17 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
-        ? 'audio/ogg;codecs=opus'
-        : 'audio/webm';
+      let mimeType = '';
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus';
+        else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+        else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+        else if (MediaRecorder.isTypeSupported('audio/aac')) mimeType = 'audio/aac';
+        else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) mimeType = 'audio/ogg;codecs=opus';
+        else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+      }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -80,7 +74,7 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
       }, 1000);
     } catch (err) {
       console.error('Error accessing microphone:', err);
-      addToast('Microphone permission denied or device not found.', 'error');
+      addToast('Microphone permission denied or device not found. Please allow microphone access in browser settings.', 'error');
       setIsRecording(false);
     }
   };
@@ -122,9 +116,10 @@ export const ChatVoiceRecorder = ({ onSendAudio, disabled }) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result;
+        const ext = mimeType.includes('mp4') || mimeType.includes('aac') ? 'm4a' : (mimeType.includes('ogg') ? 'ogg' : 'webm');
         const attachment = {
           id: `att_audio_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          name: `Voice_Memo_${Date.now()}.webm`,
+          name: `Voice_Memo_${Date.now()}.${ext}`,
           category: 'audio',
           mimeType,
           dataUrl,
