@@ -531,11 +531,10 @@ export const DashboardPage = () => {
     const rawClockInTs = Number(readTimerKey('clock_in_timestamp')) || Number(attRec?.clockInTimestamp);
     let isStaleFromPreviousDay = false;
     let inDate = '';
-    const isUnder16h = rawClockInTs > 0 && (Date.now() - rawClockInTs) < 16 * 3600 * 1000;
-    if (storedSessionDate && storedSessionDate !== todayStr && !isUnder16h) {
+    if (storedSessionDate && storedSessionDate !== todayStr) {
       isStaleFromPreviousDay = true;
       inDate = storedSessionDate;
-    } else if (rawClockInTs > 0 && !isUnder16h) {
+    } else if (rawClockInTs > 0) {
       inDate = getLocalDateStr(rawClockInTs);
       if (inDate !== todayStr) {
         isStaleFromPreviousDay = true;
@@ -1055,14 +1054,10 @@ export const DashboardPage = () => {
         rawStoredSessions = attRec.punchSessions;
       }
 
-      // Filter to active shift sessions (respecting 24h continuous night shifts) and normalize non-overlapping intervals
-      const clockInTs = Number(readTimerStorage(emp, 'clock_in_timestamp')) || 0;
-      const isShiftWithin24h = clockInTs > 0 && (Date.now() - clockInTs) < 24 * 3600 * 1000;
-      const minSessionTs = isShiftWithin24h ? clockInTs : todayMidnightMs;
-
+      // Filter to today's sessions only and normalize non-overlapping intervals
       const rawToday = (rawStoredSessions || []).filter(s => {
         const ts = Number(s.inTimestamp || 0);
-        if (ts > 0) return ts >= minSessionTs;
+        if (ts > 0) return ts >= todayMidnightMs;
         return Boolean(s.inTime || s.outTime);
       });
       const validTodaySessions = normalizePunchSessions(rawToday);
@@ -1089,17 +1084,13 @@ export const DashboardPage = () => {
           : 0;
 
         let liveStartTs = Number(readTimerStorage(emp, 'current_session_start_timestamp'));
-        if (!liveStartTs || (!isShiftWithin24h && liveStartTs < todayMidnightMs)) {
-          liveStartTs = lastSessionOut > 0 ? lastSessionOut : (clockInTs || Date.now());
+        if (!liveStartTs || liveStartTs < todayMidnightMs) {
+          liveStartTs = lastSessionOut > 0 ? lastSessionOut : (Number(readTimerStorage(emp, 'clock_in_timestamp')) || Date.now());
         }
         if (lastSessionOut > 0 && liveStartTs < lastSessionOut) {
           liveStartTs = lastSessionOut;
         }
-        if (isShiftWithin24h && clockInTs > 0 && liveStartTs < clockInTs) {
-          liveStartTs = clockInTs;
-        } else if (!isShiftWithin24h) {
-          liveStartTs = Math.max(liveStartTs, todayMidnightMs);
-        }
+        liveStartTs = Math.max(liveStartTs, todayMidnightMs);
 
         const liveGrossSecs = Math.max(0, Math.floor((Date.now() - liveStartTs) / 1000));
         const sessionBreakBaseline = Number(readTimerStorage(emp, 'session_break_baseline')) || 0;

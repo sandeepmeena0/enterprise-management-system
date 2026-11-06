@@ -263,11 +263,8 @@ export const TeamOperationsPage = () => {
                               (empId ? localStorage.getItem(`ems_timer_${empId}_work_session_date`) : null);
     const isTodaySession = storedSessionDate === todayStr;
 
-    // Proactively clean stale localStorage from yesterday/prior dates across both empKey & empId (protect shifts under 16h)
-    const rawInTs = Number(localStorage.getItem(`ems_timer_${empKey}_clock_in_timestamp`)) ||
-                    (empId ? Number(localStorage.getItem(`ems_timer_${empId}_clock_in_timestamp`)) : 0) || 0;
-    const isUnder16h = rawInTs > 0 && (Date.now() - rawInTs) < 16 * 3600 * 1000;
-    if (storedSessionDate && storedSessionDate !== todayStr && !isUnder16h) {
+    // Proactively clean stale localStorage from yesterday/prior dates across both empKey & empId
+    if (storedSessionDate && storedSessionDate !== todayStr) {
       try {
         const wipeKeys = [empKey, empId].filter(Boolean);
         wipeKeys.forEach(k => {

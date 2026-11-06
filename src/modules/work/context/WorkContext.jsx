@@ -248,13 +248,16 @@ export const WorkProvider = ({ children }) => {
     const startTs = typeof timerState.startedAt === 'number' ? timerState.startedAt : new Date(timerState.startedAt).getTime();
     if (!startTs || isNaN(startTs)) return base;
 
-    const isUnder16h = (Date.now() - startTs) < 16 * 3600 * 1000;
-    if (!isUnder16h) {
-      // Stale runaway ghost timer from more than 16 hours ago: return base
-      return base;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const todayMidnightMs = todayMidnight.getTime();
+    if (startTs < todayMidnightMs) {
+      // Started on a previous day: cap to seconds before midnight so runaway ghost time is never added to today!
+      const elapsedBeforeMidnight = Math.max(0, Math.floor((todayMidnightMs - startTs) / 1000));
+      return base + Math.min(elapsedBeforeMidnight, 14 * 3600);
     }
 
-    const elapsedSinceStart = Math.min(Math.max(0, Math.floor((Date.now() - startTs) / 1000)), 16 * 3600);
+    const elapsedSinceStart = Math.min(Math.max(0, Math.floor((Date.now() - startTs) / 1000)), 14 * 3600);
     return base + elapsedSinceStart;
   }, []);
 
@@ -319,8 +322,8 @@ export const WorkProvider = ({ children }) => {
             const todayMidnight = new Date();
             todayMidnight.setHours(0, 0, 0, 0);
             const todayMidnightMs = todayMidnight.getTime();
-            const isStartedRecent = bt.startedAt && (Date.now() - Number(bt.startedAt)) < 24 * 3600 * 1000;
-            const isBackendActive = Boolean(bt.timerRunning && isStartedRecent);
+            const isStartedToday = bt.startedAt && Number(bt.startedAt) >= todayMidnightMs;
+            const isBackendActive = Boolean(bt.timerRunning && isStartedToday);
             const isLocalActive = Boolean(existing.timerRunning || (activeTimer && String(activeTimer.taskId) === id && activeTimer.timerRunning));
 
             // Keep timer running if actively running locally or on backend
@@ -383,8 +386,8 @@ export const WorkProvider = ({ children }) => {
 
         const isAssignedToMe = isTaskAssignedToMe(t);
         const isActive = activeTimer && activeTimer.timerRunning && (String(activeTimer.taskId) === tId || String(activeTimer._id) === tId);
-        const isStartedRecent = t.startedAt && (Date.now() - Number(t.startedAt)) < 24 * 3600 * 1000;
-        const isRemoteActive = Boolean(t.timerRunning && isStartedRecent);
+        const isStartedToday = t.startedAt && Number(t.startedAt) >= todayMidnightMs;
+        const isRemoteActive = Boolean(t.timerRunning && isStartedToday);
 
         // For current user: ONLY the single active task timer is running!
         let isRunning = false;
@@ -413,7 +416,7 @@ export const WorkProvider = ({ children }) => {
             isRunning = false;
           }
         } else {
-          isRunning = Boolean(t.timerRunning && isStartedRecent);
+          isRunning = Boolean(t.timerRunning && isStartedToday);
         }
 
         if (isRunning) {
