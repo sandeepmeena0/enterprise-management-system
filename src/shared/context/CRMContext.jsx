@@ -303,16 +303,7 @@ export const CRMProvider = ({ children }) => {
       }
     });
 
-    const sanitized = sanitizeConversationMessages(convs);
-    if (sanitized.some((c, i) => c !== convs[i])) {
-      changed = true;
-      convs = sanitized;
-    }
-
-    if (changed) {
-      saveCollection(KEYS.CONVERSATIONS, convs);
-    }
-    return convs;
+    return sanitized;
   };
 
   // Core Storage States

@@ -355,7 +355,16 @@ export const getCollection = (key) => {
 export const saveCollection = (key, data) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
-    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
+    // Deferred dispatch via queueMicrotask prevents setState-in-render warnings across components
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
+      });
+    } else {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
+      }, 0);
+    }
     broadcastSyncEvent(SYNC_EVENTS.STORAGE_MUTATION, { key });
   } catch (error) {
     console.warn(`[storageService] Storage quota notice for ${key}:`, error.message);
@@ -379,7 +388,16 @@ export const saveCollection = (key, data) => {
           return { ...conv, messages: cleanMsgs };
         });
         localStorage.setItem(key, JSON.stringify(pruned));
+        // Deferred dispatch via queueMicrotask prevents setState-in-render warnings across components
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(() => {
         window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
+      });
+    } else {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key } }));
+      }, 0);
+    }
       } catch (innerErr) {
         console.error('[storageService] Failed saving pruned conversations:', innerErr);
       }

@@ -84,8 +84,11 @@ export const Sidebar = ({ mobileMenuOpen = false, onCloseMobile = () => {} }) =>
     const handleSettingsUpdate = () => {
       setCompanyInfo(getCompanySettings());
     };
-    const handlePermChange = () => {
-      setPermTick(t => t + 1);
+    const handlePermChange = (e) => {
+      const key = e?.detail?.key;
+      if (!key || ['EMS_USER_PERMISSIONS', 'ems_auth_session', KEYS.EMPLOYEES, 'all'].includes(key)) {
+        setTimeout(() => setPermTick(t => t + 1), 0);
+      }
     };
     window.addEventListener('company-settings-updated', handleSettingsUpdate);
     window.addEventListener('ems_permissions_updated', handlePermChange);
