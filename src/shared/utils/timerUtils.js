@@ -176,13 +176,15 @@ const SESSION_SCOPED_KEYS = new Set([
  */
 export const readTimerStorage = (user, subKey, fallback = null) => {
   if (typeof localStorage === 'undefined') return fallback;
-  const today = new Date().toISOString().split('T')[0];
+  const localToday = getLocalDateStr();
   const isSessionScoped = SESSION_SCOPED_KEYS.has(subKey);
   const keys = getTimerMirrorKeys(user);
   for (const k of keys) {
     if (isSessionScoped) {
       const sDate = localStorage.getItem(`ems_timer_${k}_work_session_date`);
-      if (sDate && sDate !== today) {
+      const inTs = Number(localStorage.getItem(`ems_timer_${k}_clock_in_timestamp`));
+      const isUnder16h = inTs > 0 && (Date.now() - inTs) < 16 * 3600 * 1000;
+      if (sDate && sDate !== localToday && !isUnder16h) {
         continue; // Stale session from a prior date! Ignore stale data
       }
     }
@@ -303,21 +305,21 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   const hasAttClockOut = Boolean(attRec && attRec.date === today && (attRec.clockOutTime || attRec.clockOut));
   const hasAnyClockInToday = hasAttClockIn || (isTodaySession && Boolean(readTimerStorage(userOrEmp, 'login_time') || Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) > 0));
 
-  // Derive first clock in timestamp of today to strictly bound physical elapsed work time
+  // Derive first clock in timestamp of shift to strictly bound physical elapsed work time
   let firstClockInTs = Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) || Number(attRec?.clockInTimestamp);
-  if (!firstClockInTs || firstClockInTs < todayMidnightMs) {
+  const isShiftWithin24h = firstClockInTs > 0 && (nowMs - firstClockInTs) < 24 * 3600 * 1000;
+  if (!firstClockInTs || (!isShiftWithin24h && firstClockInTs < todayMidnightMs)) {
     const loginStr = readTimerStorage(userOrEmp, 'login_time') || attRec?.clockInTime || attRec?.clockIn;
     if (loginStr && loginStr !== '--' && loginStr !== 'Active') {
       firstClockInTs = todayMidnightMs + parseTimeToSeconds(loginStr) * 1000;
     }
   }
 
-  // The true physical upper bound is time elapsed since FIRST clock in today (e.g. 1h 50m since 10:04 AM)
-  const maxPhysicalElapsedToday = (firstClockInTs && firstClockInTs >= todayMidnightMs)
-    ? Math.max(0, Math.floor((nowMs - firstClockInTs) / 1000))
-    : maxPossibleGrossToday;
+  // The true physical upper bound is time elapsed since FIRST clock in of this shift (up to 24h)
+  const shiftBoundTs = isShiftWithin24h ? firstClockInTs : todayMidnightMs;
+  const maxPhysicalElapsedToday = Math.min(86400, Math.max(0, Math.floor((nowMs - shiftBoundTs) / 1000)));
 
-  // Punch sessions strictly for TODAY (filter out any dirty sessions from prior dates)
+  // Punch sessions strictly for this active shift (filter out dirty sessions older than 24h)
   let rawSessions = [];
   try {
     const raw = readTimerStorage(userOrEmp, 'punch_sessions');
@@ -326,9 +328,10 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   if ((!rawSessions || rawSessions.length === 0) && Array.isArray(attRec?.punchSessions)) {
     rawSessions = attRec.punchSessions;
   }
+  const minSessionTs = isShiftWithin24h ? firstClockInTs : todayMidnightMs;
   const validTodaySessions = normalizePunchSessions((rawSessions || []).filter(s => {
     const ts = Number(s.inTimestamp || 0);
-    if (ts > 0) return ts >= todayMidnightMs;
+    if (ts > 0) return ts >= minSessionTs;
     return false;
   }));
   const pastSessionsSecs = validTodaySessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
@@ -371,7 +374,7 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       : 0;
 
     let sessStartTs = Number(readTimerStorage(userOrEmp, 'current_session_start_timestamp'));
-    if (!sessStartTs || sessStartTs < todayMidnightMs) {
+    if (!sessStartTs || (!isShiftWithin24h && sessStartTs < todayMidnightMs)) {
       if (lastSessionOut > 0) {
         sessStartTs = lastSessionOut;
       } else {
@@ -381,7 +384,9 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     if (lastSessionOut > 0 && sessStartTs < lastSessionOut) {
       sessStartTs = lastSessionOut;
     }
-    sessStartTs = Math.max(sessStartTs, todayMidnightMs);
+    if (firstClockInTs > 0 && sessStartTs < firstClockInTs) {
+      sessStartTs = firstClockInTs;
+    }
 
     const rawSessionGross = Math.max(0, Math.floor((nowMs - sessStartTs) / 1000));
     const curSessionGross = Math.min(maxPhysicalElapsedToday, rawSessionGross);
@@ -392,14 +397,14 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     // FLICKER FIX: Never bounce with stale storedWorkSecs. Use monotonic physical liveSecs.
     return Math.min(liveSecs, maxPhysicalElapsedToday);
   } else if (isEffectivelyClockedOut) {
-    // CLOCKED OUT: Strictly return verified frozen seconds. NEVER calculate live elapsed time!
+    // CLOCKED OUT: Strictly return verified frozen seconds. NEVER calculate live elapsed time or downgrade!
     let finalSecs = (storedWorkSecs > 0)
       ? storedWorkSecs
       : (pastSessionsSecs > 0 ? pastSessionsSecs : (Number(attRec?.workSeconds) || 0));
     if (!finalSecs && attRec?.totalWorkingHours) {
       finalSecs = Math.round(Number(attRec.totalWorkingHours) * 3600);
     }
-    return Math.min(finalSecs, maxPhysicalElapsedToday);
+    return finalSecs;
   }
 
   return 0;
@@ -413,8 +418,8 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
  */
 export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffectiveClockedIn = true, isEffectiveOnBreak = false) => {
   if (!task) return 0;
-  const targetDate = dateStr || new Date().toISOString().split('T')[0];
-  const actualToday = new Date().toISOString().split('T')[0];
+  const targetDate = dateStr || getLocalDateStr();
+  const actualToday = getLocalDateStr();
 
   let baseSecs = 0;
   if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
@@ -503,16 +508,11 @@ export const sanitizeTaskDailySessions = (task) => {
  */
 export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPausedForClockOut = false, wasPausedForBreak = false } = {}) => {
   if (!task) return null;
-  const today = todayStr || new Date().toISOString().split('T')[0];
-
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  const todayMidnightMs = todayMidnight.getTime();
+  const today = todayStr || getLocalDateStr();
 
   let sessionElapsed = 0;
   if (task.timerRunning && task.startedAt) {
-    const safeStart = Math.max(Number(task.startedAt), todayMidnightMs);
-    sessionElapsed = Math.max(0, Math.floor((nowMs - safeStart) / 1000));
+    sessionElapsed = Math.max(0, Math.floor((nowMs - Number(task.startedAt)) / 1000));
   }
 
   const baseAccum = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
@@ -553,22 +553,22 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
 export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.now(), nowStr } = {}) => {
   if (!user || typeof localStorage === 'undefined') return;
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = readTimerStorage(user, 'work_session_date') || getLocalDateStr();
   const timeStr = nowStr || new Date(nowTs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const mirrorKeys = getTimerMirrorKeys(user);
 
   // 1. Calculate final verified shift duration & record punch session
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  const maxPossibleGrossToday = Math.max(0, Math.floor((nowTs - todayMidnight.getTime()) / 1000));
+  const clockInTs = Number(readTimerStorage(user, 'clock_in_timestamp')) || 0;
+  const isShiftWithin24h = clockInTs > 0 && (nowTs - clockInTs) < 24 * 3600 * 1000;
+  const maxPossibleGrossShift = isShiftWithin24h ? Math.min(86400, Math.max(0, Math.floor((nowTs - clockInTs) / 1000))) : 86400;
 
   let existingSessions = [];
   try {
     const rawSessions = readTimerStorage(user, 'punch_sessions');
     if (rawSessions) existingSessions = typeof rawSessions === 'string' ? JSON.parse(rawSessions) : rawSessions;
   } catch (_) {}
-  const todayMidnightMs = todayMidnight.getTime();
-  existingSessions = normalizePunchSessions((existingSessions || []).filter(s => Number(s.inTimestamp || 0) >= todayMidnightMs));
+  const minSessionTs = isShiftWithin24h ? clockInTs : (nowTs - 24 * 3600 * 1000);
+  existingSessions = normalizePunchSessions((existingSessions || []).filter(s => Number(s.inTimestamp || 0) >= minSessionTs));
 
   const lastSessionOut = existingSessions.length > 0
     ? Math.max(...existingSessions.map(s => Number(s.outTimestamp || s.inTimestamp || 0)))
@@ -576,18 +576,20 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
 
   const storedWorkSecs = Number(readTimerStorage(user, 'work_seconds')) || 0;
   let sessStartTs = Number(readTimerStorage(user, 'current_session_start_timestamp'));
-  if (!sessStartTs || sessStartTs < todayMidnight.getTime()) {
+  if (!sessStartTs || (!isShiftWithin24h && sessStartTs < minSessionTs)) {
     if (lastSessionOut > 0) {
       sessStartTs = lastSessionOut;
     } else {
-      sessStartTs = Number(readTimerStorage(user, 'clock_in_timestamp')) || nowTs;
+      sessStartTs = clockInTs || nowTs;
     }
   }
   // CANONICAL BOUND: sessStartTs can NEVER precede lastSessionOut (prevents overlapping sessions)
   if (lastSessionOut > 0 && sessStartTs < lastSessionOut) {
     sessStartTs = lastSessionOut;
   }
-  sessStartTs = Math.max(sessStartTs, todayMidnight.getTime());
+  if (clockInTs > 0 && sessStartTs < clockInTs) {
+    sessStartTs = clockInTs;
+  }
 
   const sessInStr = readTimerStorage(user, 'current_session_in') || readTimerStorage(user, 'login_time') || timeStr;
 
@@ -595,7 +597,7 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
   const currentBreakSecs = Number(readTimerStorage(user, 'break_seconds')) || 0;
   const sessionBreakBaseline = Number(readTimerStorage(user, 'session_break_baseline')) || 0;
   const sessionBreaks = Math.max(0, currentBreakSecs - sessionBreakBaseline);
-  const curSessionDuration = Math.min(maxPossibleGrossToday, Math.max(0, grossSessionSecs - sessionBreaks));
+  const curSessionDuration = Math.min(maxPossibleGrossShift, Math.max(0, grossSessionSecs - sessionBreaks));
 
   let updatedSessions = [...(existingSessions || [])];
   if (curSessionDuration > 0 && sessStartTs < nowTs) {
@@ -614,7 +616,7 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
 
   const sumSessionsSecs = updatedSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
   const finalVerifiedWorkSecs = Math.min(
-    maxPossibleGrossToday,
+    maxPossibleGrossShift,
     Math.max(storedWorkSecs, sumSessionsSecs)
   );
 

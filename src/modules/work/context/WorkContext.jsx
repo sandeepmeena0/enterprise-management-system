@@ -248,16 +248,13 @@ export const WorkProvider = ({ children }) => {
     const startTs = typeof timerState.startedAt === 'number' ? timerState.startedAt : new Date(timerState.startedAt).getTime();
     if (!startTs || isNaN(startTs)) return base;
 
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
-    const todayMidnightMs = todayMidnight.getTime();
-    if (startTs < todayMidnightMs) {
-      // Started on a previous day: cap to seconds before midnight so runaway ghost time is never added to today!
-      const elapsedBeforeMidnight = Math.max(0, Math.floor((todayMidnightMs - startTs) / 1000));
-      return base + Math.min(elapsedBeforeMidnight, 14 * 3600);
+    const isUnder16h = (Date.now() - startTs) < 16 * 3600 * 1000;
+    if (!isUnder16h) {
+      // Stale runaway ghost timer from more than 16 hours ago: return base
+      return base;
     }
 
-    const elapsedSinceStart = Math.min(Math.max(0, Math.floor((Date.now() - startTs) / 1000)), 14 * 3600);
+    const elapsedSinceStart = Math.min(Math.max(0, Math.floor((Date.now() - startTs) / 1000)), 16 * 3600);
     return base + elapsedSinceStart;
   }, []);
 
@@ -322,8 +319,8 @@ export const WorkProvider = ({ children }) => {
             const todayMidnight = new Date();
             todayMidnight.setHours(0, 0, 0, 0);
             const todayMidnightMs = todayMidnight.getTime();
-            const isStartedToday = bt.startedAt && Number(bt.startedAt) >= todayMidnightMs;
-            const isBackendActive = Boolean(bt.timerRunning && isStartedToday);
+            const isStartedRecent = bt.startedAt && (Date.now() - Number(bt.startedAt)) < 24 * 3600 * 1000;
+            const isBackendActive = Boolean(bt.timerRunning && isStartedRecent);
             const isLocalActive = Boolean(existing.timerRunning || (activeTimer && String(activeTimer.taskId) === id && activeTimer.timerRunning));
 
             // Keep timer running if actively running locally or on backend
@@ -386,8 +383,8 @@ export const WorkProvider = ({ children }) => {
 
         const isAssignedToMe = isTaskAssignedToMe(t);
         const isActive = activeTimer && activeTimer.timerRunning && (String(activeTimer.taskId) === tId || String(activeTimer._id) === tId);
-        const isStartedToday = t.startedAt && Number(t.startedAt) >= todayMidnightMs;
-        const isRemoteActive = Boolean(t.timerRunning && isStartedToday);
+        const isStartedRecent = t.startedAt && (Date.now() - Number(t.startedAt)) < 24 * 3600 * 1000;
+        const isRemoteActive = Boolean(t.timerRunning && isStartedRecent);
 
         // For current user: ONLY the single active task timer is running!
         let isRunning = false;
@@ -761,7 +758,7 @@ export const WorkProvider = ({ children }) => {
             const base = (isMyActive && activeTimer.accumulatedSeconds !== undefined && activeTimer.accumulatedSeconds !== null)
               ? Number(activeTimer.accumulatedSeconds)
               : ((t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null) ? Number(t.accumulatedSeconds) : (Number(t.timerSeconds) || 0));
-            const safeStartTs = Math.max(startTs, todayMidnightMs);
+            const safeStartTs = (startTs > 0 && (now - startTs) < 24 * 3600 * 1000) ? startTs : todayMidnightMs;
             const elapsed = Math.min(Math.max(0, Math.floor((now - safeStartTs) / 1000)), 14 * 3600);
             const liveSecs = Math.min(base + elapsed, 14 * 3600);
             const text = formatSeconds(liveSecs);
@@ -1951,11 +1948,10 @@ export const WorkProvider = ({ children }) => {
     todayMidnight.setHours(0, 0, 0, 0);
     const todayMidnightMs = todayMidnight.getTime();
 
-    // Calculate live session elapsed (today-only, capped at midnight)
+    // Calculate live session elapsed
     let sessionElapsed = 0;
     if (targetTask?.timerRunning && targetTask?.startedAt) {
-      const effectiveStart = Math.max(Number(targetTask.startedAt), todayMidnightMs);
-      sessionElapsed = Math.max(0, Math.floor((Date.now() - effectiveStart) / 1000));
+      sessionElapsed = Math.max(0, Math.floor((Date.now() - Number(targetTask.startedAt)) / 1000));
     } else if (activeTimer && String(activeTimer.taskId) === String(taskId)) {
       const base = Number(activeTimer.accumulatedSeconds) || 0;
       sessionElapsed = Math.max(0, getElapsedSeconds(activeTimer) - base);
@@ -2115,11 +2111,9 @@ export const WorkProvider = ({ children }) => {
       // 2. Compute current session elapsed seconds strictly once
       let liveSessionElapsed = 0;
       if (targetTask.timerRunning && targetTask.startedAt) {
-        const effectiveStart = Math.max(Number(targetTask.startedAt), todayMidnightMs);
-        liveSessionElapsed = Math.max(0, Math.floor((now - effectiveStart) / 1000));
+        liveSessionElapsed = Math.max(0, Math.floor((now - Number(targetTask.startedAt)) / 1000));
       } else if (activeTimer && (String(activeTimer.taskId) === String(taskId) || String(activeTimer._id) === String(taskId)) && activeTimer.timerRunning && activeTimer.startedAt) {
-        const effectiveStart = Math.max(Number(activeTimer.startedAt), todayMidnightMs);
-        liveSessionElapsed = Math.max(0, Math.floor((now - effectiveStart) / 1000));
+        liveSessionElapsed = Math.max(0, Math.floor((now - Number(activeTimer.startedAt)) / 1000));
       }
 
       // 3. True Total Duration: Base plus Live Session (Guaranteed 1x, Never Doubled)
