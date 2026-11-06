@@ -1014,18 +1014,27 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       }
     }
 
-    let liveWorkSecs = Number(r.workSeconds) || 0;
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const maxPossibleGrossToday = Math.max(0, Math.floor((now - todayMidnight.getTime()) / 1000));
+
+    const pastSessionsSecs = Array.isArray(r.punchSessions)
+      ? r.punchSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0)
+      : 0;
+
+    let liveWorkSecs = Math.max(Number(r.workSeconds) || 0, pastSessionsSecs);
     if (isClockedIn) {
-      if (!isOnBreak) {
-        // Calculate live ongoing session elapsed seconds from currentSessionStartTimestamp or clockInTimestamp
-        if (sessStart > 0 && sessStart <= now) {
-          const currentSessionElapsed = Math.max(0, Math.floor((now - sessStart) / 1000));
-          liveWorkSecs = (Number(r.workSeconds) || 0) + currentSessionElapsed;
-        } else if (r.lastHeartbeatAt && Number(r.lastHeartbeatAt) <= now) {
-          const elapsedSinceHeartbeat = Math.max(0, Math.floor((now - Number(r.lastHeartbeatAt)) / 1000));
-          liveWorkSecs = (Number(r.workSeconds) || 0) + elapsedSinceHeartbeat;
-        }
+      if (isOnBreak) {
+        liveWorkSecs = Math.min(liveWorkSecs, maxPossibleGrossToday);
+      } else {
+        const curSessionElapsed = (sessStart > 0 && sessStart <= now) ? Math.max(0, Math.floor((now - sessStart) / 1000)) : 0;
+        const elapsedSinceHeartbeat = (r.lastHeartbeatAt && Number(r.lastHeartbeatAt) <= now) ? Math.max(0, Math.floor((now - Number(r.lastHeartbeatAt)) / 1000)) : 0;
+        const heartbeatBased = (Number(r.workSeconds) || 0) + elapsedSinceHeartbeat;
+        const sessionBased = pastSessionsSecs + curSessionElapsed;
+        liveWorkSecs = Math.min(Math.max(heartbeatBased, sessionBased), maxPossibleGrossToday);
       }
+    } else if (isClockedOut) {
+      liveWorkSecs = Math.min(liveWorkSecs, maxPossibleGrossToday);
     }
 
     // Match any actively running task for this employee from Task collection

@@ -309,10 +309,10 @@ export const workService = {
                 const remoteHoursLogged = Number(rt.hoursLogged) || 0;
 
                 const isRemoteActive = Boolean(rt.timerRunning && rt.startedAt);
-                const localStartedRecently = Boolean(local.timerRunning && local.startedAt && (Date.now() - Number(local.startedAt) < 4000));
+                const isLocalActive = Boolean(local.timerRunning && local.startedAt);
 
-                const effectiveRunning = isRemoteActive ? true : (localStartedRecently ? true : false);
-                const effectiveStartedAt = isRemoteActive ? rt.startedAt : (localStartedRecently ? local.startedAt : null);
+                const effectiveRunning = isRemoteActive || isLocalActive;
+                const effectiveStartedAt = isLocalActive ? local.startedAt : (isRemoteActive ? rt.startedAt : null);
                 // Invariant: Task timer seconds and accumulated seconds can never run backwards!
                 const effectiveSecs = Math.max(localTimerSecs, remoteTimerSecs);
                 const effectiveAccum = Math.max(localAccum, remoteAccum);

@@ -410,10 +410,6 @@ export const WorkProvider = ({ children }) => {
               sessionDate: today
             };
             saveActiveTimerSnapshot(restoredTimer);
-          } else if (!isRemoteActive && activeTimer && String(activeTimer.taskId) === tId && activeTimer.timerRunning) {
-            // Task was stopped or paused on another device/browser: synchronize pause on this browser too
-            clearActiveTimerSnapshot();
-            isRunning = false;
           }
         } else {
           isRunning = Boolean(t.timerRunning && isStartedToday);
@@ -507,7 +503,7 @@ export const WorkProvider = ({ children }) => {
         }
       } else if (curSnapshot?.timerRunning) {
         const matchTask = cleanMergedTasks.find(t => String(t._id || t.id) === String(curSnapshot.taskId));
-        if (matchTask && !matchTask.timerRunning) {
+        if (matchTask && (matchTask.status === 'completed' || matchTask.completedAt)) {
           saveActiveTimerSnapshot({
             ...curSnapshot,
             timerRunning: false,
@@ -539,17 +535,12 @@ export const WorkProvider = ({ children }) => {
       readTimerStorage(currentUser, 'clock_out') ||
       readTimerStorage(currentUser, 'clockout_time') ||
       readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-      readTimerStorage(currentUser, 'had_clocked_out') === true ||
-      localStorage.getItem(`ems_timer_${userKey}_clock_out`) ||
-      localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true' ||
-      (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_clock_out`))
+      readTimerStorage(currentUser, 'had_clocked_out') === true
     );
     if (hadClockedOut) return null;
 
     const isShiftClockedIn = readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
-      readTimerStorage(currentUser, 'is_clocked_in') === true ||
-      localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true' ||
-      (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true');
+      readTimerStorage(currentUser, 'is_clocked_in') === true;
     if (!isShiftClockedIn) return null;
     return tasks.find(t => t.timerRunning && t.status !== 'completed' && !t.completedAt && isTaskAssignedToMe(t)) || null;
   }, [tasks, currentUser, isTaskAssignedToMe, userKey]);
@@ -626,28 +617,19 @@ export const WorkProvider = ({ children }) => {
     const timerInterval = setInterval(() => {
       const activeTimer = getActiveTimerSnapshot();
 
-      const isShiftOnBreak = localStorage.getItem(`ems_timer_${userKey}_is_on_break`) === 'true' ||
-        (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_on_break`) === 'true') ||
-        readTimerStorage(currentUser, 'is_on_break') === 'true' ||
+      const isShiftOnBreak = readTimerStorage(currentUser, 'is_on_break') === 'true' ||
         readTimerStorage(currentUser, 'is_on_break') === true;
 
       const hadClockedOut = Boolean(
         readTimerStorage(currentUser, 'clock_out') ||
         readTimerStorage(currentUser, 'clockout_time') ||
         readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-        readTimerStorage(currentUser, 'had_clocked_out') === true ||
-        localStorage.getItem(`ems_timer_${userKey}_clock_out`) ||
-        localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true' ||
-        (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_clock_out`)) ||
-        (currentUser?._id && localStorage.getItem(`ems_timer_${currentUser._id}_clock_out`))
+        readTimerStorage(currentUser, 'had_clocked_out') === true
       );
 
       let isShiftClockedIn = !hadClockedOut && (
         readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
-        readTimerStorage(currentUser, 'is_clocked_in') === true ||
-        localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true' ||
-        (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true') ||
-        (currentUser?._id && localStorage.getItem(`ems_timer_${currentUser._id}_is_clocked_in`) === 'true')
+        readTimerStorage(currentUser, 'is_clocked_in') === true
       );
 
       if (!isShiftClockedIn && !hadClockedOut) {

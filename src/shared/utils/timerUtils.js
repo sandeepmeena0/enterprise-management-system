@@ -251,14 +251,15 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     const telem = options.telemetry;
     if (telem.isClockedIn) {
       if (telem.isOnBreak) {
-        return Number(telem.workSeconds) || 0;
+        return Math.min(Number(telem.workSeconds) || 0, maxPossibleGrossToday);
       }
       // Smoothly tick forward every second between backend telemetry polls
       const baseTs = Number(telem.fetchedAt || telem.timestamp || nowMs);
       const elapsedBetweenPolls = Math.max(0, Math.floor((nowMs - baseTs) / 1000));
-      return (Number(telem.workSeconds) || 0) + elapsedBetweenPolls;
+      const liveTelemSecs = (Number(telem.workSeconds) || 0) + elapsedBetweenPolls;
+      return Math.min(liveTelemSecs, maxPossibleGrossToday);
     } else if (telem.clockOutTime) {
-      return Number(telem.workSeconds) || 0;
+      return Math.min(Number(telem.workSeconds) || 0, maxPossibleGrossToday);
     } else {
       // Telemetry exists and employee has neither clocked in nor clocked out today on server
       return 0;
@@ -422,21 +423,19 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
   let baseSecs = 0;
   if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
     baseSecs = Number(task.dailySessions[targetDate]) || 0;
-  } else if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined) {
-    baseSecs = Number(task.todayWorkSeconds) || 0;
-  } else if (task.sessionDate === targetDate && !task.dailySessions && (task.startDate === targetDate || task.createdAt?.startsWith(targetDate))) {
-    // Single-day task created and worked exclusively on targetDate
+  } else if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined && Number(task.todayWorkSeconds) > 0) {
+    baseSecs = Number(task.todayWorkSeconds);
+  } else if (task.sessionDate === targetDate) {
+    baseSecs = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
+  } else if (task.startDate === targetDate || task.createdAt?.startsWith(targetDate)) {
     baseSecs = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
   } else if (task.completedOn === targetDate || (task.completedAt && String(task.completedAt).startsWith(targetDate))) {
-    // If completed on targetDate, strictly count work performed on targetDate
     if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
       baseSecs = Number(task.dailySessions[targetDate]) || 0;
     } else if (task.sessionDate === targetDate && Number(task.todayWorkSeconds) > 0) {
       baseSecs = Number(task.todayWorkSeconds);
-    } else if (!task.dailySessions && (task.startDate === targetDate || task.createdAt?.startsWith(targetDate))) {
-      baseSecs = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
     } else {
-      baseSecs = 0;
+      baseSecs = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
     }
   } else {
     // STRICT: Past tasks not worked today have 0 seconds for today!
