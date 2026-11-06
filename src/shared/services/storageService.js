@@ -172,8 +172,6 @@ export const purgeStaleMockData = () => {
         const key = localStorage.key(i);
         if (
           key && (
-            key.startsWith('ems_timer_') ||
-            key.startsWith('ems_active_task_timer_') ||
             key.includes('emp_00') ||
             key.includes('EMP-00') ||
             key.includes('Priya') ||

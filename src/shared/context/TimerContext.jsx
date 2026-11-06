@@ -29,7 +29,8 @@ import {
   calculateShiftWorkSeconds,
   getTaskTodaySeconds,
   syncTaskPauseState,
-  performShiftClockOut
+  performShiftClockOut,
+  getLocalDateStr
 } from '../utils/timerUtils';
 
 const defaultTimerContext = {
@@ -69,13 +70,7 @@ export const TimerProvider = ({ children }) => {
   const { currentUser: hrUser } = useHR();
   const currentUser = authUser || hrUser;
 
-  const getTodayStr = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  const getTodayStr = () => getLocalDateStr();
 
   // Derive canonical userKey for multi-user storage isolation
   const userKey = useMemo(() => {
@@ -727,35 +722,58 @@ export const TimerProvider = ({ children }) => {
         }
       } catch {}
 
-      // 2. Query MongoDB Atlas backend for latest attendance record
+      // 2. Query MongoDB Atlas backend for latest attendance record (Fast live telemetry SSOT first)
       try {
-        const nowD = new Date();
-        const remoteList = await hrService.getMonthlyAttendance(nowD.getMonth() + 1, nowD.getFullYear(), targetEmpId);
-        if (Array.isArray(remoteList)) {
-          const remoteRec = remoteList.find(a => isRecordForUser(a, today));
-          if (remoteRec) {
-            rec = remoteRec;
-            try {
-              const attRaw = localStorage.getItem('hrms_attendance');
-              let attList = attRaw ? JSON.parse(attRaw) : [];
-              if (!Array.isArray(attList)) attList = [];
-              const idx = attList.findIndex(a => isRecordForUser(a, today));
-              if (idx !== -1) {
-                attList[idx] = { ...attList[idx], ...remoteRec };
-              } else {
-                attList.unshift(remoteRec);
-              }
-              localStorage.setItem('hrms_attendance', JSON.stringify(attList));
-            } catch (_) {}
+        const telemRes = await hrService.getLiveTelemetry(today);
+        const telemMap = (telemRes && typeof telemRes === 'object') ? (telemRes.data || telemRes) : {};
+        const empKeys = [
+          userKey,
+          targetEmpId,
+          targetEmpCode,
+          currentUser?._id,
+          currentUser?.employeeCode
+        ].filter(Boolean).map(String);
+
+        let telemRec = null;
+        for (const k of empKeys) {
+          if (telemMap[k]) {
+            telemRec = telemMap[k];
+            break;
+          }
+        }
+
+        if (telemRec) {
+          rec = telemRec;
+        } else {
+          const nowD = new Date();
+          const remoteList = await hrService.getMonthlyAttendance(nowD.getMonth() + 1, nowD.getFullYear(), targetEmpId);
+          if (Array.isArray(remoteList)) {
+            const remoteRec = remoteList.find(a => isRecordForUser(a, today));
+            if (remoteRec) {
+              rec = remoteRec;
+              try {
+                const attRaw = localStorage.getItem('hrms_attendance');
+                let attList = attRaw ? JSON.parse(attRaw) : [];
+                if (!Array.isArray(attList)) attList = [];
+                const idx = attList.findIndex(a => isRecordForUser(a, today));
+                if (idx !== -1) {
+                  attList[idx] = { ...attList[idx], ...remoteRec };
+                } else {
+                  attList.unshift(remoteRec);
+                }
+                localStorage.setItem('hrms_attendance', JSON.stringify(attList));
+              } catch (_) {}
+            }
           }
         }
       } catch (err) {}
 
-      const today = getTodayStr();
       const localSessionDate = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
+      const rawInTs = Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`)) || Number(rec?.clockInTimestamp) || 0;
+      const isUnder16h = rawInTs > 0 && (Date.now() - rawInTs) < 16 * 3600 * 1000;
 
-      // If localSessionDate is from a previous calendar day, reset all live timer keys for fresh day start
-      if (localSessionDate && localSessionDate !== today) {
+      // If localSessionDate is from a previous calendar day, reset all live timer keys for fresh day start (protect shifts under 16h)
+      if (localSessionDate && localSessionDate !== today && !isUnder16h) {
         localStorage.removeItem(`ems_timer_${userKey}_login_time`);
         localStorage.removeItem(`ems_timer_${userKey}_clockout_time`);
         localStorage.removeItem(`ems_timer_${userKey}_clock_in_timestamp`);
@@ -781,7 +799,7 @@ export const TimerProvider = ({ children }) => {
       // If remote record shows isClockedIn is true for today, employee is actively working regardless of local stale clock-out flag!
       const remoteIsClockedIn = Boolean(
         rec &&
-        rec.date === today &&
+        (rec.date === today || isUnder16h) &&
         rec.isClockedIn === true &&
         (rec.clockInTime || rec.clockIn) &&
         !rec.clockOutTime &&
@@ -807,13 +825,16 @@ export const TimerProvider = ({ children }) => {
       }
 
 
-      const isActuallyClockedIn = !localHadClockedOut && (remoteIsClockedIn || (localIsClockedIn && (!localSessionDate || localSessionDate === today)));
-      const isActuallyClockedOut = !isActuallyClockedIn && (Boolean(rec && rec.date === today && (rec.clockOutTime || rec.clockOut) && !rec.isClockedIn) || localHadClockedOut);
+      const isActuallyClockedIn = remoteIsClockedIn || (!localHadClockedOut && localIsClockedIn && (!localSessionDate || localSessionDate === today || isUnder16h));
+      const isActuallyClockedOut = !isActuallyClockedIn && (
+        Boolean(rec && (rec.date === today || isUnder16h) && (rec.clockOutTime || rec.clockOut) && !rec.isClockedIn) ||
+        (localHadClockedOut && localSessionDate === today)
+      );
 
       if (isActuallyClockedIn) {
         const inTime = rec?.clockInTime || rec?.clockIn || loginTime || localStorage.getItem(`ems_timer_${userKey}_login_time`);
         if (!inTime) return;
-        let inTs = Number(rec?.clockInTimestamp);
+        let inTs = Number(rec?.clockInTimestamp) || Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
         const todayMidnight = new Date();
         todayMidnight.setHours(0, 0, 0, 0);
 
@@ -822,7 +843,7 @@ export const TimerProvider = ({ children }) => {
           inTs = todayMidnight.getTime() + parsedSecs * 1000;
         }
 
-        const bSecs = Number(rec?.breakSeconds) || 0;
+        const bSecs = Number(rec?.breakSeconds) || Number(localStorage.getItem(`ems_timer_${userKey}_break_seconds`)) || 0;
         const maxGrossSecs = (inTs && inTs >= todayMidnight.getTime())
           ? Math.max(0, Math.floor((Date.now() - inTs) / 1000))
           : Math.max(0, Math.floor((Date.now() - todayMidnight.getTime()) / 1000));
@@ -840,12 +861,14 @@ export const TimerProvider = ({ children }) => {
         localStorage.setItem(`ems_timer_${userKey}_punch_sessions`, JSON.stringify(remoteSessions));
 
         const pastSessionsSecs = remoteSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
-        let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`)) || inTs;
+        const serverSessStart = Number(rec?.currentSessionStartTimestamp || rec?.clockInTimestamp);
+        let sessStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_current_session_start_timestamp`)) || serverSessStart || inTs;
         sessStartTs = Math.max(sessStartTs, todayMidnight.getTime());
         const curSessionGrossSecs = Math.max(0, Math.floor((Date.now() - sessStartTs) / 1000));
         const sessionBreakBaseline = Number(localStorage.getItem(`ems_timer_${userKey}_session_break_baseline`)) || 0;
         const curSessionBreaks = Math.max(0, bSecs - sessionBreakBaseline);
-        const effectiveWorkSecs = Math.min(maxGrossSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+        const computedSecs = Math.min(maxGrossSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+        const effectiveWorkSecs = Math.max(Number(rec?.workSeconds || 0), computedSecs);
 
         const localIsOnBreak = localStorage.getItem(`ems_timer_${userKey}_is_on_break`) === 'true';
         const localBreakStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_break_start_timestamp`));
@@ -867,7 +890,7 @@ export const TimerProvider = ({ children }) => {
           : (bSecs > 0 ? bSecs : localStoredBreakSecs);
         setBreakSeconds(prev => (effectiveOnBreak ? Math.max(prev, effectiveBreakSecs) : effectiveBreakSecs));
 
-        // 🌟 FLICKER PREVENTION: While timer is running, tick() is the single driver of workSeconds. Never overwrite live seconds!
+        // 🌟 Synchronize authoritative workSeconds if state was unhydrated
         setWorkSeconds(prev => (prev > 0 ? prev : effectiveWorkSecs));
 
         if (rec?.breakType) setBreakType(rec.breakType);
@@ -876,20 +899,17 @@ export const TimerProvider = ({ children }) => {
           localStorage.setItem(`ems_timer_${userKey}_break_history`, JSON.stringify(rec.breakHistory));
         }
 
-        const mirrorKeys = [userKey, targetEmpId, targetEmpCode].filter(Boolean);
+        const mirrorKeys = [userKey, targetEmpId, targetEmpCode, currentUser?._id, currentUser?.employeeCode].filter(Boolean);
         for (const uk of mirrorKeys) {
           localStorage.setItem(`ems_timer_${uk}_work_session_date`, today);
           localStorage.setItem(`ems_timer_${uk}_is_clocked_in`, 'true');
           localStorage.setItem(`ems_timer_${uk}_is_running`, effectiveOnBreak ? 'false' : 'true');
           localStorage.setItem(`ems_timer_${uk}_is_on_break`, effectiveOnBreak ? 'true' : 'false');
           localStorage.setItem(`ems_timer_${uk}_login_time`, inTime);
-          if (!localStorage.getItem(`ems_timer_${uk}_clock_in_timestamp`)) {
-            localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(inTs));
-          }
-          if (!localStorage.getItem(`ems_timer_${uk}_current_session_start_timestamp`)) {
-            localStorage.setItem(`ems_timer_${uk}_current_session_start_timestamp`, String(sessStartTs));
-          }
+          localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(inTs));
+          localStorage.setItem(`ems_timer_${uk}_current_session_start_timestamp`, String(sessStartTs));
           localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, 'false');
+          localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(effectiveWorkSecs));
           const curStoredBreak = Number(localStorage.getItem(`ems_timer_${uk}_break_seconds`)) || 0;
           const breakToPersist = effectiveOnBreak ? Math.max(curStoredBreak, effectiveBreakSecs) : effectiveBreakSecs;
           localStorage.setItem(`ems_timer_${uk}_break_seconds`, String(breakToPersist));
@@ -942,10 +962,10 @@ export const TimerProvider = ({ children }) => {
     }
   }, [userKey, targetEmpId, isRecordForUser, loginTime]);
 
-  // Periodic and reactive sync for cross-device consistency
+  // Periodic and reactive sync for cross-device consistency (3s cloud poller)
   useEffect(() => {
     syncLiveShiftState();
-    const interval = setInterval(syncLiveShiftState, 5000);
+    const interval = setInterval(syncLiveShiftState, 3000);
     const handleSync = () => syncLiveShiftState();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') syncLiveShiftState();
@@ -1124,9 +1144,10 @@ export const TimerProvider = ({ children }) => {
         return;
       }
 
-      // Guard: Check if active timer belongs to a prior calendar day (midnight rollover / forgotten clock-out)
+      // Guard: Check if active timer belongs to a prior calendar day (protect active shifts under 16h)
       const storedSessionDate = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
-      const isPastDaySession = Boolean(
+      const isShiftUnder16h = clockInTs > 0 && (Date.now() - clockInTs) < 16 * 3600 * 1000;
+      const isPastDaySession = !isShiftUnder16h && Boolean(
         (storedSessionDate && storedSessionDate !== today) ||
         (clockInTs && clockInTs < todayMidnightMs)
       );
@@ -1135,7 +1156,7 @@ export const TimerProvider = ({ children }) => {
         // Auto-close yesterday's attendance record in background before resetting today's session
         try {
           const inDate = (clockInTs && clockInTs < todayMidnightMs)
-            ? new Date(clockInTs).toISOString().split('T')[0]
+            ? getLocalDateStr(clockInTs)
             : (storedSessionDate || '');
           const rawAtt = localStorage.getItem('hrms_attendance');
           if (rawAtt && inDate) {

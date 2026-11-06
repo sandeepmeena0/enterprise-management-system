@@ -386,13 +386,36 @@ export const WorkProvider = ({ children }) => {
 
         const isAssignedToMe = isTaskAssignedToMe(t);
         const isActive = activeTimer && activeTimer.timerRunning && (String(activeTimer.taskId) === tId || String(activeTimer._id) === tId);
+        const isStartedToday = t.startedAt && Number(t.startedAt) >= todayMidnightMs;
+        const isRemoteActive = Boolean(t.timerRunning && isStartedToday);
 
         // For current user: ONLY the single active task timer is running!
         let isRunning = false;
         if (isAssignedToMe) {
-          isRunning = Boolean(isActive);
+          isRunning = Boolean(isActive || isRemoteActive);
+          // If task is running remotely on Atlas but this fresh browser doesn't have activeTimer snapshot, hydrate it!
+          if (isRemoteActive && (!activeTimer || !activeTimer.timerRunning)) {
+            const restoredTimer = {
+              taskId: t._id,
+              taskCode: t.taskCode,
+              title: t.title,
+              projectName: t.projectName,
+              assignedToId: t.assignedToId || userKey,
+              assignedToName: t.assignedToName || currentUser?.name,
+              timerRunning: true,
+              startedAt: t.startedAt,
+              accumulatedSeconds: Number(t.accumulatedSeconds || t.timerSeconds || 0),
+              timerSeconds: Number(t.accumulatedSeconds || t.timerSeconds || 0),
+              date: today,
+              sessionDate: today
+            };
+            saveActiveTimerSnapshot(restoredTimer);
+          } else if (!isRemoteActive && activeTimer && String(activeTimer.taskId) === tId && activeTimer.timerRunning) {
+            // Task was stopped or paused on another device/browser: synchronize pause on this browser too
+            clearActiveTimerSnapshot();
+            isRunning = false;
+          }
         } else {
-          const isStartedToday = t.startedAt && Number(t.startedAt) >= todayMidnightMs;
           isRunning = Boolean(t.timerRunning && isStartedToday);
         }
 
@@ -568,12 +591,12 @@ export const WorkProvider = ({ children }) => {
       }
     });
 
-    // Periodic synchronization from DB (every 12 seconds) + tab focus across laptops (Localhost vs Vercel Live)
+    // Periodic synchronization from DB (every 3.5 seconds) + tab focus across devices / laptops
     const syncInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         scheduleDebouncedLoad(true);
       }
-    }, 12000);
+    }, 3500);
 
     const handleFocus = () => scheduleDebouncedLoad(true);
     const handleVisibility = () => {
