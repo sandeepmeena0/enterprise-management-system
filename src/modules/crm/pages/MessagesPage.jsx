@@ -54,6 +54,29 @@ import { processFileForChat, downloadChatAttachment } from '../utils/chatMediaUt
 import { getDmPartner, getUnreadCountForUser } from '../utils/chatPrivacyUtils';
 import { useToast } from '../../../shared/context/ToastContext';
 
+const formatChatDateDivider = (timestamp) => {
+  if (!timestamp) return 'Today';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return 'Today';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((today - msgDate) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatChatTime = (timestamp, fallback) => {
+  if (!timestamp) return fallback || 'Just now';
+  const d = new Date(timestamp);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return fallback || 'Just now';
+};
+
 export const MessagesPage = () => {
   const {
     visibleConversations,
@@ -260,10 +283,12 @@ export const MessagesPage = () => {
     try {
       sendMessage(activeConv.id, textToSend, attachmentsToSend);
     } finally {
-      setTimeout(() => {
+      // 0ms instant fluid messaging: eliminate 600ms artificial lock so typing/sending is completely lag-free
+      queueMicrotask(() => {
         isSendingRef.current = false;
         setIsSending(false);
-      }, 600);
+        inputRef.current?.focus();
+      });
     }
   };
 
@@ -789,12 +814,23 @@ export const MessagesPage = () => {
                     displayMessages.map((msg, idx) => {
                       const outgoing = isCurrentSender(msg);
                       const itemKey = msg.id ? `${msg.id}_${idx}` : `msg_${idx}`;
+                      const prevMsg = idx > 0 ? displayMessages[idx - 1] : null;
+                      const currentDateDivider = formatChatDateDivider(msg.createdAt || msg.timestamp);
+                      const prevDateDivider = prevMsg ? formatChatDateDivider(prevMsg.createdAt || prevMsg.timestamp) : null;
+                      const showDateDivider = idx === 0 || currentDateDivider !== prevDateDivider;
 
                       return (
-                        <div
-                          key={itemKey}
-                          className={`flex flex-col max-w-[78%] sm:max-w-[68%] ${outgoing ? 'self-end' : 'self-start'}`}
-                        >
+                        <React.Fragment key={itemKey}>
+                          {showDateDivider && (
+                            <div className="flex items-center justify-center my-2.5">
+                              <span className="bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10.5px] font-bold px-3 py-0.5 rounded-full shadow-xs border border-slate-300/60 dark:border-slate-700/60">
+                                {currentDateDivider}
+                              </span>
+                            </div>
+                          )}
+                          <div
+                            className={`flex flex-col max-w-[78%] sm:max-w-[68%] ${outgoing ? 'self-end' : 'self-start'}`}
+                          >
                           {/* Sender Label for Incoming or Channel Messages */}
                           {!outgoing && (
                             <div className="flex items-center gap-1.5 mb-1 ml-1">
@@ -897,7 +933,7 @@ export const MessagesPage = () => {
 
                           {/* Timestamp & Read Receipt Status */}
                           <div className={`text-[10px] text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1.5 ${outgoing ? 'self-end' : 'self-start'}`}>
-                            <span>{msg.timestamp || 'Just now'}</span>
+                            <span>{formatChatTime(msg.createdAt, msg.timestamp)}</span>
                             {outgoing && (
                               isMessageReadByOther(msg) ? (
                                 <span title={activeIsChannel ? 'Seen by channel members' : `Seen by ${activePartner?.name || 'recipient'}`} className="inline-flex items-center text-blue-500 dark:text-sky-400">
@@ -911,9 +947,10 @@ export const MessagesPage = () => {
                             )}
                           </div>
                         </div>
-                      );
-                    })
-                  )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
                   <div ref={messagesEndRef} />
                 </div>
 

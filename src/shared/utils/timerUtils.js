@@ -364,23 +364,21 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       const elapsedSinceHeartbeat = Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000));
       const rawTelemSecs = (Number(telem.workSeconds) || 0) + elapsedSinceHeartbeat;
 
-      // Monotonic Shield: Telemetry work seconds for an active employee can NEVER decrease between polls, but must NEVER exceed physical bounds!
+      // Monotonic Shield: Telemetry work seconds for an active employee ticks smoothly and never drops unexpectedly.
+      // If a new session began or user reset, allow reset if diff > 20s.
       const prevMonotonic = monotonicTelemetryWorkSecsMap.get(empKey) || 0;
-      let liveTelemSecs = Math.max(prevMonotonic, rawTelemSecs);
+      let liveTelemSecs = (prevMonotonic > 0 && rawTelemSecs < prevMonotonic - 20)
+        ? rawTelemSecs
+        : Math.max(prevMonotonic, rawTelemSecs);
 
-      // INVARIANT: When telemetry arrives after 10-11s, it must NEVER drop below true physical wall-clock time!
-      // (suru me jo time aata hai wo clock in timestamp se calculate hota hai, telemetry use decrease nhi karegi)
-      const combinedLiveSecs = Math.max(liveWallClockSecs, liveTelemSecs);
-
-      let finalLiveSecs = combinedLiveSecs;
-      if (finalLiveSecs > maxPhysicalElapsedToday) {
+      let finalLiveSecs = Math.min(liveTelemSecs, maxPhysicalElapsedToday);
+      if (finalLiveSecs >= maxPhysicalElapsedToday) {
         monotonicTelemetryWorkSecsMap.delete(empKey);
-        finalLiveSecs = maxPhysicalElapsedToday;
       } else {
         monotonicTelemetryWorkSecsMap.set(empKey, finalLiveSecs);
       }
 
-      return Math.min(finalLiveSecs, maxPhysicalElapsedToday);
+      return finalLiveSecs;
     } else if (telem.clockOutTime || options.isClockedOut) {
       if (empKey) monotonicTelemetryWorkSecsMap.delete(empKey);
       let outSecs = Number(telem.workSeconds) || 0;

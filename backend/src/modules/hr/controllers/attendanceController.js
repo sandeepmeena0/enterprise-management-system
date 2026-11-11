@@ -908,7 +908,7 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     isOnBreak: Boolean(isOnBreak),
     breakType: breakType || null,
     breakStartTimestamp: breakStartTimestamp ? Number(breakStartTimestamp) : null,
-    activeTask: activeTask ? { ...activeTask, timerRunning: activeTask.timerRunning !== false } : null,
+    activeTask: (activeTask && activeTask.timerRunning !== false) ? { ...activeTask, timerRunning: true } : null,
     lastHeartbeatAt: Date.now()
   };
 
@@ -1171,7 +1171,7 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         startedAt: matchedTask.startedAt,
         timerRunning: true
       };
-    } else if (r.activeTask && r.activeTask.startedAt && isClockedIn && !isOnBreak) {
+    } else if (r.activeTask && r.activeTask.timerRunning !== false && r.activeTask.startedAt && isClockedIn && !isOnBreak) {
       const taskStart = Number(r.activeTask.startedAt);
       const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
       let todayTaskBase = 0;
@@ -1242,7 +1242,12 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       const id = String(cachedVal.employeeId || '');
       const existingTelem = telemetryMap[code] || telemetryMap[id] || null;
 
-      let effectiveActiveTask = cachedVal.activeTask || existingTelem?.activeTask || null;
+      let effectiveActiveTask = null;
+      if (cachedVal && 'activeTask' in cachedVal) {
+        effectiveActiveTask = (cachedVal.activeTask && cachedVal.activeTask.timerRunning !== false) ? cachedVal.activeTask : null;
+      } else if (existingTelem && existingTelem.activeTask && existingTelem.activeTask.timerRunning !== false) {
+        effectiveActiveTask = existingTelem.activeTask;
+      }
       if (effectiveActiveTask && effectiveActiveTask.startedAt && cachedVal.isClockedIn && !cachedVal.isOnBreak) {
         const taskStart = Number(effectiveActiveTask.startedAt);
         const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));

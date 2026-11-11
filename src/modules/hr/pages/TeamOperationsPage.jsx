@@ -404,15 +404,17 @@ export const TeamOperationsPage = () => {
       }
     } catch {}
 
+    const isTimerExplicitlyPaused = activeTimer && activeTimer.timerRunning === false;
+
     const localRunningTask = (activeTimer && activeTimer.timerRunning !== false)
       ? activeTimer
       : (empTasks.find(t => t.timerRunning) || null);
 
-    const telemRunningTask = (telem?.activeTask && (telem.activeTask.timerRunning !== false || telem.activeTask.startedAt))
+    const telemRunningTask = (!isTimerExplicitlyPaused && telem?.activeTask && (telem.activeTask.timerRunning !== false || telem.activeTask.startedAt))
       ? telem.activeTask
       : null;
 
-    const candidateTask = localRunningTask || telemRunningTask;
+    const candidateTask = localRunningTask || (isTimerExplicitlyPaused ? null : telemRunningTask);
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave) {
       const isTimerRunning = Boolean(candidateTask.timerRunning !== false && !effectiveOnBreak);
@@ -723,29 +725,61 @@ export const TeamOperationsPage = () => {
     }
   };
 
-  // 3. Admin Pause Task Timer
+  // 3. Admin Instant 0ms Task Pause
   const handleAdminPauseTask = async (task, emp) => {
     try {
-      const empKey = emp.employeeCode || String(emp._id);
-      const allTasks = getCollection(KEYS.TASKS) || [];
-      const updatedTasks = allTasks.map(t => {
-        if (String(t._id || t.id) === String(task._id || task.id)) {
-          return { ...t, timerRunning: false, sessionDate: todayStr };
-        }
-        return t;
-      });
-      saveCollection(KEYS.TASKS, updatedTasks);
+      const taskId = task._id || task.id || task.taskId;
+      const empId = String(emp._id || emp.id || '');
+      const empCode = String(emp.employeeCode || '');
+      const empKey = empCode || empId;
 
-      const timerKey = `ems_active_task_timer_${empKey}`;
-      const raw = localStorage.getItem(timerKey);
-      if (raw) {
+      // 1. Optimistic live telemetry update (0ms instant UI reflection)
+      setLiveTelemetryMap(prev => {
+        const next = { ...prev };
+        [empId, empCode, empKey].filter(Boolean).forEach(k => {
+          if (next[k]) {
+            next[k] = { ...next[k], activeTask: null };
+          }
+        });
+        return next;
+      });
+
+      // 2. Clear memory cache for this task
+      const taskKey = String(taskId);
+      liveTaskMemoryRef.current.delete(taskKey);
+      [empId, empCode, empKey].filter(Boolean).forEach(k => liveTaskMemoryRef.current.delete(k));
+
+      // 3. Update localStorage for employee
+      const timerKeys = [
+        `ems_active_task_timer_${empKey}`,
+        empId ? `ems_active_task_timer_${empId}` : null,
+        empCode ? `ems_active_task_timer_${empCode}` : null
+      ].filter(Boolean);
+      timerKeys.forEach(k => {
         try {
-          const parsed = JSON.parse(raw);
-          parsed.timerRunning = false;
-          parsed.startedAt = null;
-          localStorage.setItem(timerKey, JSON.stringify(parsed));
-        } catch {}
-      }
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            parsed.timerRunning = false;
+            parsed.startedAt = null;
+            localStorage.setItem(k, JSON.stringify(parsed));
+          } else {
+            localStorage.setItem(k, JSON.stringify({ timerRunning: false, taskId, startedAt: null }));
+          }
+        } catch (_) {}
+      });
+
+      // 4. Send backend heartbeat with activeTask: null
+      try {
+        hrService.sendHeartbeat({
+          employeeId: empId || empKey,
+          employeeCode: empCode || empKey,
+          activeTask: null
+        }).catch(() => {});
+      } catch (_) {}
+
+      // 5. WorkContext pause
+      pauseTaskTimer(taskId);
 
       await hrService.createAttendanceAuditLog({
         type: 'admin_task_pause_override',
@@ -756,16 +790,61 @@ export const TeamOperationsPage = () => {
         employeeName: emp.name,
         actorId: currentUser?._id,
         actorName: currentUser?.name || 'Admin',
-        note: `Admin paused task #${task.taskCode || 'TSK'}: "${task.title}" for ${emp.name}`
+        note: `Admin paused task #${task.taskCode || 'TSK'}: "${task.title || ''}" for ${emp.name}`
       });
 
-      window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { taskId: task._id, empKey } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
       setSyncTick(t => t + 1);
       addToast(`⏸️ Paused task #${task.taskCode || 'TSK'} for ${emp.name}!`, 'info');
     } catch (err) {
       console.error('Failed to pause task:', err);
       addToast('Failed to pause task', 'error');
+    }
+  };
+
+  // 4. Admin Instant 0ms Task Start / Resume
+  const handleAdminStartTask = async (task, emp) => {
+    try {
+      const taskId = task._id || task.id;
+      const empId = String(emp._id || emp.id || '');
+      const empCode = String(emp.employeeCode || '');
+      const empKey = empCode || empId;
+      const now = Date.now();
+
+      const runningObj = {
+        taskId,
+        taskCode: task.taskCode || 'TSK',
+        title: task.title,
+        projectName: task.projectName || 'General Work',
+        timerRunning: true,
+        startedAt: now,
+        accumulatedSeconds: Number(task.accumulatedSeconds || task.timerSeconds || 0)
+      };
+
+      // 1. Optimistic live telemetry update (0ms instant UI reflection)
+      setLiveTelemetryMap(prev => {
+        const next = { ...prev };
+        [empId, empCode, empKey].filter(Boolean).forEach(k => {
+          if (next[k]) {
+            next[k] = { ...next[k], activeTask: runningObj };
+          }
+        });
+        return next;
+      });
+
+      // 2. Set memory cache
+      liveTaskMemoryRef.current.set(String(taskId), {
+        startedAt: now,
+        lastLiveSecs: Number(task.accumulatedSeconds || task.timerSeconds || 0)
+      });
+
+      // 3. WorkContext start
+      startTaskTimer(taskId, { skipClockInCheck: true });
+
+      setSyncTick(t => t + 1);
+      addToast(`▶️ Started #${task.taskCode || 'TSK'} for ${emp.name}!`, 'success');
+    } catch (err) {
+      console.error('Failed to start task:', err);
+      addToast('Failed to start task', 'error');
     }
   };
 
@@ -1630,8 +1709,8 @@ export const TeamOperationsPage = () => {
                 <th className="px-4 py-3 font-bold">Department</th>
                 <th className="px-4 py-3 font-bold">Shift Status</th>
                 <th className="px-4 py-3 font-bold">Punch Times</th>
-                <th className="px-4 py-3 font-bold">Net Work Time</th>
-                <th className="px-4 py-3 font-bold">Active Running Task</th>
+                <th className="px-4 py-3 font-bold" title="Total attendance shift time clocked in today (minus breaks)">Shift Duration (Duty)</th>
+                <th className="px-4 py-3 font-bold" title="Current productive task timer running today">Active Task Timer</th>
                 <th className="px-4 py-3 font-bold text-right">Admin Overrides</th>
               </tr>
             </thead>
@@ -1761,9 +1840,9 @@ export const TeamOperationsPage = () => {
                             <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
                               <span>⏱️ <strong className="text-sky-600 dark:text-sky-400">{item.runningTask.liveDurationText}</strong></span>
                               <button
-                                onClick={() => pauseTaskTimer(item.runningTask._id)}
-                                className="border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50"
-                                title="Pause task timer for employee"
+                                onClick={() => handleAdminPauseTask(item.runningTask, emp)}
+                                className="border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                                title="Instant pause task timer for employee"
                               >
                                 Pause ⏸️
                               </button>
@@ -1779,8 +1858,8 @@ export const TeamOperationsPage = () => {
                             return (
                               <div className="flex items-center gap-1.5">
                                 <button
-                                  onClick={() => startTaskTimer(firstTask._id)}
-                                  className="inline-flex items-center gap-1 border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/50 text-green-600 dark:text-green-400 rounded px-2 py-0.5 text-[10.5px] font-bold cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/50"
+                                  onClick={() => handleAdminStartTask(firstTask, emp)}
+                                  className="inline-flex items-center gap-1 border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/50 text-green-600 dark:text-green-400 rounded px-2 py-0.5 text-[10.5px] font-bold cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
                                   title={`Start timer for ${emp.name} on #${firstTask.taskCode || 'TSK'}: ${firstTask.title}`}
                                 >
                                   <Play size={9} className="fill-green-600" /> Start #{firstTask.taskCode || 'TSK'}

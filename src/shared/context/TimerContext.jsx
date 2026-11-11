@@ -1697,6 +1697,18 @@ export const TimerProvider = ({ children }) => {
       }
     }));
 
+    try {
+      hrService.sendHeartbeat({
+        employeeId: targetEmpId || userKey,
+        employeeCode: targetEmpCode || userKey,
+        isClockedIn: true,
+        isOnBreak: false,
+        breakType: null,
+        breakSeconds: totalBreaksAfterResume,
+        workSeconds
+      }).catch(() => {});
+    } catch (_) {}
+
     // Record audit trail event for break completion
     const isTea = breakType.toLowerCase().includes('tea');
     const isLunch = breakType.toLowerCase().includes('lunch');
@@ -2121,10 +2133,14 @@ export const TimerProvider = ({ children }) => {
             if (rawTask) {
               const p = JSON.parse(rawTask);
               if (p && (p.taskId || p._id)) {
-                activeTaskData = {
-                  ...p,
-                  timerRunning: p.timerRunning !== false
-                };
+                if (p.timerRunning !== false) {
+                  activeTaskData = {
+                    ...p,
+                    timerRunning: true
+                  };
+                } else {
+                  activeTaskData = null;
+                }
                 break;
               }
             }
@@ -2147,8 +2163,21 @@ export const TimerProvider = ({ children }) => {
     };
 
     pulseHeartbeat();
-    const hbInterval = setInterval(pulseHeartbeat, 12000);
-    return () => clearInterval(hbInterval);
+    const hbInterval = setInterval(pulseHeartbeat, 3000);
+
+    const onTaskTimerChange = () => {
+      pulseHeartbeat();
+    };
+    window.addEventListener('ems_task_timer_started', onTaskTimerChange);
+    window.addEventListener('ems_task_timer_paused', onTaskTimerChange);
+    window.addEventListener('ems_task_timer_stopped', onTaskTimerChange);
+
+    return () => {
+      clearInterval(hbInterval);
+      window.removeEventListener('ems_task_timer_started', onTaskTimerChange);
+      window.removeEventListener('ems_task_timer_paused', onTaskTimerChange);
+      window.removeEventListener('ems_task_timer_stopped', onTaskTimerChange);
+    };
   }, [isClockedIn, userKey]);
 
     // ── Auto Clock-In Event Listener (called when employee starts a task timer) ──
