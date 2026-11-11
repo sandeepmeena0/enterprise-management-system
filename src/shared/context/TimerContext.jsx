@@ -1634,6 +1634,7 @@ export const TimerProvider = ({ children }) => {
       hrService.sendHeartbeat({
         employeeId: targetEmpId || userKey,
         employeeCode: targetEmpCode || userKey,
+        isClockedIn: true,
         isOnBreak: true,
         breakType: type,
         breakStartTimestamp: Date.now(),
@@ -2615,7 +2616,17 @@ export const TimerProvider = ({ children }) => {
       // ── Audit Trail & Admin Overrides ──
       recordAuditLog,
       adminForceClockOut: async (targetEmpId, auditNote) => {
-        return await hrService.adminForceClockOut(targetEmpId, auditNote);
+        window.dispatchEvent(new CustomEvent('ems_force_clock_out', {
+          detail: {
+            employeeId: targetEmpId,
+            adminName: currentUser?.name || 'Administrator',
+            adminId: currentUser?.employeeCode || currentUser?._id || 'ADM-001',
+            auditNote
+          }
+        }));
+        hrService.adminForceClockOut(targetEmpId, auditNote)
+          .catch(err => console.warn('[TimerContext] Force clock out sync notice:', err));
+        return { success: true };
       }
     }}>
       {children}

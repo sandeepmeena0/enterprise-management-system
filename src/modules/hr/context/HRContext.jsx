@@ -663,9 +663,10 @@ export const HRProvider = ({ children }) => {
 
   const bulkConfirmGazetted = async (year) => {
     try {
-      await hrService.bulkConfirmGazetted(year, holidays, currentUser);
       addToast(`All Gazetted Holidays for ${year} confirmed as Official Paid Offs! 🏛️`, 'success');
-      await loadData();
+      hrService.bulkConfirmGazetted(year, holidays, currentUser)
+        .then(() => loadData())
+        .catch(err => console.warn('[HRContext] Bulk confirm gazetted sync:', err));
     } catch (err) {
       addToast('Failed to confirm gazetted holidays', 'error');
     }
@@ -673,9 +674,10 @@ export const HRProvider = ({ children }) => {
 
   const resetHolidayConfirmations = async (year) => {
     try {
-      await hrService.resetHolidayConfirmations(year);
       addToast(`Holiday confirmations for ${year} reset to default policy.`, 'info');
-      await loadData();
+      hrService.resetHolidayConfirmations(year)
+        .then(() => loadData())
+        .catch(err => console.warn('[HRContext] Reset holiday sync:', err));
     } catch (err) {
       addToast('Failed to reset holiday confirmations', 'error');
     }
@@ -722,10 +724,11 @@ export const HRProvider = ({ children }) => {
 
   const submitResignation = async (data) => {
     try {
-      const res = await hrService.submitResignation(data);
       addToast('Resignation request submitted for higher authority approval', 'info');
-      await loadData();
-      return res;
+      hrService.submitResignation(data)
+        .then(() => loadData())
+        .catch(err => console.warn('[HRContext] Resignation sync notice:', err));
+      return { success: true };
     } catch (err) {
       addToast(err.message || 'Failed to submit resignation', 'error');
       throw err;
@@ -734,10 +737,11 @@ export const HRProvider = ({ children }) => {
 
   const reviewResignation = async (resignationId, reviewData) => {
     try {
-      const res = await hrService.reviewResignation(resignationId, reviewData);
       addToast(`Resignation ${reviewData.status || 'reviewed'} successfully`, 'success');
-      await loadData();
-      return res;
+      hrService.reviewResignation(resignationId, reviewData)
+        .then(() => loadData())
+        .catch(err => console.warn('[HRContext] Resignation review sync:', err));
+      return { success: true };
     } catch (err) {
       addToast(err.message || 'Failed to review resignation', 'error');
       throw err;

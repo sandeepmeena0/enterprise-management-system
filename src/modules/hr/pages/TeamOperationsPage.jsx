@@ -44,6 +44,8 @@ import { subscribeToSyncEvents, SYNC_EVENTS } from '../../../shared/services/rea
 import { calculateShiftWorkSeconds, getTaskTodaySeconds, readTimerStorage, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';
 
+const liveBreakTrackerMap = new Map();
+
 export const TeamOperationsPage = () => {
   const navigate = useNavigate();
   const { currentUser, isHRorAdmin } = useAuth();
@@ -434,8 +436,8 @@ export const TeamOperationsPage = () => {
       telem?.clockOutTime
     );
 
-    const effectiveOnBreak = telem ? Boolean(telem.isOnBreak) : storedOnBreak;
-    const effectiveBreakType = telem ? (telem.breakType || 'Break') : storedBreakType;
+    const effectiveOnBreak = isSelf ? storedOnBreak : (telem ? Boolean(telem.isOnBreak) : storedOnBreak);
+    const effectiveBreakType = isSelf ? storedBreakType : (telem ? (telem.breakType || 'Break') : storedBreakType);
 
     const loginTime = isClockedIn
       ? (telem?.clockInTime || attRec?.clockInTime || storedLogin || 'Active')
@@ -454,21 +456,42 @@ export const TeamOperationsPage = () => {
       telemetry: isSelf ? null : telem
     });
 
-    // Live ticking break duration for both local and remote telemetry
+    // Live ticking break duration for both local and remote telemetry (monotonic real-time counter)
     let effectiveBreakSecs = storedBreakSecs;
-    if (telem) {
-      const telemBreaks = Number(telem.breakSeconds) || 0;
+    if (isSelf) {
+      if (storedOnBreak) {
+        const localBreakStart = Number(readTimerStorage(emp, 'break_start_timestamp')) || nowMs;
+        const curBreakElapsed = (localBreakStart > 0 && localBreakStart <= nowMs) ? Math.max(0, Math.floor((nowMs - localBreakStart) / 1000)) : 0;
+        effectiveBreakSecs = storedBreakSecs + curBreakElapsed;
+      } else {
+        effectiveBreakSecs = storedBreakSecs;
+      }
+    } else if (telem) {
+      const telemBreaks = Number(telem.breakSeconds) || storedBreakSecs;
       if (effectiveOnBreak) {
-        const bStart = Number(telem.breakStartTimestamp || telem.lastHeartbeatAt || telem.fetchedAt || nowMs);
-        const curBreakElapsed = (bStart > 0 && bStart <= nowMs) ? Math.max(0, Math.floor((nowMs - bStart) / 1000)) : 0;
+        const remoteBreakStart = Number(telem.breakStartTimestamp);
+        let anchorStart = 0;
+        if (remoteBreakStart > 0 && remoteBreakStart <= nowMs) {
+          anchorStart = remoteBreakStart;
+          liveBreakTrackerMap.set(empKey, remoteBreakStart);
+        } else if (liveBreakTrackerMap.has(empKey)) {
+          anchorStart = liveBreakTrackerMap.get(empKey);
+        } else {
+          anchorStart = nowMs;
+          liveBreakTrackerMap.set(empKey, nowMs);
+        }
+        const curBreakElapsed = (anchorStart > 0 && anchorStart <= nowMs) ? Math.max(0, Math.floor((nowMs - anchorStart) / 1000)) : 0;
         effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks + curBreakElapsed);
       } else {
+        liveBreakTrackerMap.delete(empKey);
         effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks);
       }
     } else if (storedOnBreak) {
       const localBreakStart = Number(readTimerStorage(emp, 'break_start_timestamp')) || nowMs;
       const curBreakElapsed = (localBreakStart > 0 && localBreakStart <= nowMs) ? Math.max(0, Math.floor((nowMs - localBreakStart) / 1000)) : 0;
       effectiveBreakSecs = storedBreakSecs + curBreakElapsed;
+    } else {
+      liveBreakTrackerMap.delete(empKey);
     }
 
     // Active Running Task: seamless resolution across local activeTimer, task collections, and Atlas telemetry

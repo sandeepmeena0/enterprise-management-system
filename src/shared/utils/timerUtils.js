@@ -357,6 +357,7 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     const empKey = getCanonicalTimerKey(userOrEmp) || String(userOrEmp?._id || userOrEmp?.id || userOrEmp?.employeeCode || '');
     if (telem.isClockedIn) {
       if (telem.isOnBreak) {
+        if (empKey) monotonicTelemetryWorkSecsMap.delete(empKey);
         return Math.min(Number(telem.workSeconds) || 0, maxPhysicalElapsedToday);
       }
       // Smoothly tick forward every second between backend telemetry polls without resetting

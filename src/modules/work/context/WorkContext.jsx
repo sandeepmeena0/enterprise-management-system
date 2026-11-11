@@ -1305,10 +1305,18 @@ export const WorkProvider = ({ children }) => {
         reopened: false
       };
 
-      const updated = await workService.updateProject(id, updatePayload);
+      // 🚀 0ms Instant Optimistic Local Update
+      const updatedProjects = allProjects.map(p => (String(p._id || p.id) === String(id) || p.projectCode === id) ? { ...p, ...updatePayload } : p);
+      saveCollection(KEYS.PROJECTS, updatedProjects);
+      setProjects(updatedProjects);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
       addToast(`🚀 Project "${targetProj?.name || id}" submitted for Admin completion review!`, 'success');
-      await loadWorkData();
-      return updated;
+
+      // Asynchronous background persistence
+      workService.updateProject(id, updatePayload)
+        .catch(err => console.warn('Sync project submit to backend:', err));
+
+      return { ...(targetProj || {}), ...updatePayload };
     } catch (err) {
       console.error('Error submitting project for completion:', err);
       addToast('Failed to submit project for completion', 'error');
@@ -1331,7 +1339,11 @@ export const WorkProvider = ({ children }) => {
         reopenReason: ''
       };
 
-      const updated = await workService.updateProject(id, updatePayload);
+      // 🚀 0ms Instant Optimistic Local Update
+      const updatedProjects = allProjects.map(p => (String(p._id || p.id) === String(id) || p.projectCode === id) ? { ...p, ...updatePayload } : p);
+      saveCollection(KEYS.PROJECTS, updatedProjects);
+      setProjects(updatedProjects);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
 
       try {
         hrService.createAttendanceAuditLog({
@@ -1345,8 +1357,12 @@ export const WorkProvider = ({ children }) => {
       } catch (_) {}
 
       addToast(`🎉 Project "${targetProj?.name || id}" officially finalized & marked complete!`, 'success');
-      await loadWorkData();
-      return updated;
+
+      // Asynchronous background persistence
+      workService.updateProject(id, updatePayload)
+        .catch(err => console.warn('Sync project approval to backend:', err));
+
+      return { ...(targetProj || {}), ...updatePayload };
     } catch (err) {
       console.error('Error approving project completion:', err);
       addToast('Failed to approve project completion', 'error');
@@ -1369,7 +1385,11 @@ export const WorkProvider = ({ children }) => {
         reopenedAt: new Date().toISOString()
       };
 
-      const updated = await workService.updateProject(id, updatePayload);
+      // 🚀 0ms Instant Optimistic Local Update
+      const updatedProjects = allProjects.map(p => (String(p._id || p.id) === String(id) || p.projectCode === id) ? { ...p, ...updatePayload } : p);
+      saveCollection(KEYS.PROJECTS, updatedProjects);
+      setProjects(updatedProjects);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
 
       try {
         hrService.createAttendanceAuditLog({
@@ -1383,8 +1403,12 @@ export const WorkProvider = ({ children }) => {
       } catch (_) {}
 
       addToast(`🔄 Project "${targetProj?.name || id}" reopened for revisions!`, 'info');
-      await loadWorkData();
-      return updated;
+
+      // Asynchronous background persistence
+      workService.updateProject(id, updatePayload)
+        .catch(err => console.warn('Sync project reopen to backend:', err));
+
+      return { ...(targetProj || {}), ...updatePayload };
     } catch (err) {
       console.error('Error reopening project:', err);
       addToast('Failed to reopen project', 'error');
@@ -1461,14 +1485,24 @@ export const WorkProvider = ({ children }) => {
     try {
       // 🚀 0ms Instant Optimistic Local Update
       const allTasks = getCollection(KEYS.TASKS) || [];
-      const updatedAll = allTasks.map(t => String(t._id || t.id) === String(id) ? { ...t, ...taskData } : t);
+      let updatedTaskObj = null;
+      const updatedAll = allTasks.map(t => {
+        if (String(t._id || t.id) === String(id) || t.taskCode === id) {
+          updatedTaskObj = { ...t, ...taskData };
+          return updatedTaskObj;
+        }
+        return t;
+      });
       saveCollection(KEYS.TASKS, updatedAll);
       setTasks(updatedAll);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+      addToast(`Task "${updatedTaskObj?.title || taskData?.title || 'Task'}" updated`, 'success');
 
-      const updated = await workService.updateTask(id, taskData);
-      addToast(`Task "${updated?.title || 'Task'}" updated`, 'success');
-      return updated;
+      // Asynchronous background persistence
+      workService.updateTask(id, taskData)
+        .catch(err => console.warn('Sync task update to backend:', err));
+
+      return updatedTaskObj || { id, ...taskData };
     } catch (err) {
       addToast('Failed to update task', 'error');
       throw err;
@@ -1584,7 +1618,7 @@ export const WorkProvider = ({ children }) => {
       }
 
       addToast(`📅 Task #${target.taskCode || ''} assigned/scheduled for ${newDueDate}!`, 'success');
-      await loadWorkData();
+      loadWorkData(true).catch(() => {});
     } catch (e) {
       console.error('Error rescheduling task:', e);
       addToast('Failed to reschedule task for future', 'error');
@@ -2212,7 +2246,7 @@ export const WorkProvider = ({ children }) => {
       }));
 
       addToast(`Timer stopped! ${formatSeconds(totalSecs)} logged to Timesheet.`, 'success');
-      await loadWorkData();
+      loadWorkData(true).catch(() => {});
     } catch (err) {
       addToast('Failed to save timer session', 'error');
     }
@@ -2507,7 +2541,7 @@ export const WorkProvider = ({ children }) => {
 
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TIMESHEETS } }));
-      await loadWorkData();
+      loadWorkData(true).catch(() => {});
 
       return { completedTask: targetTask, nextTask };
     } catch (err) {
@@ -2595,9 +2629,7 @@ export const WorkProvider = ({ children }) => {
         history: updatedHistory
       };
 
-      await workService.updateTask(taskId, updatePayload);
-
-      // Save collection update
+      // 🚀 0ms Instant Optimistic Local Update
       const allTasks = getCollection(KEYS.TASKS) || [];
       const updatedAll = allTasks.map(t => {
         if (String(t._id || t.id) === String(taskId) || t.taskCode === taskId) {
@@ -2622,6 +2654,11 @@ export const WorkProvider = ({ children }) => {
 
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
       window.dispatchEvent(new CustomEvent('ems_task_reminded', { detail: { taskId, remindAt: remindAtTimestamp } }));
+
+      // Asynchronous background persistence
+      workService.updateTask(taskId, updatePayload)
+        .catch(err => console.warn('Sync snooze to backend:', err));
+
       return true;
     } catch (err) {
       console.error('Error snoozing task:', err);
@@ -2654,8 +2691,7 @@ export const WorkProvider = ({ children }) => {
         history: updatedHistory
       };
 
-      await workService.updateTask(taskId, updatePayload);
-
+      // 🚀 0ms Instant Optimistic Local Update
       const allTasks = getCollection(KEYS.TASKS) || [];
       const updatedAll = allTasks.map(t => {
         if (t._id === taskId) {
@@ -2676,8 +2712,12 @@ export const WorkProvider = ({ children }) => {
       alertedTaskIdsRef.current.add(String(taskId));
       if (targetTask?.taskCode) alertedTaskIdsRef.current.add(String(targetTask.taskCode));
 
-      // Start the task timer right away
+      // Start the task timer right away in 0ms
       startTaskTimer(taskId);
+
+      // Asynchronous background persistence
+      workService.updateTask(taskId, updatePayload)
+        .catch(err => console.warn('Sync resume to backend:', err));
     } catch (err) {
       console.error('Error resuming task:', err);
       addToast('Failed to resume task', 'error');
@@ -2703,11 +2743,16 @@ export const WorkProvider = ({ children }) => {
         reminderDismissed: true,
         reminderDismissedBy: updatedDismissedBy
       };
-      await workService.updateTask(taskId, updatePayload);
+
+      // 🚀 0ms Instant Optimistic Local Update
       const updatedAll = allTasks.map(t => String(t._id || t.id) === String(taskId) ? { ...t, ...updatePayload } : t);
       saveCollection(KEYS.TASKS, updatedAll);
       setTasks(prev => prev.map(t => String(t._id || t.id) === String(taskId) ? { ...t, ...updatePayload } : t));
       addToast('Task reminder dismissed', 'info');
+
+      // Asynchronous background persistence
+      workService.updateTask(taskId, updatePayload)
+        .catch(err => console.warn('Sync dismiss to backend:', err));
     } catch (e) {
       console.error(e);
     }

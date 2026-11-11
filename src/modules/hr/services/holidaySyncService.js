@@ -628,19 +628,7 @@ export const holidaySyncService = {
       confirmedAt: new Date().toISOString()
     };
 
-    // Attempt cloud database write
-    try {
-      const res = await fetch(`${API_BASE}/holidays`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data?._id) payload._id = json.data._id;
-      }
-    } catch {}
-
+    // 🚀 0ms Instant Optimistic Local Save
     if (!payload._id) {
       payload._id = `hol_conf_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     }
@@ -652,6 +640,15 @@ export const holidaySyncService = {
     }
 
     saveConfirmedHolidays(confirmed);
+    window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.HOLIDAYS } }));
+
+    // Asynchronous background cloud persistence
+    fetch(`${API_BASE}/holidays`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+
     return payload;
   },
 
@@ -718,15 +715,7 @@ export const holidaySyncService = {
       c.name?.toLowerCase().trim() === String(holidayIdentifier).toLowerCase().trim()
     );
 
-    // 1. Send DELETE to backend MongoDB Atlas if ID exists
-    const delId = target?._id || holidayIdentifier;
-    try {
-      await fetch(`${API_BASE}/holidays/${delId}`, {
-        method: 'DELETE'
-      });
-    } catch {}
-
-    // 2. Remove from local confirmed storage
+    // 1. 🚀 0ms Instant Optimistic Local Storage Removal
     confirmed = confirmed.filter(c => 
       c._id !== holidayIdentifier && 
       c.code !== holidayIdentifier && 
@@ -736,9 +725,15 @@ export const holidaySyncService = {
 
     saveConfirmedHolidays(confirmed);
 
-    // 3. Dispatch events
+    // 2. Dispatch events immediately
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.HOLIDAYS } }));
     window.dispatchEvent(new CustomEvent('ems_holidays_updated', { detail: { cancelledHoliday: target || holidayIdentifier } }));
+
+    // 3. Asynchronous background cloud delete
+    const delId = target?._id || holidayIdentifier;
+    fetch(`${API_BASE}/holidays/${delId}`, {
+      method: 'DELETE'
+    }).catch(() => {});
 
     return { success: true, cancelledName: target?.name || 'Holiday' };
   },

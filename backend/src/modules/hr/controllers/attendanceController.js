@@ -905,7 +905,7 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     employeeCode: targetCode,
     employeeName: req.body.employeeName || req.user?.name || '',
     date: today,
-    isClockedIn: Boolean(isClockedIn),
+    isClockedIn: isClockedIn !== undefined ? Boolean(isClockedIn) : (existingCached ? existingCached.isClockedIn : true),
     clockInTime: clockInTime || null,
     clockInTimestamp: clockInTimestamp ? Number(clockInTimestamp) : null,
     currentSessionStartTimestamp: currentSessionStartTimestamp ? Number(currentSessionStartTimestamp) : null,
