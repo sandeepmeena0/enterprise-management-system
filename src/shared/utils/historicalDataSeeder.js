@@ -110,22 +110,34 @@ export const ensureHistoricalData = () => {
 
     const targetEmployees = Array.from(employeeMap.values());
 
-    // Generate dates for September 2026, October 2026, and past November 2026 days
+    // Generate dates strictly for prior months (September 2026 and October 2026) for historical matrix demo
+    // NEVER touch November 2026 (the active production work month)
     const allDates = [
       ...getDateRange('2026-09-01', '2026-09-30'),
-      ...getDateRange('2026-10-01', '2026-10-31'),
-      ...getDateRange('2026-11-01', todayStr)
-    ].filter(d => d < todayStr); // Strictly EXCLUDE today!
+      ...getDateRange('2026-10-01', '2026-10-31')
+    ];
 
     const newAttendanceRecords = [];
-    const newTimesheetRecords = [];
+
+    // Clean up any previously seeded dummy timesheets from November 2026 or template tasks
+    try {
+      const existingTs = getCollection(KEYS.TIMESHEETS) || [];
+      const cleanedTs = existingTs.filter(ts => {
+        if (!ts) return false;
+        const isTemplateTask = ts.taskCode && ['TSK-101', 'TSK-102', 'TSK-103', 'TSK-104', 'TSK-105', 'TSK-106'].includes(ts.taskCode);
+        const isSeededId = ts._id && String(ts._id).startsWith('ts_') && (String(ts._id).endsWith('_1') || String(ts._id).endsWith('_2'));
+        const isSeededMemo = ts.memo && (ts.memo.includes('Milestone deliverables') || ts.memo.includes('Implementation, debugging'));
+        const isFakeNovember = ts.date && (ts.date.startsWith('2026-11-') || ts.date === '2026-11-09' || ts.date === '2026-11-10') && (isTemplateTask || isSeededId || isSeededMemo);
+        return !isTemplateTask && !isSeededMemo && !isFakeNovember;
+      });
+      if (cleanedTs.length !== existingTs.length) {
+        saveCollection(KEYS.TIMESHEETS, cleanedTs);
+      }
+    } catch (_) {}
 
     // Index existing records by employeeCode + date
     const existingAttSet = new Set(
       existingAttendance.map(a => `${a.employeeCode || a.employeeId}_${a.date}`)
-    );
-    const existingTsSet = new Set(
-      existingTimesheets.map(ts => `${ts.employeeId || ts.employeeName}_${ts.date}_${ts.taskCode}`)
     );
 
     targetEmployees.forEach((emp, empIdx) => {
@@ -241,49 +253,6 @@ export const ensureHistoricalData = () => {
           ],
           notes: hasOt ? 'Completed shift with 45m approved overtime' : (isLate ? 'Late arrival (traffic delay)' : 'Standard shift completed')
         });
-
-        // Add 1-2 corresponding Timesheet entries for this day
-        const task1 = TASK_TEMPLATES[(dayIdx + empIdx) % TASK_TEMPLATES.length];
-        const task2 = TASK_TEMPLATES[(dayIdx + empIdx + 2) % TASK_TEMPLATES.length];
-
-        const t1Secs = Math.round(netSecs * 0.55);
-        const t2Secs = netSecs - t1Secs;
-
-        const tsKey1 = `${emp._id}_${dateStr}_${task1.code}`;
-        if (!existingTsSet.has(tsKey1)) {
-          newTimesheetRecords.push({
-            _id: `ts_${emp.employeeCode}_${dateStr}_1`,
-            taskId: `task_${task1.code}`,
-            taskCode: task1.code,
-            taskTitle: task1.title,
-            projectName: task1.project,
-            employeeId: emp._id,
-            employeeName: emp.name,
-            date: dateStr,
-            totalDurationSeconds: t1Secs,
-            totalDurationText: `${Math.floor(t1Secs / 3600)}h ${Math.floor((t1Secs % 3600) / 60)}m`,
-            memo: 'Milestone deliverables and progress check',
-            status: 'completed'
-          });
-        }
-
-        const tsKey2 = `${emp._id}_${dateStr}_${task2.code}`;
-        if (!existingTsSet.has(tsKey2) && t2Secs > 1800) {
-          newTimesheetRecords.push({
-            _id: `ts_${emp.employeeCode}_${dateStr}_2`,
-            taskId: `task_${task2.code}`,
-            taskCode: task2.code,
-            taskTitle: task2.title,
-            projectName: task2.project,
-            employeeId: emp._id,
-            employeeName: emp.name,
-            date: dateStr,
-            totalDurationSeconds: t2Secs,
-            totalDurationText: `${Math.floor(t2Secs / 3600)}h ${Math.floor((t2Secs % 3600) / 60)}m`,
-            memo: 'Implementation, debugging & verification',
-            status: 'completed'
-          });
-        }
       });
     });
 
@@ -292,13 +261,8 @@ export const ensureHistoricalData = () => {
       saveCollection(KEYS.ATTENDANCE, mergedAttendance);
     }
 
-    if (newTimesheetRecords.length > 0) {
-      const mergedTimesheets = [...existingTimesheets, ...newTimesheetRecords];
-      saveCollection(KEYS.TIMESHEETS, mergedTimesheets);
-    }
-
     localStorage.setItem(SEED_VERSION_KEY, 'true');
-    console.log(`✅ Inforag Historical Seeder: Populated ${newAttendanceRecords.length} past attendance & ${newTimesheetRecords.length} past timesheet records.`);
+    console.log(`✅ Inforag Historical Seeder: Populated ${newAttendanceRecords.length} past attendance records. 0 fake timesheets.`);
   } catch (err) {
     console.warn('Notice in ensureHistoricalData:', err);
   }

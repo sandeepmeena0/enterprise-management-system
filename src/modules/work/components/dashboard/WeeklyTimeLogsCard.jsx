@@ -164,7 +164,7 @@ export const WeeklyTimeLogsCard = ({
       // Deduplicate timesheets by task (if multiple auto-saves exist today for same task, take latest/consolidated duration)
       const taskMap = new Map();
       rawDayTs.forEach(ts => {
-        const key = String(ts.taskId || ts.taskCode || ts.taskTitle || ts._id);
+        const key = String(ts.taskCode || ts.taskId || ts.taskTitle || ts._id).trim().toLowerCase();
         const dur = Number(ts.totalDurationSeconds) || 0;
         if (!taskMap.has(key) || dur > (Number(taskMap.get(key).totalDurationSeconds) || 0)) {
           taskMap.set(key, ts);

@@ -152,6 +152,14 @@ exports.createTimesheet = async (req, res, next) => {
         if (payload.memo) existingTs.memo = payload.memo;
         if (payload.status) existingTs.status = payload.status;
         timesheet = await existingTs.save();
+
+        // Clean up any other duplicates for same date + task to ensure 100% integrity
+        await Timesheet.deleteMany({
+          _id: { $ne: existingTs._id },
+          date: targetDate,
+          $or: matchConditions,
+          ...(empConditions.length > 0 ? { $and: [{ $or: empConditions }] } : {})
+        }).catch(() => {});
       }
     }
 

@@ -123,10 +123,15 @@ export const sanitizeRunawayTimers = () => {
       if (timesheetsRaw) {
         const timesheets = JSON.parse(timesheetsRaw);
         if (Array.isArray(timesheets)) {
-          // Remove runaway duplicate entries > 12 hours from previous buggy overflows
+          // Remove runaway duplicate entries > 12 hours & fake seeded entries
           const cleanedTimesheets = timesheets.filter(ts => {
+            if (!ts) return false;
             const rawSecs = Number(ts.totalDurationSeconds) || 0;
-            return rawSecs <= 14 * 3600;
+            const isTemplate = ts.taskCode && ['TSK-101', 'TSK-102', 'TSK-103', 'TSK-104', 'TSK-105', 'TSK-106'].includes(ts.taskCode);
+            const isFakeSeeded = ts.memo && (ts.memo.includes('Milestone deliverables') || ts.memo.includes('Implementation, debugging'));
+            const isBogusAutoSave = ts.memo === 'Shift clock-out session auto-save' && rawSecs > 10000;
+            const isRunaway = rawSecs > 14 * 3600;
+            return !isTemplate && !isFakeSeeded && !isBogusAutoSave && !isRunaway;
           });
           if (cleanedTimesheets.length !== timesheets.length) {
             localStorage.setItem(KEYS.TIMESHEETS, JSON.stringify(cleanedTimesheets));
@@ -143,11 +148,13 @@ export const sanitizeRunawayTimers = () => {
         if (Array.isArray(weekly)) {
           const cleanedWeekly = weekly.map(w => {
             const rawSecs = Number(w.durationSeconds) || 0;
-            if (rawSecs > 14 * 3600) {
+            if (rawSecs > 14 * 3600 || (w.shortDay === 'Mo' && w.date === '2026-11-09') || (w.shortDay === 'Tu' && w.date === '2026-11-10')) {
               return {
                 ...w,
                 durationSeconds: 0,
-                durationText: '0h 00m'
+                durationText: '0h 00m',
+                durationHours: 0,
+                tasksWorked: []
               };
             }
             return w;

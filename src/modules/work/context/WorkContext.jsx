@@ -1047,25 +1047,10 @@ export const WorkProvider = ({ children }) => {
         return t;
       }));
 
-      // Automatically log today's task session duration to timesheets
-      if (activeTimer && currentSecs > 0) {
-          workService.createTimesheet({
-            taskId: activeTimer.taskId,
-            taskCode: activeTimer.taskCode,
-            taskTitle: activeTimer.title,
-            projectName: activeTimer.projectName,
-            employeeId: activeTimer.assignedToId,
-            employeeName: activeTimer.assignedToName,
-            date: activeTimer.date || today,
-            totalDurationSeconds: currentSecs,
-            totalDurationText: formatSeconds(currentSecs),
-            memo: 'Shift clock-out session auto-save',
-            status: 'stopped'
-          }).catch(err => console.warn('Clock-out auto timesheet error:', err));
-      }
-
+      // On shift clock-out: active task timer is paused cleanly.
+      // (Timesheet is logged when task is completed or stopped, preventing duplicate runaway entries)
       if (activeTimer) {
-        addToast('Shift Clocked Out: Active task timer paused & logged ⏸️', 'info');
+        addToast('Shift Clocked Out: Active task timer paused ⏸️', 'info');
       }
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
     };
@@ -2344,12 +2329,12 @@ export const WorkProvider = ({ children }) => {
       let todaySessionSecs = 0;
       if (targetTask.dailySessions && typeof targetTask.dailySessions === 'object' && targetTask.dailySessions[todayStr] !== undefined) {
         todaySessionSecs = (Number(targetTask.dailySessions[todayStr]) || 0) + todayElapsedSecs;
-      } else if (targetTask.sessionDate === todayStr && targetTask.todayWorkSeconds !== undefined) {
-        todaySessionSecs = (Number(targetTask.todayWorkSeconds) || 0) + todayElapsedSecs;
+      } else if (targetTask.sessionDate === todayStr && targetTask.todayWorkSeconds !== undefined && Number(targetTask.todayWorkSeconds) > 0) {
+        todaySessionSecs = Number(targetTask.todayWorkSeconds) + todayElapsedSecs;
       } else if (targetTask.timerRunning && targetTask.startedAt) {
         todaySessionSecs = todayElapsedSecs;
-      } else if (!targetTask.dailySessions && targetTask.sessionDate === todayStr && (targetTask.startDate === todayStr || targetTask.createdAt?.startsWith(todayStr))) {
-        todaySessionSecs = Math.max(0, durationSecs);
+      } else {
+        todaySessionSecs = 0;
       }
       const durationToLogToday = Number(todaySessionSecs) || 0;
 

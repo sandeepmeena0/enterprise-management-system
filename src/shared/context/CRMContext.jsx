@@ -1342,39 +1342,16 @@ export const CRMProvider = ({ children }) => {
           if (pastAttRec.clockOutTime) dayLogoutTime = pastAttRec.clockOutTime;
         }
       } else if (isPastDay) {
-        // For past working days: Strictly check if employee has actual logged attendance or timesheets
+        // For past working days without task activity: task duration is strictly 0h 00m
+        // Shift attendance hours must NEVER be assumed or counted as task hours.
         const pastAttRec = attendance.find(a => a.date === dateStr && isMyAttRecord(a));
-        const rawWorkHours = pastAttRec
-          ? (Number(pastAttRec.totalWorkingHours) > 0
-              ? Number(pastAttRec.totalWorkingHours)
-              : (Number(pastAttRec.workSeconds) > 0 ? Number(pastAttRec.workSeconds) / 3600 : 0))
-          : 0;
-        const hasRealAttendanceHours = pastAttRec &&
-          pastAttRec.status !== 'absent' &&
-          pastAttRec.status !== 'on_leave' &&
-          pastAttRec.status !== 'day_off' &&
-          rawWorkHours > 0;
-
-        if (hasRealAttendanceHours) {
-          const workHours = rawWorkHours;
-          dayTotalTaskSeconds = Math.round(workHours * 3600);
-          const hrs = Math.floor(dayTotalTaskSeconds / 3600);
-          const mins = Math.floor((dayTotalTaskSeconds % 3600) / 60);
-          finalDurationText = `${hrs}h ${String(mins).padStart(2, '0')}m`;
-          finalDurationHours = +workHours.toFixed(2);
-          dayLoginTime = pastAttRec.clockInTime || '--';
-          dayLogoutTime = pastAttRec.clockOutTime || '--';
-          dayBreakDuration = pastAttRec?.totalBreakHours ? `${Math.round(pastAttRec.totalBreakHours * 60)}m` : '0m';
-        } else {
-          // No work or attendance logged for this employee on this past day — strictly 0h 00m
-          dayTotalTaskSeconds = 0;
-          finalDurationText = '0h 00m';
-          finalDurationHours = 0;
-          dayLoginTime = pastAttRec?.clockInTime || '--';
-          dayLogoutTime = pastAttRec?.clockOutTime || '--';
-          dayBreakDuration = '--';
-          dayTasks = [];
-        }
+        dayTotalTaskSeconds = 0;
+        finalDurationText = '0h 00m';
+        finalDurationHours = 0;
+        dayLoginTime = pastAttRec?.firstClockInTime || pastAttRec?.clockInTime || '--';
+        dayLogoutTime = pastAttRec?.lastClockOutTime || pastAttRec?.clockOutTime || '--';
+        dayBreakDuration = pastAttRec?.totalBreakHours ? `${Math.round(pastAttRec.totalBreakHours * 60)}m` : '--';
+        dayTasks = [];
       }
 
       return {

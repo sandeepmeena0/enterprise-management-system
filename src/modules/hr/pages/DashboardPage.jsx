@@ -1823,7 +1823,7 @@ export const DashboardPage = () => {
     // Deduplicate timesheets by canonical task identifier for today to prevent multi-save duration inflation
     const dedupeMap = new Map();
     rawList.forEach(ts => {
-      const taskKey = String(ts.taskId || ts.taskCode || ts.taskTitle || ts._id);
+      const taskKey = String(ts.taskCode || ts.taskId || ts.taskTitle || ts._id).trim().toLowerCase();
       const dur = Number(ts.totalDurationSeconds) || 0;
       if (!dedupeMap.has(taskKey) || dur > (Number(dedupeMap.get(taskKey).totalDurationSeconds) || 0)) {
         dedupeMap.set(taskKey, ts);
@@ -1972,7 +1972,7 @@ export const DashboardPage = () => {
 
       const dayDedupeMap = new Map();
       dayTs.forEach(ts => {
-        const taskKey = String(ts.taskId || ts.taskCode || ts.taskTitle || ts._id);
+        const taskKey = String(ts.taskCode || ts.taskId || ts.taskTitle || ts._id).trim().toLowerCase();
         const dur = Number(ts.totalDurationSeconds) || 0;
         if (!dayDedupeMap.has(taskKey) || dur > (Number(dayDedupeMap.get(taskKey).totalDurationSeconds) || 0)) {
           dayDedupeMap.set(taskKey, ts);

@@ -469,54 +469,17 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
 
   let baseSecs = 0;
   if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
-    baseSecs = Number(task.dailySessions[targetDate]) || 0;
+    baseSecs = Math.max(0, Number(task.dailySessions[targetDate]) || 0);
   } else if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined && Number(task.todayWorkSeconds) > 0) {
-    baseSecs = Number(task.todayWorkSeconds);
-  } else if (task.startDate === targetDate || task.createdAt?.startsWith(targetDate)) {
-    // Brand new task created today: accumulatedSeconds belongs to today
-    baseSecs = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
-  } else if (task.sessionDate === targetDate) {
-    // Older task worked today without dailySessions: subtract prior days logged in timesheets
-    let prevDaysSecs = 0;
-    try {
-      const rawTs = localStorage.getItem('ems_timesheets');
-      if (rawTs) {
-        const tsList = JSON.parse(rawTs) || [];
-        const tId = String(task._id || task.id);
-        prevDaysSecs = tsList
-          .filter(ts => (String(ts.taskId) === tId || (task.taskCode && ts.taskCode === task.taskCode)) && ts.date && ts.date !== targetDate)
-          .reduce((acc, ts) => acc + (Number(ts.totalDurationSeconds) || 0), 0);
-      }
-    } catch (_) {}
-    const totalAccum = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
-    baseSecs = Math.max(0, totalAccum - prevDaysSecs);
-  } else if (task.completedOn === targetDate || (task.completedAt && String(task.completedAt).startsWith(targetDate))) {
-    if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
-      baseSecs = Number(task.dailySessions[targetDate]) || 0;
-    } else if (task.sessionDate === targetDate && Number(task.todayWorkSeconds) > 0) {
-      baseSecs = Number(task.todayWorkSeconds);
-    } else {
-      let prevDaysSecs = 0;
-      try {
-        const rawTs = localStorage.getItem('ems_timesheets');
-        if (rawTs) {
-          const tsList = JSON.parse(rawTs) || [];
-          const tId = String(task._id || task.id);
-          prevDaysSecs = tsList
-            .filter(ts => (String(ts.taskId) === tId || (task.taskCode && ts.taskCode === task.taskCode)) && ts.date && ts.date !== targetDate)
-            .reduce((acc, ts) => acc + (Number(ts.totalDurationSeconds) || 0), 0);
-        }
-      } catch (_) {}
-      const totalAccum = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
-      baseSecs = Math.max(0, totalAccum - prevDaysSecs);
-    }
+    baseSecs = Math.max(0, Number(task.todayWorkSeconds) || 0);
   } else {
-    // STRICT: Past tasks not worked today have 0 seconds for today!
+    // STRICT: If not recorded in dailySessions or todayWorkSeconds, base seconds for targetDate is 0!
+    // NEVER assume all-time accumulatedSeconds or timerSeconds belongs to today!
     baseSecs = 0;
   }
 
   let liveSecs = 0;
-  // STRICT: live ticking elapsed timer ONLY counts on actualToday (never for past/future days)
+  // STRICT: live ticking elapsed timer ONLY counts on actualToday when timer is actively running
   if (task.timerRunning && targetDate === actualToday && isEffectiveClockedIn && !isEffectiveOnBreak) {
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
