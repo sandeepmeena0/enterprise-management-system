@@ -23,8 +23,8 @@ const toTimeInput = (timeStr, fallback = '09:30') => {
 export const MarkAttendanceModal = ({ isOpen, onClose, initialData = null }) => {
   const { employees, markAttendanceRecord, currentUser } = useHR();
   const companySettings = getCompanySettings();
-  const defaultInTime = toTimeInput(companySettings.shiftStartTime, '09:30') + ':00';
-  const defaultOutTime = toTimeInput(companySettings.shiftEndTime, '18:30') + ':00';
+  const defaultInTime = toTimeInput(companySettings.shiftStartTime, '10:00') + ':00';
+  const defaultOutTime = toTimeInput(companySettings.shiftEndTime, '19:00') + ':00';
 
   const isPrivileged = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.role === 'admin' || currentUser?.role === 'hr';
   const adminIdentifier = currentUser?.employeeCode || currentUser?._id || 'ADM-001';
@@ -162,7 +162,7 @@ export const MarkAttendanceModal = ({ isOpen, onClose, initialData = null }) => 
               </label>
               <input
                 type="time"
-                value={toTimeInput(formData.clockInTime, toTimeInput(companySettings.shiftStartTime, '09:30'))}
+                value={toTimeInput(formData.clockInTime, toTimeInput(companySettings.shiftStartTime, '10:00'))}
                 onChange={(e) => setFormData({ ...formData, clockInTime: `${e.target.value}:00` })}
                 className="filter-input w-full h-10 pl-3"
               />
@@ -174,7 +174,7 @@ export const MarkAttendanceModal = ({ isOpen, onClose, initialData = null }) => 
               </label>
               <input
                 type="time"
-                value={toTimeInput(formData.clockOutTime, toTimeInput(companySettings.shiftEndTime, '18:30'))}
+                value={toTimeInput(formData.clockOutTime, toTimeInput(companySettings.shiftEndTime, '19:00'))}
                 onChange={(e) => setFormData({ ...formData, clockOutTime: `${e.target.value}:00` })}
                 className="filter-input w-full h-10 pl-3"
               />

@@ -1021,7 +1021,11 @@ export const hrService = {
 
           const inSecs = parseToSecs(effectiveClockIn);
           const outSecs = parseToSecs(effectiveClockOut);
-          const diffSecs = Math.max(0, outSecs - inSecs);
+          let diffSecs = outSecs - inSecs;
+          if (diffSecs < 0) {
+            // Cross-midnight shift support
+            diffSecs += 24 * 3600;
+          }
           computedHours = +(diffSecs / 3600).toFixed(2);
 
           const companySettings = getCompanySettings();
@@ -1036,7 +1040,27 @@ export const hrService = {
           }
         } catch {}
       } else if (status === 'half_day') {
-        computedHours = 4.0;
+        const companySettings = getCompanySettings();
+        computedHours = Number(companySettings.halfDayThresholdHours) || 4.5;
+      }
+
+      const companySettings = getCompanySettings();
+      const halfDayThresholdHours = Number(companySettings.halfDayThresholdHours) || 4.5;
+      const standardWorkHours = Number(companySettings.standardWorkHours) || 9;
+      const effectiveWorkHours = attendanceData.workSeconds ? +(Number(attendanceData.workSeconds) / 3600).toFixed(2) : (computedHours || (attendanceData.totalWorkingHours ? parseFloat(attendanceData.totalWorkingHours) : 0));
+
+      let finalStatus = status || 'present';
+      if (effectiveClockOut && effectiveWorkHours > 0 && effectiveWorkHours < halfDayThresholdHours && !['on_leave', 'holiday', 'day_off'].includes(finalStatus)) {
+        finalStatus = 'half_day';
+      } else if (effectiveWorkHours >= halfDayThresholdHours && finalStatus === 'half_day') {
+        finalStatus = isLateCalc ? 'late' : 'present';
+      }
+
+      let overtimeHours = 0;
+      let overtimeSeconds = 0;
+      if (effectiveWorkHours > standardWorkHours) {
+        overtimeHours = +(effectiveWorkHours - standardWorkHours).toFixed(2);
+        overtimeSeconds = Math.round(overtimeHours * 3600);
       }
 
       const finalClockIn = effectiveClockIn || null;
@@ -1048,11 +1072,14 @@ export const hrService = {
         employeeCode: targetEmp?.employeeCode || attendanceData.employeeCode || '',
         employeeName: targetEmp?.name || attendanceData.employeeName || 'Employee',
         date,
-        status: status || 'present',
+        status: finalStatus,
         clockInTime: finalClockIn,
         clockIn: finalClockIn,
         clockOutTime: finalClockOut,
-        totalWorkingHours: (attendanceData.workSeconds ? +(Number(attendanceData.workSeconds) / 3600).toFixed(2) : (computedHours || (attendanceData.totalWorkingHours ? parseFloat(attendanceData.totalWorkingHours) : 0))),
+        totalWorkingHours: effectiveWorkHours,
+        overtimeHours,
+        overtimeSeconds,
+        hasOvertime: overtimeHours > 0,
         isLate: isLateCalc,
         lateByMinutes,
         notes: notes || '',

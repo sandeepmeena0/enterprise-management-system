@@ -41,7 +41,14 @@ import { readTimerStorage, parseTimeToSeconds } from '../../../shared/utils/time
 export const AttendancePage = () => {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const companySettings = getCompanySettings();
+  const [companySettings, setCompanySettings] = useState(getCompanySettings);
+
+  useEffect(() => {
+    const handleSettingsUpdate = () => setCompanySettings(getCompanySettings());
+    window.addEventListener('company-settings-updated', handleSettingsUpdate);
+    return () => window.removeEventListener('company-settings-updated', handleSettingsUpdate);
+  }, []);
+
   const { currentUser: authUser } = useAuth();
   const {
     employees,
@@ -911,7 +918,7 @@ export const AttendancePage = () => {
             <div className="text-[28px] font-extrabold text-amber-600 dark:text-amber-400 mt-2.5">
               {lateCount}
             </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Check-ins past {companySettings.shiftStartTime || '09:30 AM'}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">Check-ins past {companySettings.shiftStartTime || '10:00 AM'}</span>
           </div>
 
           <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">

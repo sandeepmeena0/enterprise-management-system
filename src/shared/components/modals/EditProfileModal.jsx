@@ -43,7 +43,7 @@ export const EditProfileModal = ({ isOpen, onClose, employee = null }) => {
   const isEditingOther = employee && employee._id !== currentUser?._id;
 
   const companySettings = getCompanySettings();
-  const companyDefaultShift = `${companySettings.shiftStartTime || '09:30 AM'} - ${companySettings.shiftEndTime || '06:30 PM'}`;
+  const companyDefaultShift = `${companySettings.shiftStartTime || '10:00 AM'} - ${companySettings.shiftEndTime || '07:00 PM'}`;
 
   const [availableRoles, setAvailableRoles] = useState(getRoles());
   const [formData, setFormData] = useState({
@@ -136,7 +136,7 @@ export const EditProfileModal = ({ isOpen, onClose, employee = null }) => {
   useEffect(() => {
     if (targetEmp) {
       const settings = getCompanySettings();
-      const defaultShift = `${settings.shiftStartTime || '09:30 AM'} - ${settings.shiftEndTime || '06:30 PM'}`;
+      const defaultShift = `${settings.shiftStartTime || '10:00 AM'} - ${settings.shiftEndTime || '07:00 PM'}`;
       setFormData({
         name: targetEmp.name || 'Employee',
         role: targetEmp.role || 'Senior Specialist',

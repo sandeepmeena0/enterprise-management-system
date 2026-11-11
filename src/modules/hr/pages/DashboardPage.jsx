@@ -1128,7 +1128,7 @@ export const DashboardPage = () => {
         const sessionBreakBaseline = Number(readTimerStorage(emp, 'session_break_baseline')) || 0;
         const liveSessionBreaks = Math.max(0, breakSecs - sessionBreakBaseline);
         const liveNetSecs = Math.max(0, liveGrossSecs - liveSessionBreaks);
-        const liveInTime = readTimerStorage(emp, 'current_session_in') || loginTime || '10:00 AM';
+        const liveInTime = readTimerStorage(emp, 'current_session_in') || loginTime || companySettings.shiftStartTime || '10:00 AM';
 
         punchSessions.push({
           id: 'sess_live_ongoing',

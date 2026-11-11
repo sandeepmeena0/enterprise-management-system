@@ -42,6 +42,7 @@ import { DayTimeLogModal } from '../../../shared/components/modals/DayTimeLogMod
 import { getUserModulePermissions, isHRorAdmin as checkIsHRorAdmin, isAdmin as checkIsAdmin, canAccessModule } from '../../../shared/utils/permissionUtils';
 import { subscribeToSyncEvents } from '../../../shared/services/realtimeSyncService';
 import { calculateShiftWorkSeconds, getTaskTodaySeconds, readTimerStorage, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
+import { getCompanySettings } from '../../../shared/services/companySettingsService';
 
 export const TeamOperationsPage = () => {
   const navigate = useNavigate();
@@ -51,6 +52,13 @@ export const TeamOperationsPage = () => {
   const { tasks, completeTask, formatSeconds, startTaskTimer, pauseTaskTimer } = useWork();
   const { startConversation } = useCRM();
   const { addToast } = useToast();
+  const [companySettings, setCompanySettings] = useState(getCompanySettings);
+
+  useEffect(() => {
+    const handleSettingsUpdate = () => setCompanySettings(getCompanySettings());
+    window.addEventListener('company-settings-updated', handleSettingsUpdate);
+    return () => window.removeEventListener('company-settings-updated', handleSettingsUpdate);
+  }, []);
 
   const isPrivileged = isHRorAdmin || checkIsHRorAdmin(currentUser) || checkIsAdmin(currentUser) || currentUser?.isDelegatedAdmin;
 
@@ -852,7 +860,7 @@ export const TeamOperationsPage = () => {
         const sessionBreakBaseline = Number(readTimerStorage(emp, 'session_break_baseline')) || 0;
         const liveSessionBreaks = Math.max(0, (empState.breakSecs || 0) - sessionBreakBaseline);
         const liveNetSecs = Math.max(0, liveGrossSecs - liveSessionBreaks);
-        const liveInTime = readTimerStorage(emp, 'current_session_in') || empState.loginTime || '10:00 AM';
+        const liveInTime = readTimerStorage(emp, 'current_session_in') || empState.loginTime || companySettings.shiftStartTime || '10:00 AM';
 
         punchSessions.push({
           id: 'sess_live_ongoing',

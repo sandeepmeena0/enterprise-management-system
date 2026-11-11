@@ -223,7 +223,7 @@ export const removeTimerStorage = (user, subKey) => {
 import { API_BASE } from '../config/apiConfig.js';
 import { hrService } from '../../modules/hr/services/hrService.js';
 import { workService } from '../../modules/work/services/workService.js';
-import { fetchCompanySettingsFromDB } from '../services/companySettingsService.js';
+import { getCompanySettings, fetchCompanySettingsFromDB } from '../services/companySettingsService.js';
 
 export const getLocalDateStr = (d = new Date()) => {
   const dateObj = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
@@ -292,21 +292,20 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   const hasAttClockOut = Boolean(attRec && attRec.date === today && (attRec.clockOutTime || attRec.clockOut));
   const hasAnyClockInToday = hasAttClockIn || (isTodaySession && Boolean(readTimerStorage(userOrEmp, 'login_time') || Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) > 0)) || Boolean(options.telemetry?.isClockedIn || options.telemetry?.clockInTime);
 
-  // Derive first clock in timestamp of shift to strictly bound physical elapsed work time
+  // Derive first clock in timestamp of today's shift to strictly bound physical elapsed work time
   let firstClockInTs = Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) || Number(attRec?.clockInTimestamp) || Number(options.telemetry?.clockInTimestamp);
-  const isShiftWithin24h = firstClockInTs > 0 && (nowMs - firstClockInTs) < 24 * 3600 * 1000;
-  if (!firstClockInTs || (!isShiftWithin24h && firstClockInTs < todayMidnightMs)) {
+  if (!firstClockInTs || firstClockInTs < todayMidnightMs) {
     const loginStr = readTimerStorage(userOrEmp, 'login_time') || attRec?.clockInTime || attRec?.clockIn || options.telemetry?.clockInTime;
     if (loginStr && loginStr !== '--' && loginStr !== 'Active' && loginStr !== '—') {
       firstClockInTs = todayMidnightMs + parseTimeToSeconds(loginStr) * 1000;
     }
   }
 
-  // The true physical upper bound is time elapsed since FIRST clock in of this shift (up to 24h)
-  const shiftBoundTs = isShiftWithin24h ? firstClockInTs : todayMidnightMs;
-  const maxPhysicalElapsedToday = Math.min(86400, Math.max(0, Math.floor((nowMs - shiftBoundTs) / 1000)));
+  // The true physical upper bound is time elapsed since FIRST clock in of today's shift (never from yesterday)
+  const shiftBoundTs = (firstClockInTs && firstClockInTs >= todayMidnightMs) ? firstClockInTs : todayMidnightMs;
+  const maxPhysicalElapsedToday = Math.max(0, Math.floor((nowMs - shiftBoundTs) / 1000));
 
-  // Punch sessions strictly for this active shift (filter out dirty sessions older than 24h)
+  // Punch sessions strictly for today's active shift (filter out sessions older than today midnight)
   let rawSessions = [];
   try {
     const raw = readTimerStorage(userOrEmp, 'punch_sessions');
@@ -315,11 +314,9 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   if ((!rawSessions || rawSessions.length === 0) && Array.isArray(attRec?.punchSessions)) {
     rawSessions = attRec.punchSessions;
   }
-  const minSessionTs = isShiftWithin24h ? firstClockInTs : todayMidnightMs;
   const validTodaySessions = normalizePunchSessions((rawSessions || []).filter(s => {
     const ts = Number(s.inTimestamp || 0);
-    if (ts > 0) return ts >= minSessionTs;
-    return false;
+    return ts >= todayMidnightMs;
   }));
   const pastSessionsSecs = validTodaySessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
 
@@ -334,17 +331,17 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     : 0;
 
   let sessStartTs = Number(readTimerStorage(userOrEmp, 'current_session_start_timestamp'));
-  if (!sessStartTs || (!isShiftWithin24h && sessStartTs < todayMidnightMs)) {
-    if (lastSessionOut > 0) {
+  if (!sessStartTs || sessStartTs < todayMidnightMs) {
+    if (lastSessionOut > 0 && lastSessionOut >= todayMidnightMs) {
       sessStartTs = lastSessionOut;
     } else {
-      sessStartTs = firstClockInTs || nowMs;
+      sessStartTs = (firstClockInTs && firstClockInTs >= todayMidnightMs) ? firstClockInTs : nowMs;
     }
   }
   if (lastSessionOut > 0 && sessStartTs < lastSessionOut) {
     sessStartTs = lastSessionOut;
   }
-  if (firstClockInTs > 0 && sessStartTs < firstClockInTs) {
+  if (firstClockInTs > 0 && firstClockInTs >= todayMidnightMs && sessStartTs < firstClockInTs) {
     sessStartTs = firstClockInTs;
   }
 
@@ -757,13 +754,27 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
 
         if (matchesUser) {
           attChanged = true;
-          // Standard shift: 10:00 AM - 07:00 PM (9 hours). Work beyond 9h is Overtime (OT)
-          const standardShiftSecs = 9 * 3600;
+          // Dynamic shift rules from Company Settings
+          const companySettings = getCompanySettings();
+          const standardWorkHours = Number(companySettings.standardWorkHours) || 9;
+          const standardShiftSecs = standardWorkHours * 3600;
+          const halfDayThresholdHours = Number(companySettings.halfDayThresholdHours) || 4.5;
+          const halfDayThresholdSecs = halfDayThresholdHours * 3600;
+
           const overtimeSecs = Math.max(0, finalVerifiedWorkSecs - standardShiftSecs);
           const overtimeHrs = +(overtimeSecs / 3600).toFixed(2);
 
+          // Dynamic Half Day / Present calibration based on verified worked seconds
+          let finalStatus = a.status || 'present';
+          if (finalVerifiedWorkSecs > 0 && finalVerifiedWorkSecs < halfDayThresholdSecs && !['on_leave', 'holiday', 'day_off'].includes(finalStatus)) {
+            finalStatus = 'half_day';
+          } else if (finalVerifiedWorkSecs >= halfDayThresholdSecs && finalStatus === 'half_day') {
+            finalStatus = a.isLate ? 'late' : 'present';
+          }
+
           const updated = {
             ...a,
+            status: finalStatus,
             // Preserve immutable First Clock-In of the day
             clockInTime: a.clockInTime || a.clockIn || readTimerStorage(user, 'login_time') || timeStr,
             clockIn: a.clockInTime || a.clockIn || readTimerStorage(user, 'login_time') || timeStr,
@@ -789,9 +800,19 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
       if (!attChanged) {
         // Fallback: Create today's attendance record with First In and Last Out
         const firstClockIn = readTimerStorage(user, 'login_time') || timeStr;
-        const standardShiftSecs = 9 * 3600;
+        const companySettings = getCompanySettings();
+        const standardWorkHours = Number(companySettings.standardWorkHours) || 9;
+        const standardShiftSecs = standardWorkHours * 3600;
+        const halfDayThresholdHours = Number(companySettings.halfDayThresholdHours) || 4.5;
+        const halfDayThresholdSecs = halfDayThresholdHours * 3600;
+
         const overtimeSecs = Math.max(0, finalVerifiedWorkSecs - standardShiftSecs);
         const overtimeHrs = +(overtimeSecs / 3600).toFixed(2);
+
+        let initialStatus = 'present';
+        if (finalVerifiedWorkSecs > 0 && finalVerifiedWorkSecs < halfDayThresholdSecs) {
+          initialStatus = 'half_day';
+        }
 
         const newRecord = {
           _id: `att_${user._id || mirrorKeys[0]}_${Date.now()}`,
@@ -799,7 +820,7 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
           employeeCode: user.employeeCode || mirrorKeys[0],
           employeeName: user.name || 'Team Member',
           date: today,
-          status: 'present',
+          status: initialStatus,
           clockInTime: firstClockIn,
           clockIn: firstClockIn,
           clockOutTime: timeStr,

@@ -146,7 +146,7 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
   const [newRoleInput, setNewRoleInput] = useState('');
 
   const companySettings = getCompanySettings();
-  const companyDefaultShift = `${companySettings.shiftStartTime || '09:30 AM'} - ${companySettings.shiftEndTime || '06:30 PM'}`;
+  const companyDefaultShift = `${companySettings.shiftStartTime || '10:00 AM'} - ${companySettings.shiftEndTime || '07:00 PM'}`;
 
   const [formData, setFormData] = useState({
     name: '',
@@ -244,7 +244,7 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
     if (isOpen) {
       const code = getNextAvailableCode();
       const currentSettings = getCompanySettings();
-      const currentDefaultShift = `${currentSettings.shiftStartTime || '09:30 AM'} - ${currentSettings.shiftEndTime || '06:30 PM'}`;
+      const currentDefaultShift = `${currentSettings.shiftStartTime || '10:00 AM'} - ${currentSettings.shiftEndTime || '07:00 PM'}`;
       setFormData(prev => ({
         ...prev,
         employeeCode: prev.employeeCode || code,

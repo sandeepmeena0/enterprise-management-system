@@ -24,6 +24,16 @@ const autoClosePastDayShifts = async () => {
     // Only auto-close past day shifts if the shift was initiated more than 16 hours ago!
     // A night shift or midnight clock-in (e.g. 11:30 PM or 00:30 AM) is actively running and must NOT be closed!
     const sixteenHoursAgo = Date.now() - 16 * 60 * 60 * 1000;
+
+    let companySettings = null;
+    try {
+      const CompanySettings = require('../../settings/models/CompanySettings');
+      companySettings = await CompanySettings.findOne().lean();
+    } catch (_) {}
+    const autoOutTime = companySettings?.shiftEndTime || '07:00 PM';
+    const autoHours = Number(companySettings?.standardWorkHours) || 9.0;
+    const autoSecs = Math.round(autoHours * 3600);
+
     await Attendance.updateMany(
       {
         date: { $lt: todayStr },
@@ -39,10 +49,10 @@ const autoClosePastDayShifts = async () => {
         $set: {
           isClockedIn: false,
           isOnBreak: false,
-          clockOutTime: '07:00 PM',
-          clockOut: '07:00 PM',
-          workSeconds: 32400, // Standard 9 hrs
-          totalWorkingHours: 9.0,
+          clockOutTime: autoOutTime,
+          clockOut: autoOutTime,
+          workSeconds: autoSecs,
+          totalWorkingHours: autoHours,
           notes: 'Auto-closed past-day shift (daily shift reset)'
         }
       }
@@ -655,10 +665,21 @@ const forceClockOut = asyncHandler(async (req, res) => {
     attRecord.workSeconds = finalWorkSecs;
     attRecord.totalWorkingHours = finalWorkHours;
     attRecord.punchSessions = updatedSessions;
-    if (finalWorkHours >= 4.5 && attRecord.status === 'half_day') {
-      attRecord.status = 'present';
+
+    let companySettings = null;
+    try {
+      const CompanySettings = require('../../settings/models/CompanySettings');
+      companySettings = await CompanySettings.findOne().lean();
+    } catch (_) {}
+    const standardWorkHours = Number(companySettings?.standardWorkHours) || 9;
+    const halfDayThresholdHours = Number(companySettings?.halfDayThresholdHours) || 4.5;
+
+    if (finalWorkHours >= halfDayThresholdHours && attRecord.status === 'half_day') {
+      attRecord.status = attRecord.isLate ? 'late' : 'present';
+    } else if (finalWorkHours > 0 && finalWorkHours < halfDayThresholdHours && !['on_leave', 'holiday', 'day_off'].includes(attRecord.status)) {
+      attRecord.status = 'half_day';
     }
-    const standardWorkHours = 9;
+
     if (finalWorkHours > standardWorkHours) {
       attRecord.overtimeHours = +(finalWorkHours - standardWorkHours).toFixed(2);
       attRecord.overtimeSeconds = Math.round(attRecord.overtimeHours * 3600);
@@ -960,12 +981,22 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
           let initialIsLate = false;
           let initialLateMins = 0;
           if (payload.clockInTime) {
+            let companySettings = null;
+            try {
+              const CompanySettings = require('../../settings/models/CompanySettings');
+              companySettings = await CompanySettings.findOne().lean();
+            } catch (_) {}
+            const shiftStartTime = companySettings?.shiftStartTime || '10:00 AM';
+            const graceMins = companySettings?.gracePeriodMinutes !== undefined ? Number(companySettings.gracePeriodMinutes) : 15;
+            const shiftStartSecs = parseTimeStringToSeconds(shiftStartTime);
+            const graceLimitSecs = shiftStartSecs + (graceMins * 60);
+
             const inSecs = parseTimeStringToSeconds(payload.clockInTime);
-            // Dynamic check against standard policy 10:00 AM + 15m grace = 10:15 AM (36900s)
-            if (inSecs > 36900) {
+            // Dynamic check against saved company policy (shift start + grace period)
+            if (inSecs > graceLimitSecs) {
               initialStatus = 'late';
               initialIsLate = true;
-              initialLateMins = Math.floor((inSecs - 36000) / 60);
+              initialLateMins = Math.floor((inSecs - shiftStartSecs) / 60);
             }
           }
           const newRec = {

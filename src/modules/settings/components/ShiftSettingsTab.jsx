@@ -115,7 +115,17 @@ export const ShiftSettingsTab = ({ onNavigateTab }) => {
         </span>
         {[
           {
-            name: 'Standard Day (09:30 AM - 06:30 PM)',
+            name: 'Standard Shift (10:00 AM - 07:00 PM)',
+            shiftStartTime: '10:00 AM',
+            shiftEndTime: '07:00 PM',
+            standardWorkHours: 9,
+            gracePeriodMinutes: 15,
+            halfDayThresholdHours: 4.5,
+            lunchDurationMinutes: 45,
+            teaBreakMinutes: 15
+          },
+          {
+            name: 'Day Shift (09:30 AM - 06:30 PM)',
             shiftStartTime: '09:30 AM',
             shiftEndTime: '06:30 PM',
             standardWorkHours: 9,
@@ -190,11 +200,23 @@ export const ShiftSettingsTab = ({ onNavigateTab }) => {
               </label>
               <input
                 type="text"
-                value={formData.shiftStartTime || '09:30 AM'}
+                value={formData.shiftStartTime || '10:00 AM'}
                 onChange={e => handleChange('shiftStartTime', e.target.value)}
-                placeholder="09:30 AM"
+                placeholder="10:00 AM"
                 className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold outline-none focus:border-blue-500 transition-colors shadow-xs"
               />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {['09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM'].map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleChange('shiftStartTime', t)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded font-semibold border ${formData.shiftStartTime === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
               <span className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 block">
                 Official check-in starting time.
               </span>
@@ -206,11 +228,23 @@ export const ShiftSettingsTab = ({ onNavigateTab }) => {
               </label>
               <input
                 type="text"
-                value={formData.shiftEndTime || '06:30 PM'}
+                value={formData.shiftEndTime || '07:00 PM'}
                 onChange={e => handleChange('shiftEndTime', e.target.value)}
-                placeholder="06:30 PM"
+                placeholder="07:00 PM"
                 className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold outline-none focus:border-blue-500 transition-colors shadow-xs"
               />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {['05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '08:00 PM'].map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => handleChange('shiftEndTime', t)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded font-semibold border ${formData.shiftEndTime === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
               <span className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 block">
                 Official shift completion time.
               </span>
@@ -230,6 +264,18 @@ export const ShiftSettingsTab = ({ onNavigateTab }) => {
                 placeholder="9"
                 className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-xs font-bold outline-none focus:border-blue-500 transition-colors shadow-xs"
               />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {[8, 8.5, 9, 9.5, 10].map(h => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => handleChange('standardWorkHours', h)}
+                    className={`px-1.5 py-0.5 text-[10px] rounded font-semibold border ${Number(formData.standardWorkHours) === h ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-blue-400'}`}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
               <span className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 block">
                 Expected working duration (e.g. 9 hrs).
               </span>
@@ -412,7 +458,7 @@ export const ShiftSettingsTab = ({ onNavigateTab }) => {
             <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700 flex flex-col">
               <span className="text-[10px] text-slate-400 uppercase font-semibold">Start Shift</span>
               <span className="text-xs sm:text-[13px] font-extrabold text-emerald-400 mt-0.5">
-                {formData.shiftStartTime || '09:30 AM'}
+                {formData.shiftStartTime || '10:00 AM'}
               </span>
               <span className="text-[10px] text-slate-400 mt-1">Clock-in opens</span>
             </div>
@@ -444,7 +490,7 @@ export const ShiftSettingsTab = ({ onNavigateTab }) => {
             <div className="p-2.5 rounded-lg bg-slate-800/80 border border-slate-700 flex flex-col col-span-2 sm:col-span-1">
               <span className="text-[10px] text-slate-400 uppercase font-semibold">Shift End</span>
               <span className="text-xs sm:text-[13px] font-extrabold text-blue-400 mt-0.5">
-                {formData.shiftEndTime || '06:30 PM'}
+                {formData.shiftEndTime || '07:00 PM'}
               </span>
               <span className="text-[10px] text-slate-400 mt-1">Total {workHours}h work</span>
             </div>
