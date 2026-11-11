@@ -138,7 +138,7 @@ export const TeamOperationsPage = () => {
   const [liveTelemetryMap, setLiveTelemetryMap] = useState({});
   const liveTaskMemoryRef = useRef(new Map());
 
-  // ── Multi-User Live Telemetry Poller (Every 3.5s for real-time remote sync) ──
+  // ── Multi-User Live Telemetry Poller (Ultra-fast 1.5s real-time remote sync + event triggers) ──
   useEffect(() => {
     let isMounted = true;
     const fetchTelemetry = async () => {
@@ -157,10 +157,48 @@ export const TeamOperationsPage = () => {
     };
 
     fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 3500);
+    const interval = setInterval(fetchTelemetry, 1500);
+
+    // Instant Reactive Sync: Whenever ANY sync event or storage change happens, fetch immediately!
+    const unsub = subscribeToSyncEvents(() => {
+      fetchTelemetry();
+      setSyncTick(t => t + 1);
+    });
+
+    const handleInstantSync = () => {
+      fetchTelemetry();
+      setSyncTick(t => t + 1);
+    };
+
+    window.addEventListener('hrms_storage_change', handleInstantSync);
+    window.addEventListener('storage', handleInstantSync);
+    window.addEventListener('ems_clocked_in', handleInstantSync);
+    window.addEventListener('ems_clocked_out', handleInstantSync);
+    window.addEventListener('ems_force_clock_out', handleInstantSync);
+    window.addEventListener('ems_task_timer_started', handleInstantSync);
+    window.addEventListener('ems_task_timer_paused', handleInstantSync);
+    window.addEventListener('ems_task_timer_stopped', handleInstantSync);
+    window.addEventListener('ems_break_started', handleInstantSync);
+    window.addEventListener('ems_break_ended', handleInstantSync);
+    window.addEventListener('focus', handleInstantSync);
+    window.addEventListener('visibilitychange', handleInstantSync);
+
     return () => {
       isMounted = false;
       clearInterval(interval);
+      unsub();
+      window.removeEventListener('hrms_storage_change', handleInstantSync);
+      window.removeEventListener('storage', handleInstantSync);
+      window.removeEventListener('ems_clocked_in', handleInstantSync);
+      window.removeEventListener('ems_clocked_out', handleInstantSync);
+      window.removeEventListener('ems_force_clock_out', handleInstantSync);
+      window.removeEventListener('ems_task_timer_started', handleInstantSync);
+      window.removeEventListener('ems_task_timer_paused', handleInstantSync);
+      window.removeEventListener('ems_task_timer_stopped', handleInstantSync);
+      window.removeEventListener('ems_break_started', handleInstantSync);
+      window.removeEventListener('ems_break_ended', handleInstantSync);
+      window.removeEventListener('focus', handleInstantSync);
+      window.removeEventListener('visibilitychange', handleInstantSync);
     };
   }, [todayStr]);
 
@@ -170,32 +208,6 @@ export const TeamOperationsPage = () => {
       setSyncTick(t => t + 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  // Sync on storage changes
-  useEffect(() => {
-    const handleStorage = () => setSyncTick(t => t + 1);
-    window.addEventListener('hrms_storage_change', handleStorage);
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('ems_clocked_in', handleStorage);
-    window.addEventListener('ems_clocked_out', handleStorage);
-    window.addEventListener('ems_force_clock_out', handleStorage);
-    window.addEventListener('ems_task_timer_started', handleStorage);
-    window.addEventListener('ems_task_timer_paused', handleStorage);
-
-    return () => {
-      window.removeEventListener('hrms_storage_change', handleStorage);
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('ems_clocked_in', handleStorage);
-      window.removeEventListener('ems_clocked_out', handleStorage);
-      window.removeEventListener('ems_force_clock_out', handleStorage);
-      window.removeEventListener('ems_task_timer_started', handleStorage);
-    };
-  }, []);
-
-  useEffect(() => {
-    const unsub = subscribeToSyncEvents(() => setSyncTick(t => t + 1));
-    return unsub;
   }, []);
 
   // Helper: Format duration nicely
@@ -380,6 +392,23 @@ export const TeamOperationsPage = () => {
       telemetry: isSelf ? null : telem
     });
 
+    // Live ticking break duration for both local and remote telemetry
+    let effectiveBreakSecs = storedBreakSecs;
+    if (telem) {
+      const telemBreaks = Number(telem.breakSeconds) || 0;
+      if (effectiveOnBreak) {
+        const bStart = Number(telem.breakStartTimestamp || telem.lastHeartbeatAt || telem.fetchedAt || nowMs);
+        const curBreakElapsed = (bStart > 0 && bStart <= nowMs) ? Math.max(0, Math.floor((nowMs - bStart) / 1000)) : 0;
+        effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks + curBreakElapsed);
+      } else {
+        effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks);
+      }
+    } else if (storedOnBreak) {
+      const localBreakStart = Number(readTimerStorage(emp, 'break_start_timestamp')) || nowMs;
+      const curBreakElapsed = (localBreakStart > 0 && localBreakStart <= nowMs) ? Math.max(0, Math.floor((nowMs - localBreakStart) / 1000)) : 0;
+      effectiveBreakSecs = storedBreakSecs + curBreakElapsed;
+    }
+
     // Active Running Task: seamless resolution across local activeTimer, task collections, and Atlas telemetry
     let runningTask = null;
     const empTasks = (tasks || []).filter(t => isTaskAssignedToUser(t, emp));
@@ -490,7 +519,7 @@ export const TeamOperationsPage = () => {
       loginTime,
       clockOutTime,
       workSecs,
-      breakSecs: storedBreakSecs,
+      breakSecs: effectiveBreakSecs,
       runningTask,
       empTasks
     };
@@ -1821,8 +1850,8 @@ export const TeamOperationsPage = () => {
                           {formatTimeDurationSafe(item.workSecs)}
                         </div>
                         {item.breakSecs > 0 && (
-                          <div className="text-[10.5px] text-amber-800 dark:text-amber-300 mt-0.5">
-                            Breaks: {Math.round(item.breakSecs / 60)}m
+                          <div className="text-[10.5px] text-amber-800 dark:text-amber-300 mt-0.5 font-semibold">
+                            Breaks: {item.breakSecs >= 60 ? `${Math.floor(item.breakSecs / 60)}m ${item.breakSecs % 60}s` : `${item.breakSecs}s`}
                           </div>
                         )}
                       </td>

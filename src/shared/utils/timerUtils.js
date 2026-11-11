@@ -414,9 +414,10 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
 
   if (isEffectivelyClockedIn) {
     if (storedOnBreak) {
-      const frozenSecs = (storedWorkSecs > 0)
-        ? storedWorkSecs
-        : (pastSessionsSecs > 0 ? pastSessionsSecs : (Number(attRec?.workSeconds) || 0));
+      const atBreakSecs = Number(readTimerStorage(userOrEmp, 'work_seconds_at_break')) || 0;
+      const frozenSecs = atBreakSecs > 0
+        ? atBreakSecs
+        : ((storedWorkSecs > 0) ? storedWorkSecs : (pastSessionsSecs > 0 ? pastSessionsSecs : (Number(attRec?.workSeconds) || 0)));
       return Math.min(frozenSecs, maxPhysicalElapsedToday);
     }
 

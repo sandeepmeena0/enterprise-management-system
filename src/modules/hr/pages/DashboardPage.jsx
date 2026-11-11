@@ -654,6 +654,18 @@ export const DashboardPage = () => {
       telemetry: isSelf ? null : telem
     });
 
+    let finalBreakSecs = storedBreakSecs;
+    if (telem) {
+      const telemBreaks = Number(telem.breakSeconds) || 0;
+      if (effectiveOnBreak) {
+        const bStart = Number(telem.breakStartTimestamp || telem.lastHeartbeatAt || telem.fetchedAt || Date.now());
+        const curBreakElapsed = (bStart > 0 && bStart <= Date.now()) ? Math.max(0, Math.floor((Date.now() - bStart) / 1000)) : 0;
+        finalBreakSecs = Math.max(storedBreakSecs, telemBreaks + curBreakElapsed);
+      } else {
+        finalBreakSecs = Math.max(storedBreakSecs, telemBreaks);
+      }
+    }
+
     // Active running task with live ticking calculation (prioritize Atlas telemetry for remote/incognito sync)
     let runningTask = null;
     const rawEmpTasks = (tasks || []).filter(t => isTaskAssignedToUser(t, emp));
@@ -791,7 +803,7 @@ export const DashboardPage = () => {
       loginTime: !isOnLeave ? loginTime : null,
       clockOutTime: !isOnLeave ? clockOutTime : null,
       workSecs: !isOnLeave ? workSecs : 0,
-      breakSecs: storedBreakSecs,
+      breakSecs: !isOnLeave ? finalBreakSecs : 0,
       breakHistory: storedBreakHistory,
       runningTask: !isOnLeave ? runningTask : null,
       empTasks,

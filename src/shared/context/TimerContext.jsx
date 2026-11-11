@@ -1415,18 +1415,27 @@ export const TimerProvider = ({ children }) => {
         const maxPossibleElapsedSinceClockIn = Math.max(0, Math.floor((Date.now() - firstClockInTs) / 1000));
         const maxPossibleNetWorkSecs = Math.max(0, maxPossibleElapsedSinceClockIn - totalBreaks);
 
-        // Total working time = completed sessions + (current active session minus active & completed breaks in this session)
-        let netWorkSecs = Math.min(maxPossibleNetWorkSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
-        setWorkSeconds(netWorkSecs);
+        if (onBreakVal) {
+          // STRICT FREEZE: While actively on break, work seconds is mathematically FROZEN!
+          // Do NOT calculate floating (curSessionGrossSecs - curSessionBreaks) which oscillates due to sub-second phase differences!
+          const frozenWorkSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds_at_break`)) ||
+                                 Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) ||
+                                 workSeconds || 0;
+          setWorkSeconds(frozenWorkSecs);
+        } else {
+          // Total working time = completed sessions + (current active session minus active & completed breaks in this session)
+          let netWorkSecs = Math.min(maxPossibleNetWorkSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+          setWorkSeconds(netWorkSecs);
 
-        const nowTs = Date.now();
-        const storedWorkVal = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`) || 0);
-        if (nowTs - lastStorageWriteTs > 2000 || Math.abs(netWorkSecs - storedWorkVal) > 2) {
-          lastStorageWriteTs = nowTs;
-          const mirrorKeys = [userKey, targetEmpId, targetEmpCode].filter(Boolean);
-          for (const uk of mirrorKeys) {
-            localStorage.setItem(`ems_timer_${uk}_break_seconds`, totalBreaks.toString());
-            localStorage.setItem(`ems_timer_${uk}_work_seconds`, netWorkSecs.toString());
+          const nowTs = Date.now();
+          const storedWorkVal = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`) || 0);
+          if (nowTs - lastStorageWriteTs > 2000 || Math.abs(netWorkSecs - storedWorkVal) > 2) {
+            lastStorageWriteTs = nowTs;
+            const mirrorKeys = [userKey, targetEmpId, targetEmpCode].filter(Boolean);
+            for (const uk of mirrorKeys) {
+              localStorage.setItem(`ems_timer_${uk}_break_seconds`, totalBreaks.toString());
+              localStorage.setItem(`ems_timer_${uk}_work_seconds`, netWorkSecs.toString());
+            }
           }
         }
 
@@ -1548,6 +1557,7 @@ export const TimerProvider = ({ children }) => {
       localStorage.setItem(`ems_timer_${uk}_is_running`, 'false');
       localStorage.setItem(`ems_timer_${uk}_is_clocked_in`, 'true');
       localStorage.setItem(`ems_timer_${uk}_work_seconds`, (workSeconds || 0).toString());
+      localStorage.setItem(`ems_timer_${uk}_work_seconds_at_break`, (workSeconds || 0).toString());
     }
 
     // Immediately update local hrms_attendance mirror so all UI components see isOnBreak: true synchronously
@@ -1613,9 +1623,17 @@ export const TimerProvider = ({ children }) => {
         isOnBreak: true,
         breakType: type,
         breakStartTimestamp: Date.now(),
+        breakSeconds: Number(breakSeconds) || 0,
         workSeconds
       }).catch(() => {});
     } catch (_) {}
+
+    broadcastSyncEvent(SYNC_EVENTS.SHIFT_BREAK_STARTED, {
+      employeeId: targetEmpId || userKey,
+      employeeCode: targetEmpCode || userKey,
+      breakType: type,
+      breakSeconds: Number(breakSeconds) || 0
+    });
 
     addToast({
       title: `On ${type} ☕ (${minutesChosen} min target)`,
@@ -1665,6 +1683,7 @@ export const TimerProvider = ({ children }) => {
       localStorage.setItem(`ems_timer_${uk}_current_break_seconds`, '0');
       localStorage.removeItem(`ems_timer_${uk}_break_start_time`);
       localStorage.removeItem(`ems_timer_${uk}_break_start_timestamp`);
+      localStorage.removeItem(`ems_timer_${uk}_work_seconds_at_break`);
       localStorage.setItem(`ems_timer_${uk}_break_seconds`, totalBreaksAfterResume.toString());
       localStorage.setItem(`ems_timer_${uk}_break_history`, JSON.stringify(updatedHistory));
     }
@@ -1708,6 +1727,12 @@ export const TimerProvider = ({ children }) => {
         workSeconds
       }).catch(() => {});
     } catch (_) {}
+
+    broadcastSyncEvent(SYNC_EVENTS.SHIFT_BREAK_ENDED, {
+      employeeId: targetEmpId || userKey,
+      employeeCode: targetEmpCode || userKey,
+      breakSeconds: totalBreaksAfterResume
+    });
 
     // Record audit trail event for break completion
     const isTea = breakType.toLowerCase().includes('tea');
@@ -2147,6 +2172,7 @@ export const TimerProvider = ({ children }) => {
           }
         } catch (_) {}
 
+        const bStartMs = Number(localStorage.getItem(`ems_timer_${uKey}_break_start_timestamp`)) || undefined;
         hrService.sendHeartbeat({
           employeeId: state.targetEmpId || uKey,
           employeeCode: state.targetEmpCode || uKey,
@@ -2155,6 +2181,7 @@ export const TimerProvider = ({ children }) => {
           currentSessionStartTimestamp: sessStart,
           isOnBreak: Boolean(state.isOnBreak),
           breakType: state.isOnBreak ? state.breakType : null,
+          breakStartTimestamp: state.isOnBreak ? bStartMs : null,
           workSeconds: state.workSeconds !== undefined ? state.workSeconds : workSeconds,
           breakSeconds: state.breakSeconds !== undefined ? state.breakSeconds : breakSeconds,
           activeTask: activeTaskData
@@ -2163,7 +2190,7 @@ export const TimerProvider = ({ children }) => {
     };
 
     pulseHeartbeat();
-    const hbInterval = setInterval(pulseHeartbeat, 3000);
+    const hbInterval = setInterval(pulseHeartbeat, 2000);
 
     const onTaskTimerChange = () => {
       pulseHeartbeat();
@@ -2233,6 +2260,27 @@ export const TimerProvider = ({ children }) => {
       durationSeconds: finalSecs,
       durationText: formatHoursMinutes(finalSecs),
       details: `${targetEmpName} ended shift at ${logoutStr}. Total Productive Work: ${formatHoursMinutes(finalSecs)}, Total Breaks: ${formatHoursMinutes(breakSeconds)}.`
+    });
+
+    try {
+      hrService.sendHeartbeat({
+        employeeId: targetEmpId || userKey,
+        employeeCode: targetEmpCode || userKey,
+        isClockedIn: false,
+        clockOutTime: logoutStr,
+        clockOutTimestamp: logoutTs,
+        workSeconds: finalSecs,
+        breakSeconds,
+        isOnBreak: false,
+        activeTask: null
+      }).catch(() => {});
+    } catch (_) {}
+
+    broadcastSyncEvent(SYNC_EVENTS.SHIFT_CLOCKED_OUT, {
+      employeeId: targetEmpId || userKey,
+      employeeCode: targetEmpCode || userKey,
+      clockOutTime: logoutStr,
+      workSeconds: finalSecs
     });
 
     addToast({

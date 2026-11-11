@@ -881,6 +881,7 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     clockInTimestamp,
     currentSessionStartTimestamp,
     workSeconds,
+    breakSeconds,
     isOnBreak,
     breakType,
     breakStartTimestamp,
@@ -895,6 +896,9 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'employeeId or employeeCode is required' });
   }
 
+  const cacheKey = targetCode || targetId;
+  const existingCached = liveTelemetryCache.get(cacheKey);
+
   const payload = {
     employeeId: targetId,
     employeeCode: targetCode,
@@ -905,16 +909,13 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     clockInTimestamp: clockInTimestamp ? Number(clockInTimestamp) : null,
     currentSessionStartTimestamp: currentSessionStartTimestamp ? Number(currentSessionStartTimestamp) : null,
     workSeconds: workSeconds !== undefined ? Number(workSeconds) : 0,
+    breakSeconds: breakSeconds !== undefined ? Number(breakSeconds) : (existingCached?.breakSeconds || 0),
     isOnBreak: Boolean(isOnBreak),
     breakType: breakType || null,
-    breakStartTimestamp: breakStartTimestamp ? Number(breakStartTimestamp) : null,
+    breakStartTimestamp: breakStartTimestamp ? Number(breakStartTimestamp) : (isOnBreak && existingCached?.breakStartTimestamp ? existingCached.breakStartTimestamp : (isOnBreak ? Date.now() : null)),
     activeTask: (activeTask && activeTask.timerRunning !== false) ? { ...activeTask, timerRunning: true } : null,
     lastHeartbeatAt: Date.now()
   };
-
-  // Update in-memory telemetry cache
-  const cacheKey = targetCode || targetId;
-  const existingCached = liveTelemetryCache.get(cacheKey);
 
   const todayMidnight = new Date();
   todayMidnight.setHours(0, 0, 0, 0);
@@ -962,9 +963,11 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
         const updateObj = {
           isClockedIn: payload.isClockedIn,
           workSeconds: safeWorkSecs,
+          breakSeconds: payload.breakSeconds,
           totalWorkingHours: +(safeWorkSecs / 3600).toFixed(2),
           isOnBreak: payload.isOnBreak,
           breakType: payload.breakType,
+          breakStartTimestamp: payload.breakStartTimestamp,
           activeTask: payload.activeTask,
           lastHeartbeatAt: payload.lastHeartbeatAt
         };
@@ -1101,7 +1104,7 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     let liveWorkSecs = 0;
     if (isClockedIn) {
       if (isOnBreak) {
-        const frozen = pastSessionsSecs > 0 ? pastSessionsSecs : (Number(r.workSeconds) || 0);
+        const frozen = (Number(r.workSeconds) || 0) > 0 ? Number(r.workSeconds) : pastSessionsSecs;
         liveWorkSecs = Math.min(frozen, maxAllowedSinceClockIn);
       } else {
         let sessStart = Number(r.currentSessionStartTimestamp || 0);
@@ -1207,6 +1210,8 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       isClockedOut,
       isOnBreak,
       breakType: r.breakType || null,
+      breakSeconds: Number(r.breakSeconds) || 0,
+      breakStartTimestamp: Number(r.breakStartTimestamp) || null,
       clockInTime: r.clockInTime || r.clockIn || null,
       clockInTimestamp: clockInTs,
       clockOutTime: r.clockOutTime || r.clockOut || null,
@@ -1285,6 +1290,8 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         isClockedOut: Boolean(!cachedVal.isClockedIn && (cachedVal.clockOutTime || existingTelem?.clockOutTime)),
         isOnBreak: Boolean(cachedVal.isOnBreak),
         breakType: cachedVal.breakType || existingTelem?.breakType || null,
+        breakSeconds: Number(cachedVal.breakSeconds !== undefined ? cachedVal.breakSeconds : (existingTelem?.breakSeconds || 0)),
+        breakStartTimestamp: Number(cachedVal.breakStartTimestamp || existingTelem?.breakStartTimestamp || null),
         clockInTime: cachedVal.clockInTime || existingTelem?.clockInTime || null,
         clockInTimestamp: cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || null,
         clockOutTime: cachedVal.clockOutTime || existingTelem?.clockOutTime || null,
