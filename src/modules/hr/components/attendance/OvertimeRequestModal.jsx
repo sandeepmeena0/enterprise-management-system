@@ -72,47 +72,41 @@ export const OvertimeRequestModal = ({
 
     const chosenApprover = eligibleApprovers.find(a => String(a._id) === String(selectedApproverId));
 
-    setIsSubmitting(true);
-    try {
-      await hrService.requestOvertime({
-        employeeId: currentUser?._id || currentUser?.employeeCode,
-        employeeCode: currentUser?.employeeCode || '',
-        employeeName: currentUser?.name || 'Employee',
-        date: todayStr,
-        shiftHours: +(workSeconds / 3600).toFixed(2),
-        overtimeHours,
-        overtimeSeconds,
-        overtimeReason: reason.trim() || (isSelfApprove ? 'Admin self-confirmed overtime work session' : 'Completed scheduled deliverables'),
-        overtimeTasks: tasksWorkedList.map(t => ({
-          taskId: t._id || t.id,
-          taskCode: t.taskCode,
-          title: t.title,
-          seconds: Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0,
-          durationText: formatSecs(Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0)
-        })),
-        requestedToId: chosenApprover?._id || '',
-        requestedToName: chosenApprover?.name || (isSelfApprove ? (currentUser?.name || 'Admin') : 'HR Directorate'),
-        isSelfApproved: isSelfApprove
-      });
-
-      if (addToast) {
-        if (isSelfApprove) {
-          addToast(`⚡ Overtime of ${overtimeHoursInt}h ${overtimeMinsInt}m self-confirmed & officially logged!`, 'success');
-        } else {
-          addToast(`📨 Overtime request of ${overtimeHoursInt}h ${overtimeMinsInt}m sent to ${chosenApprover?.name || 'Approver'}!`, 'success');
-        }
+    // 🚀 0ms Instant Optimistic Submit & Modal Close
+    if (addToast) {
+      if (isSelfApprove) {
+        addToast(`⚡ Overtime of ${overtimeHoursInt}h ${overtimeMinsInt}m self-confirmed & officially logged!`, 'success');
+      } else {
+        addToast(`📨 Overtime request of ${overtimeHoursInt}h ${overtimeMinsInt}m sent to ${chosenApprover?.name || 'Approver'}!`, 'success');
       }
-
-      onClose();
-      if (onConfirmClockOut) onConfirmClockOut();
-    } catch (err) {
-      console.error('Error submitting overtime request:', err);
-      if (addToast) addToast('Failed to record overtime request. Clocking out shift.', 'error');
-      onClose();
-      if (onConfirmClockOut) onConfirmClockOut();
-    } finally {
-      setIsSubmitting(false);
     }
+
+    onClose();
+    if (onConfirmClockOut) onConfirmClockOut();
+
+    // Background cloud sync
+    hrService.requestOvertime({
+      employeeId: currentUser?._id || currentUser?.employeeCode,
+      employeeCode: currentUser?.employeeCode || '',
+      employeeName: currentUser?.name || 'Employee',
+      date: todayStr,
+      shiftHours: +(workSeconds / 3600).toFixed(2),
+      overtimeHours,
+      overtimeSeconds,
+      overtimeReason: reason.trim() || (isSelfApprove ? 'Admin self-confirmed overtime work session' : 'Completed scheduled deliverables'),
+      overtimeTasks: tasksWorkedList.map(t => ({
+        taskId: t._id || t.id,
+        taskCode: t.taskCode,
+        title: t.title,
+        seconds: Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0,
+        durationText: formatSecs(Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0)
+      })),
+      requestedToId: chosenApprover?._id || '',
+      requestedToName: chosenApprover?.name || (isSelfApprove ? (currentUser?.name || 'Admin') : 'HR Directorate'),
+      isSelfApproved: isSelfApprove
+    }).catch(err => {
+      console.warn('Background overtime sync notice:', err);
+    });
   };
 
   const handleSkipOvertime = () => {

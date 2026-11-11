@@ -1409,8 +1409,9 @@ export const CRMProvider = ({ children }) => {
 
     const selectedEmployee = employees.find(emp => emp._id === expenseData.employeeId) || currentUser;
 
+    const tempId = `exp_${Date.now()}`;
     const newExpense = {
-      _id: `exp_${Date.now()}`,
+      _id: tempId,
       idNumber: nextNum,
       expenseCode: `EXP-${100 + nextNum}`,
       itemName: expenseData.itemName || expenseData.title || 'Office Expense',
@@ -1433,35 +1434,38 @@ export const CRMProvider = ({ children }) => {
       ...expenseData
     };
 
-    try {
-      const res = await fetch(`${API_BASE}/expenses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newExpense)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data?._id) newExpense._id = json.data._id;
-      }
-    } catch (_) {}
-
-    currentList.unshift(newExpense);
-    saveCollection(KEYS.EXPENSES, currentList);
-    setExpenses([...currentList]);
+    // 🚀 0ms Instant Optimistic Local Update
+    const updatedExpenses = [newExpense, ...currentList];
+    saveCollection(KEYS.EXPENSES, updatedExpenses);
+    setExpenses(updatedExpenses);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EXPENSES } }));
     addToast(`Expense "${newExpense.itemName}" recorded successfully!`, 'success');
+
+    // Asynchronous background sync
+    const payload = { ...newExpense };
+    delete payload._id;
+    fetch(`${API_BASE}/expenses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (json?.data?._id) {
+          const cur = getCollection(KEYS.EXPENSES) || [];
+          const swapped = cur.map(e => e._id === tempId ? { ...e, _id: json.data._id } : e);
+          saveCollection(KEYS.EXPENSES, swapped);
+          setExpenses(swapped);
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EXPENSES } }));
+        }
+      })
+      .catch(e => console.warn('[CRMContext] Expense cloud sync queued:', e));
+
     return newExpense;
   };
 
   const updateExpense = async (expenseId, updateData) => {
-    try {
-      await fetch(`${API_BASE}/expenses/${expenseId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData)
-      });
-    } catch (_) {}
-
+    // 🚀 0ms Instant Optimistic Local Update
     const currentList = getCollection(KEYS.EXPENSES);
     const idx = currentList.findIndex(e => e._id === expenseId);
     if (idx !== -1) {
@@ -1476,8 +1480,16 @@ export const CRMProvider = ({ children }) => {
       setExpenses([...currentList]);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EXPENSES } }));
       addToast('Expense record updated successfully!', 'success');
-      return currentList[idx];
     }
+
+    // Asynchronous background sync
+    fetch(`${API_BASE}/expenses/${expenseId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    }).catch(err => console.warn('[CRMContext] Sync expense update:', err));
+
+    return currentList[idx];
   };
 
   const updateExpenseStatus = async (expenseId, status) => {

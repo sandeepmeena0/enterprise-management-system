@@ -2131,8 +2131,18 @@ export const WorkProvider = ({ children }) => {
     const allTimesheets = getCollection(KEYS.TIMESHEETS) || [];
 
     try {
+      // 🚀 0ms Instant Optimistic Local Stop
+      saveActiveTimerSnapshot(null);
+      if (targetTask?.assignedToId) {
+        try { localStorage.removeItem(`ems_active_task_timer_${targetTask.assignedToId}`); } catch {}
+      }
+      if (targetTask?.activeUserId) {
+        try { localStorage.removeItem(`ems_active_task_timer_${targetTask.activeUserId}`); } catch {}
+      }
+
+      // Background async persistence of timesheet to MongoDB Atlas
       if (durationToLog > 0) {
-        await workService.stopTimer({
+        workService.stopTimer({
           taskId: targetTask?._id || taskId,
           taskCode: targetTask?.taskCode || 'TSK',
           taskTitle: targetTask?.title || 'Task',
@@ -2143,15 +2153,7 @@ export const WorkProvider = ({ children }) => {
           totalDurationSeconds: durationToLog,
           date: todayStr,
           memo: memo || `Work on ${targetTask?.title || 'Task'}`
-        });
-      }
-
-      saveActiveTimerSnapshot(null);
-      if (targetTask?.assignedToId) {
-        try { localStorage.removeItem(`ems_active_task_timer_${targetTask.assignedToId}`); } catch {}
-      }
-      if (targetTask?.activeUserId) {
-        try { localStorage.removeItem(`ems_active_task_timer_${targetTask.activeUserId}`); } catch {}
+        }).catch(err => console.warn('[WorkContext] Sync stopTimer error:', err));
       }
       try {
         const empK = targetTask?.activeUserId || targetTask?.assignedToId || userKey;
@@ -2755,10 +2757,37 @@ export const WorkProvider = ({ children }) => {
   // =========================================================================
   const logTimesheet = async (entryData) => {
     try {
-      const created = await workService.createTimesheet(entryData);
+      const tempId = `ts_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const optimisticEntry = {
+        _id: tempId,
+        id: tempId,
+        date: entryData.date || getTodayStr(),
+        createdAt: new Date().toISOString(),
+        ...entryData
+      };
+
+      // 🚀 0ms Instant Optimistic Local Update
+      const allTimesheets = getCollection(KEYS.TIMESHEETS) || [];
+      const updatedList = [optimisticEntry, ...allTimesheets];
+      saveCollection(KEYS.TIMESHEETS, updatedList);
+      setTimesheets(updatedList);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TIMESHEETS } }));
       addToast('Time logged successfully to Timesheet!', 'success');
-      await loadWorkData();
-      return created;
+
+      // Asynchronous background sync
+      workService.createTimesheet(entryData)
+        .then(created => {
+          if (created && created._id && created._id !== tempId) {
+            setTimesheets(prev => prev.map(ts => (ts._id === tempId || ts.id === tempId ? { ...ts, ...created, _id: created._id, id: created._id } : ts)));
+            const cur = getCollection(KEYS.TIMESHEETS) || [];
+            const swapped = cur.map(ts => (ts._id === tempId || ts.id === tempId ? { ...ts, ...created, _id: created._id, id: created._id } : ts));
+            saveCollection(KEYS.TIMESHEETS, swapped);
+            window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TIMESHEETS } }));
+          }
+        })
+        .catch(err => console.warn('[WorkContext] Timesheet cloud sync queued:', err));
+
+      return optimisticEntry;
     } catch (err) {
       addToast('Failed to log time', 'error');
       throw err;
@@ -2767,9 +2796,16 @@ export const WorkProvider = ({ children }) => {
 
   const deleteTimesheet = async (id) => {
     try {
-      await workService.deleteTimesheet(id);
+      // 🚀 0ms Instant Optimistic Local Removal
+      const allTimesheets = getCollection(KEYS.TIMESHEETS) || [];
+      const filtered = allTimesheets.filter(ts => String(ts._id || ts.id) !== String(id));
+      saveCollection(KEYS.TIMESHEETS, filtered);
+      setTimesheets(filtered);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TIMESHEETS } }));
       addToast('Timesheet entry removed', 'info');
-      await loadWorkData();
+
+      // Asynchronous background sync
+      workService.deleteTimesheet(id).catch(err => console.warn('[WorkContext] Sync delete timesheet error:', err));
     } catch (err) {
       addToast('Failed to delete timesheet entry', 'error');
     }

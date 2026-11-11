@@ -44,11 +44,19 @@ export const OvertimeManagementPanel = ({ currentUser, addToast }) => {
       if (status === 'rejected') {
         reason = window.prompt('Please enter a reason for rejecting this overtime request (optional):') || 'Rejected by approver';
       }
-      await hrService.updateOvertimeStatus(id, status, currentUser?.name || 'Admin', reason);
+      // 🚀 0ms Instant Optimistic Local Update
+      setRequests(prev => prev.map(r => (r._id === id || r.id === id ? { ...r, overtimeStatus: status, status } : r)));
       if (addToast) {
         addToast(`Overtime request marked as ${status.toUpperCase()}!`, status === 'approved' ? 'success' : 'info');
       }
-      fetchOvertimeData();
+
+      // Background cloud sync
+      hrService.updateOvertimeStatus(id, status, currentUser?.name || 'Admin', reason)
+        .then(() => fetchOvertimeData())
+        .catch(err => {
+          console.error('Decision error:', err);
+          if (addToast) addToast('Failed to update overtime status', 'error');
+        });
     } catch (err) {
       console.error('Decision error:', err);
       if (addToast) addToast('Failed to update overtime status', 'error');
