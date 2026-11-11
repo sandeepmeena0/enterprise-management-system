@@ -26,8 +26,16 @@ const AttendanceSchema = new mongoose.Schema(
       type: String,     // "09:15:00"
       default: null
     },
+    firstClockInTime: {
+      type: String,     // First punch of the day
+      default: null
+    },
     clockOutTime: {
       type: String,     // "18:30:00"
+      default: null
+    },
+    lastClockOutTime: {
+      type: String,     // Last punch out of the day
       default: null
     },
     totalWorkingHours: {
@@ -40,7 +48,15 @@ const AttendanceSchema = new mongoose.Schema(
       type: Number,
       default: null
     },
+    firstClockInTimestamp: {
+      type: Number,
+      default: null
+    },
     clockOutTimestamp: {
+      type: Number,
+      default: null
+    },
+    lastClockOutTimestamp: {
       type: Number,
       default: null
     },

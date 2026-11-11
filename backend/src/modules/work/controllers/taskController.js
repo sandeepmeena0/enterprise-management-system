@@ -229,17 +229,38 @@ exports.updateTask = async (req, res, next) => {
     }
 
     let task = null;
+    const orQueries = [];
     if (mongoose.Types.ObjectId.isValid(req.params.id)) {
-      task = await Task.findByIdAndUpdate(req.params.id, updateData, {
-        new: true,
-        runValidators: true
-      });
+      orQueries.push({ _id: req.params.id });
     }
+    orQueries.push({ taskCode: req.params.id });
+    if (updateData.taskCode) {
+      orQueries.push({ taskCode: updateData.taskCode });
+    }
+    if (updateData._id && mongoose.Types.ObjectId.isValid(updateData._id)) {
+      orQueries.push({ _id: updateData._id });
+    }
+    if (updateData.id && mongoose.Types.ObjectId.isValid(updateData.id)) {
+      orQueries.push({ _id: updateData.id });
+    }
+    if (updateData.title) {
+      orQueries.push({ title: updateData.title });
+    }
+
+    task = await Task.findOneAndUpdate({ $or: orQueries }, updateData, {
+      new: true,
+      runValidators: false
+    });
+
     if (!task) {
-      task = await Task.findOneAndUpdate({ taskCode: req.params.id }, updateData, {
-        new: true,
-        runValidators: true
-      });
+      // Upsert: Create task so it exists authoritatively in MongoDB Atlas across all devices
+      try {
+        const cleanPayload = { ...updateData };
+        if (!cleanPayload.taskCode) cleanPayload.taskCode = req.params.id;
+        task = await Task.create(cleanPayload);
+      } catch (e) {
+        console.warn('Upsert fallback notice:', e.message);
+      }
     }
 
     if (!task) {
@@ -271,11 +292,15 @@ exports.updateTaskStatus = async (req, res, next) => {
     }
 
     let task = null;
+    const orQueries = [];
     if (mongoose.Types.ObjectId.isValid(req.params.id)) {
-      task = await Task.findByIdAndUpdate(req.params.id, update, { new: true });
-    } else {
-      task = await Task.findOneAndUpdate({ $or: [{ taskCode: req.params.id }, { _id: req.params.id }] }, update, { new: true });
+      orQueries.push({ _id: req.params.id });
     }
+    orQueries.push({ taskCode: req.params.id });
+    if (req.body.taskCode) orQueries.push({ taskCode: req.body.taskCode });
+    if (req.body.title) orQueries.push({ title: req.body.title });
+
+    task = await Task.findOneAndUpdate({ $or: orQueries }, update, { new: true });
 
     if (!task) {
       return res.status(404).json({ success: false, message: 'Task not found' });

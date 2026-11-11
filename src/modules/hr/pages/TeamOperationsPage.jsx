@@ -364,6 +364,10 @@ export const TeamOperationsPage = () => {
           localStorage.removeItem(`ems_timer_${k}_break_history`);
           localStorage.removeItem(`ems_timer_${k}_session_break_baseline`);
           localStorage.removeItem(`ems_timer_${k}_login_time`);
+          localStorage.removeItem(`ems_timer_${k}_first_clock_in_time`);
+          localStorage.removeItem(`ems_timer_${k}_first_clock_in_timestamp`);
+          localStorage.removeItem(`ems_timer_${k}_last_clock_out_time`);
+          localStorage.removeItem(`ems_timer_${k}_last_clock_out_timestamp`);
           localStorage.removeItem(`ems_timer_${k}_clock_out`);
           localStorage.removeItem(`ems_timer_${k}_clockout_time`);
           localStorage.removeItem(`ems_timer_${k}_clock_in_timestamp`);
@@ -386,13 +390,19 @@ export const TeamOperationsPage = () => {
     const storedBreakType = isTodaySession
       ? (localStorage.getItem(`ems_timer_${empKey}_break_type`) || (empId ? localStorage.getItem(`ems_timer_${empId}_break_type`) : null) || 'Break')
       : 'Break';
-    const storedLogin = isTodaySession
-      ? (localStorage.getItem(`ems_timer_${empKey}_login_time`) || (empId ? localStorage.getItem(`ems_timer_${empId}_login_time`) : null))
+    const storedFirstLogin = isTodaySession
+      ? (localStorage.getItem(`ems_timer_${empKey}_first_clock_in_time`) || (empId ? localStorage.getItem(`ems_timer_${empId}_first_clock_in_time`) : null))
       : null;
-    const storedClockOut = isTodaySession
+    const storedLogin = storedFirstLogin || (isTodaySession
+      ? (localStorage.getItem(`ems_timer_${empKey}_login_time`) || (empId ? localStorage.getItem(`ems_timer_${empId}_login_time`) : null))
+      : null);
+    const storedLastClockOut = isTodaySession
+      ? (localStorage.getItem(`ems_timer_${empKey}_last_clock_out_time`) || (empId ? localStorage.getItem(`ems_timer_${empId}_last_clock_out_time`) : null))
+      : null;
+    const storedClockOut = storedLastClockOut || (isTodaySession
       ? (localStorage.getItem(`ems_timer_${empKey}_clock_out`) || (empId ? localStorage.getItem(`ems_timer_${empId}_clock_out`) : null) ||
          localStorage.getItem(`ems_timer_${empKey}_clockout_time`) || (empId ? localStorage.getItem(`ems_timer_${empId}_clockout_time`) : null))
-      : null;
+      : null);
     const storedWorkSecs = isTodaySession
       ? (Number(localStorage.getItem(`ems_timer_${empKey}_work_seconds`)) || (empId ? Number(localStorage.getItem(`ems_timer_${empId}_work_seconds`)) : 0) || 0)
       : 0;
@@ -440,11 +450,11 @@ export const TeamOperationsPage = () => {
     const effectiveBreakType = isSelf ? storedBreakType : (telem ? (telem.breakType || 'Break') : storedBreakType);
 
     const loginTime = isClockedIn
-      ? (telem?.clockInTime || attRec?.clockInTime || storedLogin || 'Active')
-      : (isClockedOut ? (telem?.clockInTime || attRec?.clockInTime || storedLogin || '--') : (isOnLeave ? 'On Leave' : '--'));
+      ? (storedFirstLogin || telem?.firstClockInTime || attRec?.firstClockInTime || telem?.clockInTime || attRec?.clockInTime || storedLogin || 'Active')
+      : (isClockedOut ? (storedFirstLogin || telem?.firstClockInTime || attRec?.firstClockInTime || telem?.clockInTime || attRec?.clockInTime || storedLogin || '--') : (isOnLeave ? 'On Leave' : '--'));
 
     const clockOutTime = isClockedOut
-      ? (telem?.clockOutTime || attRec?.clockOutTime || storedClockOut || '--')
+      ? (storedLastClockOut || telem?.lastClockOutTime || attRec?.lastClockOutTime || telem?.clockOutTime || attRec?.clockOutTime || storedClockOut || '--')
       : null;
 
     const nowMs = Date.now();

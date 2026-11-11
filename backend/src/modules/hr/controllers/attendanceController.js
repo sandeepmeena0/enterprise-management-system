@@ -339,10 +339,29 @@ const markAttendance = asyncHandler(async (req, res) => {
     overtimeSeconds
   };
 
-  if (clockInTime !== undefined) updateFields.clockInTime = clockInTime;
-  if ('clockOutTime' in req.body) updateFields.clockOutTime = clockOutTime;
-  if (clockInTimestamp !== undefined) updateFields.clockInTimestamp = clockInTimestamp;
-  if ('clockOutTimestamp' in req.body) updateFields.clockOutTimestamp = clockOutTimestamp;
+  const existingRecord = await Attendance.findOne({
+    date,
+    $or: [{ employee: targetEmpId }, { employeeCode: targetEmpCode }]
+  });
+
+  if (existingRecord && (existingRecord.firstClockInTime || existingRecord.clockInTime)) {
+    updateFields.firstClockInTime = existingRecord.firstClockInTime || existingRecord.clockInTime;
+    updateFields.clockInTime = existingRecord.firstClockInTime || existingRecord.clockInTime;
+    updateFields.clockInTimestamp = existingRecord.firstClockInTimestamp || existingRecord.clockInTimestamp || clockInTimestamp;
+  } else if (clockInTime !== undefined) {
+    updateFields.firstClockInTime = req.body.firstClockInTime || clockInTime;
+    updateFields.clockInTime = req.body.firstClockInTime || clockInTime;
+    if (clockInTimestamp !== undefined) updateFields.clockInTimestamp = clockInTimestamp;
+  }
+
+  if ('clockOutTime' in req.body) {
+    updateFields.clockOutTime = clockOutTime;
+    if (clockOutTime) updateFields.lastClockOutTime = clockOutTime;
+  }
+  if ('clockOutTimestamp' in req.body) {
+    updateFields.clockOutTimestamp = clockOutTimestamp;
+    if (clockOutTimestamp) updateFields.lastClockOutTimestamp = clockOutTimestamp;
+  }
   if (workSeconds !== undefined) updateFields.workSeconds = Number(workSeconds) || 0;
   if (breakSeconds !== undefined) updateFields.breakSeconds = Number(breakSeconds) || 0;
   if (isOnBreak !== undefined) updateFields.isOnBreak = Boolean(isOnBreak);
@@ -906,8 +925,11 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     employeeName: req.body.employeeName || req.user?.name || '',
     date: today,
     isClockedIn: isClockedIn !== undefined ? Boolean(isClockedIn) : (existingCached ? existingCached.isClockedIn : true),
-    clockInTime: clockInTime || null,
-    clockInTimestamp: clockInTimestamp ? Number(clockInTimestamp) : null,
+    clockInTime: existingCached?.firstClockInTime || existingCached?.clockInTime || clockInTime || null,
+    firstClockInTime: existingCached?.firstClockInTime || req.body.firstClockInTime || clockInTime || existingCached?.clockInTime || null,
+    clockOutTime: clockOutTime || (isClockedIn ? null : (existingCached?.clockOutTime || null)),
+    lastClockOutTime: clockOutTime || req.body.lastClockOutTime || existingCached?.lastClockOutTime || existingCached?.clockOutTime || null,
+    clockInTimestamp: existingCached?.clockInTimestamp || (clockInTimestamp ? Number(clockInTimestamp) : null),
     currentSessionStartTimestamp: currentSessionStartTimestamp ? Number(currentSessionStartTimestamp) : null,
     workSeconds: workSeconds !== undefined ? Number(workSeconds) : 0,
     breakSeconds: breakSeconds !== undefined ? Number(breakSeconds) : (existingCached?.breakSeconds || 0),
@@ -1232,9 +1254,11 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       breakType: r.breakType || null,
       breakSeconds: Number(r.breakSeconds) || 0,
       breakStartTimestamp: Number(r.breakStartTimestamp) || null,
-      clockInTime: r.clockInTime || r.clockIn || null,
+      firstClockInTime: r.firstClockInTime || r.clockInTime || r.clockIn || null,
+      clockInTime: r.firstClockInTime || r.clockInTime || r.clockIn || null,
       clockInTimestamp: clockInTs,
       clockOutTime: r.clockOutTime || r.clockOut || null,
+      lastClockOutTime: r.lastClockOutTime || r.clockOutTime || r.clockOut || null,
       clockOutTimestamp: r.clockOutTimestamp || null,
       currentSessionStartTimestamp: Number(r.currentSessionStartTimestamp || clockInTs || 0),
       workSeconds: liveWorkSecs,
@@ -1312,9 +1336,11 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         breakType: cachedVal.breakType || existingTelem?.breakType || null,
         breakSeconds: Number(cachedVal.breakSeconds !== undefined ? cachedVal.breakSeconds : (existingTelem?.breakSeconds || 0)),
         breakStartTimestamp: Number(cachedVal.breakStartTimestamp || existingTelem?.breakStartTimestamp || null),
-        clockInTime: cachedVal.clockInTime || existingTelem?.clockInTime || null,
+        firstClockInTime: cachedVal.firstClockInTime || existingTelem?.firstClockInTime || cachedVal.clockInTime || existingTelem?.clockInTime || null,
+        clockInTime: cachedVal.firstClockInTime || existingTelem?.firstClockInTime || cachedVal.clockInTime || existingTelem?.clockInTime || null,
         clockInTimestamp: cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || null,
         clockOutTime: cachedVal.clockOutTime || existingTelem?.clockOutTime || null,
+        lastClockOutTime: cachedVal.lastClockOutTime || cachedVal.clockOutTime || existingTelem?.lastClockOutTime || existingTelem?.clockOutTime || null,
         currentSessionStartTimestamp: cachedVal.currentSessionStartTimestamp || existingTelem?.currentSessionStartTimestamp || null,
         workSeconds: (() => {
           let cacheClockInTs = Number(cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || 0);

@@ -309,11 +309,16 @@ export const WorkProvider = ({ children }) => {
         if (id && !isLegacyTask(lt)) localMap.set(id, lt);
       });
 
-      // 1. Map backend tasks with live timer overlay
+      // 1. Map backend tasks with live timer overlay (strictly honors completions across all devices)
       (rawTsks || []).forEach(bt => {
         const id = String(bt._id || bt.id);
         if (id && !isLegacyTask(bt)) {
-          const existing = localMap.get(id);
+          const codeKey = bt.taskCode && bt.taskCode.trim() ? `code_${bt.taskCode.trim().toLowerCase()}` : null;
+          const existing = localMap.get(id) || (codeKey ? localMap.get(codeKey) : null);
+          const isBackendCompleted = bt.status === 'completed' || !!bt.completedAt;
+          const isLocalCompleted = existing && (existing.status === 'completed' || !!existing.completedAt);
+          const finalCompleted = isBackendCompleted || isLocalCompleted;
+
           if (existing) {
             const localSecs = Number(existing.timerSeconds) || 0;
             const backendSecs = Number(bt.timerSeconds) || 0;
@@ -327,9 +332,15 @@ export const WorkProvider = ({ children }) => {
             const isBackendActive = Boolean(bt.timerRunning && isStartedToday);
             const isLocalActive = Boolean(existing.timerRunning || (activeTimer && String(activeTimer.taskId) === id && activeTimer.timerRunning));
 
-            // Keep timer running if actively running locally or on backend
-            const effectiveRunning = isLocalActive || isBackendActive;
-            const effectiveStartedAt = isLocalActive ? (existing.startedAt || activeTimer?.startedAt || Date.now()) : (isBackendActive ? bt.startedAt : null);
+            // Completed tasks can NEVER run
+            const effectiveRunning = finalCompleted ? false : (isLocalActive || isBackendActive);
+            const effectiveStartedAt = effectiveRunning
+              ? (isLocalActive ? (existing.startedAt || activeTimer?.startedAt || Date.now()) : (isBackendActive ? bt.startedAt : null))
+              : null;
+
+            if (finalCompleted && activeTimer && (String(activeTimer.taskId) === id || activeTimer.taskCode === bt.taskCode)) {
+              saveActiveTimerSnapshot(null);
+            }
 
             taskMap.set(id, {
               ...existing,
@@ -338,10 +349,16 @@ export const WorkProvider = ({ children }) => {
               startedAt: effectiveStartedAt,
               timerSeconds: Math.max(localSecs, backendSecs),
               accumulatedSeconds: Math.max(localAccum, backendAccum),
-              status: bt.status || existing.status
+              status: finalCompleted ? 'completed' : (bt.status || existing.status),
+              completedAt: bt.completedAt || existing.completedAt || (finalCompleted ? new Date().toISOString() : null),
+              completedOn: bt.completedOn || existing.completedOn || (finalCompleted ? today : null)
             });
           } else {
-            taskMap.set(id, { ...bt });
+            taskMap.set(id, {
+              ...bt,
+              timerRunning: finalCompleted ? false : Boolean(bt.timerRunning),
+              status: finalCompleted ? 'completed' : bt.status
+            });
           }
         }
       });
@@ -616,12 +633,12 @@ export const WorkProvider = ({ children }) => {
       }
     });
 
-    // Periodic synchronization from DB (every 3.5 seconds) + tab focus across devices / laptops
+    // Periodic synchronization from DB (every 2.0 seconds) + tab focus across devices / laptops
     const syncInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         scheduleDebouncedLoad(true);
       }
-    }, 3500);
+    }, 2000);
 
     const handleFocus = () => scheduleDebouncedLoad(true);
     const handleVisibility = () => {
@@ -1872,6 +1889,9 @@ export const WorkProvider = ({ children }) => {
     // Persist running state to MongoDB Atlas via workService.updateTask
     try {
       workService.updateTask(taskId, {
+        taskCode: targetTask.taskCode,
+        title: targetTask.title,
+        _id: targetTask._id,
         timerRunning: true,
         startedAt: now,
         accumulatedSeconds: existingSecs,
@@ -2084,6 +2104,9 @@ export const WorkProvider = ({ children }) => {
     // Persist paused state to backend
     try {
       workService.updateTask(taskId, {
+        taskCode: targetTask.taskCode,
+        title: targetTask.title,
+        _id: targetTask._id,
         timerRunning: false,
         startedAt: null,
         accumulatedSeconds: currentSecs,
@@ -2486,10 +2509,13 @@ export const WorkProvider = ({ children }) => {
       setTasks(updatedAll);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
 
-      // Asynchronous background persistence to MongoDB Atlas
-      const currentTarget = tasks.find(t => String(t._id || t.id) === String(taskId));
+      // Asynchronous background persistence to MongoDB Atlas (guaranteed multi-device & cloud reflection)
+      const currentTarget = tasks.find(t => String(t._id || t.id) === String(taskId)) || targetTask;
       const fullHist = Array.isArray(currentTarget?.history) ? [...currentTarget.history, completionHistory] : [completionHistory];
       workService.updateTask(taskId, {
+        taskCode: targetTask.taskCode,
+        title: targetTask.title,
+        _id: targetTask._id,
         status: 'completed',
         progress: 100,
         timerRunning: false,
@@ -2505,6 +2531,20 @@ export const WorkProvider = ({ children }) => {
         sessionDate: todayStr,
         history: fullHist
       }).catch(err => console.warn('Background completeTask sync notice:', err));
+
+      saveActiveTimerSnapshot(null);
+      try {
+        hrService.sendHeartbeat({
+          employeeId: targetUserKey,
+          employeeCode: targetUserKey,
+          activeTask: null
+        }).catch(() => {});
+      } catch (_) {}
+      broadcastSyncEvent(SYNC_EVENTS.TASK_COMPLETED, {
+        taskId,
+        taskCode: targetTask.taskCode,
+        title: targetTask.title
+      });
 
       // Find remaining pending tasks assigned to this user
       const remainingTasks = updatedAll.filter(t => 

@@ -509,8 +509,10 @@ export const DashboardPage = () => {
     const storedClockedIn = readTimerKey('is_clocked_in') === 'true' || readTimerKey('is_clocked_in') === true;
     const storedOnBreak = readTimerKey('is_on_break') === 'true' || readTimerKey('is_on_break') === true;
     const storedBreakType = readTimerKey('break_type') || 'Break';
-    const storedLogin = readTimerKey('login_time');
-    const storedClockOut = readTimerKey('clock_out') || readTimerKey('clockout_time');
+    const storedFirstLogin = readTimerKey('first_clock_in_time');
+    const storedLogin = storedFirstLogin || readTimerKey('login_time');
+    const storedLastClockOut = readTimerKey('last_clock_out_time');
+    const storedClockOut = storedLastClockOut || readTimerKey('clock_out') || readTimerKey('clockout_time');
     const storedWorkSecs = Number(readTimerKey('work_seconds')) || 0;
     let storedBreakSecs = Number(readTimerKey('break_seconds')) || 0;
     if (storedOnBreak) {
@@ -555,6 +557,10 @@ export const DashboardPage = () => {
         writeTimerStorage(emp, 'work_session_date', todayStr);
         removeTimerStorage(emp, 'clock_in_timestamp');
         removeTimerStorage(emp, 'login_time');
+        removeTimerStorage(emp, 'first_clock_in_time');
+        removeTimerStorage(emp, 'first_clock_in_timestamp');
+        removeTimerStorage(emp, 'last_clock_out_time');
+        removeTimerStorage(emp, 'last_clock_out_timestamp');
         removeTimerStorage(emp, 'clock_out');
         removeTimerStorage(emp, 'clockout_time');
         removeTimerStorage(emp, 'current_session_start_timestamp');
@@ -633,11 +639,11 @@ export const DashboardPage = () => {
     const effectiveBreakType = telem ? (telem.breakType || 'Break') : storedBreakType;
 
     const loginTime = isClockedIn
-      ? (telem?.clockInTime || attRec?.clockInTime || storedLogin || 'Active')
-      : (isClockedOut ? (telem?.clockInTime || attRec?.clockInTime || storedLogin || null) : null);
+      ? (readTimerKey('first_clock_in_time') || telem?.firstClockInTime || attRec?.firstClockInTime || telem?.clockInTime || attRec?.clockInTime || storedLogin || 'Active')
+      : (isClockedOut ? (readTimerKey('first_clock_in_time') || telem?.firstClockInTime || attRec?.firstClockInTime || telem?.clockInTime || attRec?.clockInTime || storedLogin || null) : null);
 
     const clockOutTime = isClockedOut
-      ? (telem?.clockOutTime || attRec?.clockOutTime || storedClockOut || null)
+      ? (readTimerKey('last_clock_out_time') || telem?.lastClockOutTime || attRec?.lastClockOutTime || telem?.clockOutTime || attRec?.clockOutTime || storedClockOut || null)
       : null;
 
     const todayMidnight = new Date();

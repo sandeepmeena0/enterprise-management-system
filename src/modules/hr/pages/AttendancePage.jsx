@@ -36,7 +36,7 @@ import { AdminForceClockOutModal } from '../components/attendance/AdminForceCloc
 import { OvertimeManagementPanel } from '../components/attendance/OvertimeManagementPanel';
 import { useToast } from '../../../shared/context/ToastContext';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';
-import { readTimerStorage, parseTimeToSeconds } from '../../../shared/utils/timerUtils';
+import { readTimerStorage, parseTimeToSeconds, calculateShiftWorkSeconds } from '../../../shared/utils/timerUtils';
 
 export const AttendancePage = () => {
   const navigate = useNavigate();
@@ -211,10 +211,10 @@ export const AttendancePage = () => {
       );
 
       const storedIn = readTimerStorage(emp, 'is_clocked_in') === 'true';
-      const storedOut = readTimerStorage(emp, 'had_clocked_out') === 'true' || Boolean(readTimerStorage(emp, 'clock_out'));
+      const storedOut = readTimerStorage(emp, 'had_clocked_out') === 'true' || Boolean(readTimerStorage(emp, 'last_clock_out_time') || readTimerStorage(emp, 'clock_out'));
 
       const isClockedIn = Boolean(storedIn || (att && att.isClockedIn && !att.clockOutTime));
-      const isClockedOut = Boolean(storedOut || att?.clockOutTime || (att && att.isClockedIn === false));
+      const isClockedOut = !isClockedIn && Boolean(storedOut || att?.lastClockOutTime || att?.clockOutTime || (att && att.isClockedIn === false));
       const isPresent = isClockedIn || isClockedOut || ['present', 'late', 'half_day'].includes(att?.status);
       const isOnLeave = Boolean(att?.status === 'on_leave' || leave);
 
@@ -222,7 +222,8 @@ export const AttendancePage = () => {
         onLeave++;
       } else if (isPresent) {
         present++;
-        if (att?.status === 'late' || (att?.clockInTime && parseTimeToSeconds(att.clockInTime) > 34200)) {
+        const effectiveClockIn = readTimerStorage(emp, 'first_clock_in_time') || att?.firstClockInTime || att?.clockInTime;
+        if (att?.status === 'late' || (effectiveClockIn && parseTimeToSeconds(effectiveClockIn) > 34200)) {
           late++;
         } else if (att?.status === 'half_day') {
           halfDay++;
@@ -348,14 +349,27 @@ export const AttendancePage = () => {
         (a.employeeCode && (e._id === a.employeeCode || e.employeeCode === a.employeeCode)) ||
         (a.employeeName && e.name.toLowerCase() === a.employeeName.toLowerCase())
       );
+      const isToday = a.date === todayStr;
+      const storedFirstIn = isToday && emp ? (readTimerStorage(emp, 'first_clock_in_time') || readTimerStorage(emp, 'login_time')) : null;
+      const clockInVal = storedFirstIn || a.firstClockInTime || a.clockInTime || a.clockIn || '';
+
+      const storedLastOut = isToday && emp ? (readTimerStorage(emp, 'last_clock_out_time') || readTimerStorage(emp, 'clockout_time') || readTimerStorage(emp, 'clock_out')) : null;
+      const isEmpClockedIn = isToday && emp ? (readTimerStorage(emp, 'is_clocked_in') === 'true' || (a.isClockedIn && !a.clockOutTime)) : false;
+      const clockOutVal = isEmpClockedIn ? '' : (storedLastOut || a.lastClockOutTime || a.clockOutTime || a.clockOut || '');
+
+      const liveWorkSecs = isToday && emp ? calculateShiftWorkSeconds(emp, todayStr, Date.now(), { attRec: a }) : 0;
+      const hoursVal = (isToday && liveWorkSecs > 0)
+        ? (liveWorkSecs / 3600).toFixed(2)
+        : (a.totalWorkingHours || (a.workSeconds ? (a.workSeconds / 3600).toFixed(2) : 0));
+
       return [
         a.employeeCode || a.employeeId,
         `"${emp?.name || a.employeeName || 'Employee'}"`,
         a.date,
         a.status,
-        a.clockInTime || a.clockIn || '',
-        a.clockOutTime || a.clockOut || '',
-        a.totalWorkingHours || 0,
+        clockInVal,
+        clockOutVal,
+        hoursVal,
         `"${(a.notes || '').replace(/"/g, '""')}"`
       ];
     });
@@ -811,8 +825,18 @@ export const AttendancePage = () => {
                       (record.employeeCode && (e._id === record.employeeCode || e.employeeCode === record.employeeCode)) ||
                       (record.employeeName && e.name.toLowerCase() === record.employeeName.toLowerCase())
                     );
-                    const clockInDisplay = record.clockInTime || record.clockIn;
-                    const clockOutDisplay = record.clockOutTime || record.clockOut;
+                    const isToday = record.date === todayStr;
+                    const storedFirstIn = isToday && emp ? (readTimerStorage(emp, 'first_clock_in_time') || readTimerStorage(emp, 'login_time')) : null;
+                    const clockInDisplay = storedFirstIn || record.firstClockInTime || record.clockInTime || record.clockIn;
+
+                    const storedLastOut = isToday && emp ? (readTimerStorage(emp, 'last_clock_out_time') || readTimerStorage(emp, 'clockout_time') || readTimerStorage(emp, 'clock_out')) : null;
+                    const isEmpClockedIn = isToday && emp ? (readTimerStorage(emp, 'is_clocked_in') === 'true' || (record.isClockedIn && !record.clockOutTime)) : false;
+                    const clockOutDisplay = isEmpClockedIn ? null : (storedLastOut || record.lastClockOutTime || record.clockOutTime || record.clockOut || null);
+
+                    const liveWorkSecs = isToday && emp ? calculateShiftWorkSeconds(emp, todayStr, Date.now(), { attRec: record }) : 0;
+                    const displayHours = (isToday && liveWorkSecs > 0)
+                      ? `${(liveWorkSecs / 3600).toFixed(2)} hrs`
+                      : (record.totalWorkingHours ? `${record.totalWorkingHours} hrs` : (record.workSeconds ? `${(record.workSeconds / 3600).toFixed(2)} hrs` : '—'));
 
                     return (
                       <tr key={record._id}>
@@ -851,7 +875,7 @@ export const AttendancePage = () => {
                         <td>
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold">
-                              {record.totalWorkingHours ? `${record.totalWorkingHours} hrs` : (record.workSeconds ? `${(record.workSeconds / 3600).toFixed(2)} hrs` : '—')}
+                              {displayHours}
                             </span>
                             {record.overtimeHours > 0 && (
                               <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded px-1.5 py-px">

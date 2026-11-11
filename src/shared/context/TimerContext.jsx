@@ -1918,11 +1918,20 @@ export const TimerProvider = ({ children }) => {
     const storedLoginForUser = (storedSessionDate === today ? localStorage.getItem(`ems_timer_${userKey}_login_time`) : null);
     const hasValidStoredLogin = Boolean(storedSessionDate === today && storedLoginForUser && storedClockInTsForUser >= todayMidnight.getTime());
 
-    // User is ONLY considered having a prior clock-in if this specific employee has recorded completed sessions today
+    // 🌟 Strict Single Daily Clock-In Canon:
+    // First clock-in of the day is permanently preserved; subsequent clock-ins on the same day are resumes.
+    const storedFirstLogin = (storedSessionDate === today ? (
+      localStorage.getItem(`ems_timer_${userKey}_first_clock_in_time`) ||
+      localStorage.getItem(`ems_timer_${userKey}_login_time`)
+    ) : null);
+
     const hasPriorClockInToday = Boolean(
+      storedFirstLogin ||
       (userPunchSessions.length > 0) ||
-      (hasValidStoredLogin && localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true' && userPunchSessions.length > 0) ||
-      (hasRemoteSessionToday && existingRec && isRecordForUser(existingRec, today) && existingRec.clockInTime && existingRec.clockInTime !== '--' && Array.isArray(existingRec.punchSessions) && existingRec.punchSessions.filter(s => Number(s.inTimestamp || 0) >= minSessionTs).length > 0)
+      (hasValidStoredLogin && userPunchSessions.length > 0) ||
+      (hasRemoteSessionToday && existingRec && isRecordForUser(existingRec, today) && existingRec.clockInTime && existingRec.clockInTime !== '--') ||
+      (existingRec && (existingRec.firstClockInTime || existingRec.clockInTime)) ||
+      (storedSessionDate === today && (storedLogin || storedClockInTs > 0))
     );
 
     const isFirstClockIn = !hasPriorClockInToday;
@@ -1930,12 +1939,19 @@ export const TimerProvider = ({ children }) => {
     setSessionDate(today);
 
     let initialLoginTime = nowStr;
-    let clockInTs = Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
+    let clockInTs = Number(localStorage.getItem(`ems_timer_${userKey}_first_clock_in_timestamp`)) ||
+                    Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
     let preservedWorkSecs = 0;
 
     if (hasPriorClockInToday) {
       // 🌟 RESUME / RE-CLOCK IN: Preserve the original first clock-in of the day and prior work time!
-      initialLoginTime = userPunchSessions[0]?.inTime || existingRec?.clockInTime || existingRec?.clockIn || storedLoginForUser || nowStr;
+      initialLoginTime = localStorage.getItem(`ems_timer_${userKey}_first_clock_in_time`) ||
+                         existingRec?.firstClockInTime ||
+                         userPunchSessions[0]?.inTime ||
+                         existingRec?.clockInTime ||
+                         existingRec?.clockIn ||
+                         storedLoginForUser ||
+                         nowStr;
       if (!clockInTs || clockInTs < todayMidnight.getTime()) {
         const parsedSecs = parseTimeToSeconds(initialLoginTime);
         clockInTs = todayMidnight.getTime() + parsedSecs * 1000;
@@ -1957,6 +1973,10 @@ export const TimerProvider = ({ children }) => {
 
       const mirrorKeys = getTimerMirrorKeys(currentUser);
       for (const uk of mirrorKeys) {
+        if (!localStorage.getItem(`ems_timer_${uk}_first_clock_in_time`)) {
+          localStorage.setItem(`ems_timer_${uk}_first_clock_in_time`, initialLoginTime);
+          localStorage.setItem(`ems_timer_${uk}_first_clock_in_timestamp`, String(clockInTs));
+        }
         localStorage.setItem(`ems_timer_${uk}_login_time`, initialLoginTime);
         localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(clockInTs));
         localStorage.setItem(`ems_timer_${uk}_work_seconds`, String(preservedWorkSecs));
@@ -1979,6 +1999,8 @@ export const TimerProvider = ({ children }) => {
 
       const mirrorKeys = getTimerMirrorKeys(currentUser);
       for (const uk of mirrorKeys) {
+        localStorage.setItem(`ems_timer_${uk}_first_clock_in_time`, nowStr);
+        localStorage.setItem(`ems_timer_${uk}_first_clock_in_timestamp`, nowMs.toString());
         localStorage.setItem(`ems_timer_${uk}_punch_sessions`, JSON.stringify([]));
         localStorage.setItem(`ems_timer_${uk}_break_history`, JSON.stringify([]));
         localStorage.setItem(`ems_timer_${uk}_break_seconds`, '0');
@@ -2052,10 +2074,12 @@ export const TimerProvider = ({ children }) => {
         employeeName: targetEmpName,
         date: today,
         status: computedStatus,
+        firstClockInTime: initialClockIn,
         clockInTime: initialClockIn,
         clockIn: initialClockIn,
         clockOutTime: null,
         clockOut: null,
+        firstClockInTimestamp: clockInTs || nowMs,
         clockInTimestamp: clockInTs || nowMs,
         clockOutTimestamp: null,
         workSeconds: currentWorkSeconds,
@@ -2091,7 +2115,9 @@ export const TimerProvider = ({ children }) => {
           employeeId: targetEmpId || userKey,
           employeeCode: targetEmpCode || userKey,
           isClockedIn: true,
+          firstClockInTime: initialClockIn,
           clockInTime: initialClockIn,
+          firstClockInTimestamp: clockInTs,
           clockInTimestamp: clockInTs,
           currentSessionStartTimestamp: nowMs,
           workSeconds: currentWorkSeconds,
@@ -2274,6 +2300,14 @@ export const TimerProvider = ({ children }) => {
     setIsOnBreak(false);
     setIsClockedIn(false);
 
+    const mirrorKeys = getTimerMirrorKeys(currentUser);
+    for (const uk of mirrorKeys) {
+      localStorage.setItem(`ems_timer_${uk}_last_clock_out_time`, logoutStr);
+      localStorage.setItem(`ems_timer_${uk}_last_clock_out_timestamp`, logoutTs.toString());
+      localStorage.setItem(`ems_timer_${uk}_clockout_time`, logoutStr);
+      localStorage.setItem(`ems_timer_${uk}_clock_out`, logoutStr);
+    }
+
     try {
       const rawSess = readTimerStorage(currentUser, 'punch_sessions');
       if (rawSess) {
@@ -2295,7 +2329,9 @@ export const TimerProvider = ({ children }) => {
         employeeCode: targetEmpCode || userKey,
         isClockedIn: false,
         clockOutTime: logoutStr,
+        lastClockOutTime: logoutStr,
         clockOutTimestamp: logoutTs,
+        lastClockOutTimestamp: logoutTs,
         workSeconds: finalSecs,
         breakSeconds,
         isOnBreak: false,

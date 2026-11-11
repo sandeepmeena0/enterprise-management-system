@@ -185,8 +185,8 @@ export const MonthlyMatrixTable = ({
                     const effectiveStatus = safeRecord ? safeRecord.status : (isFuture ? 'upcoming' : (isWeekend ? 'day_off' : 'not_marked'));
                     const isMuted = statusFilter !== 'all' && !matchesFilter(effectiveStatus, statusFilter);
 
-                    const inStr = safeRecord?.clockInTime || safeRecord?.clockIn;
-                    const outStr = safeRecord?.clockOutTime || safeRecord?.clockOut;
+                    const inStr = safeRecord?.firstClockInTime || safeRecord?.clockInTime || safeRecord?.clockIn;
+                    const outStr = safeRecord?.lastClockOutTime || safeRecord?.clockOutTime || safeRecord?.clockOut;
                     const timeDetail = inStr ? ` | In: ${inStr}${outStr ? ` • Out: ${outStr}` : ' (Active)'}` : '';
 
                     return (

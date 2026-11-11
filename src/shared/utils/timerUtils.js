@@ -160,6 +160,10 @@ const SESSION_SCOPED_KEYS = new Set([
   'work_seconds',
   'break_seconds',
   'current_break_seconds',
+  'first_clock_in_time',
+  'first_clock_in_timestamp',
+  'last_clock_out_time',
+  'last_clock_out_timestamp',
   'login_time',
   'clock_out',
   'clockout_time',
@@ -293,9 +297,19 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   const hasAnyClockInToday = hasAttClockIn || (isTodaySession && Boolean(readTimerStorage(userOrEmp, 'login_time') || Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) > 0)) || Boolean(options.telemetry?.isClockedIn || options.telemetry?.clockInTime);
 
   // Derive first clock in timestamp of today's shift to strictly bound physical elapsed work time
-  let firstClockInTs = Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) || Number(attRec?.clockInTimestamp) || Number(options.telemetry?.clockInTimestamp);
+  let firstClockInTs = Number(readTimerStorage(userOrEmp, 'first_clock_in_timestamp')) ||
+                       Number(readTimerStorage(userOrEmp, 'clock_in_timestamp')) ||
+                       Number(attRec?.firstClockInTimestamp) ||
+                       Number(attRec?.clockInTimestamp) ||
+                       Number(options.telemetry?.clockInTimestamp);
   if (!firstClockInTs || firstClockInTs < todayMidnightMs) {
-    const loginStr = readTimerStorage(userOrEmp, 'login_time') || attRec?.clockInTime || attRec?.clockIn || options.telemetry?.clockInTime;
+    const loginStr = readTimerStorage(userOrEmp, 'first_clock_in_time') ||
+                     readTimerStorage(userOrEmp, 'login_time') ||
+                     attRec?.firstClockInTime ||
+                     attRec?.clockInTime ||
+                     attRec?.clockIn ||
+                     options.telemetry?.firstClockInTime ||
+                     options.telemetry?.clockInTime;
     if (loginStr && loginStr !== '--' && loginStr !== 'Active' && loginStr !== '—') {
       firstClockInTs = todayMidnightMs + parseTimeToSeconds(loginStr) * 1000;
     }
@@ -716,6 +730,8 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
 
   // 2. Persist shift timer keys across all mirror keys
   for (const uk of mirrorKeys) {
+    localStorage.setItem(`ems_timer_${uk}_last_clock_out_time`, timeStr);
+    localStorage.setItem(`ems_timer_${uk}_last_clock_out_timestamp`, nowTs.toString());
     localStorage.setItem(`ems_timer_${uk}_clockout_time`, timeStr);
     localStorage.setItem(`ems_timer_${uk}_clock_out`, timeStr);
     localStorage.setItem(`ems_timer_${uk}_clock_out_timestamp`, nowTs.toString());
@@ -776,11 +792,14 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
             ...a,
             status: finalStatus,
             // Preserve immutable First Clock-In of the day
-            clockInTime: a.clockInTime || a.clockIn || readTimerStorage(user, 'login_time') || timeStr,
-            clockIn: a.clockInTime || a.clockIn || readTimerStorage(user, 'login_time') || timeStr,
+            firstClockInTime: a.firstClockInTime || a.clockInTime || a.clockIn || readTimerStorage(user, 'first_clock_in_time') || readTimerStorage(user, 'login_time') || timeStr,
+            clockInTime: a.firstClockInTime || a.clockInTime || a.clockIn || readTimerStorage(user, 'first_clock_in_time') || readTimerStorage(user, 'login_time') || timeStr,
+            clockIn: a.firstClockInTime || a.clockInTime || a.clockIn || readTimerStorage(user, 'first_clock_in_time') || readTimerStorage(user, 'login_time') || timeStr,
             // Progressive Last Clock-Out of the day
+            lastClockOutTime: timeStr,
             clockOutTime: timeStr,
             clockOut: timeStr,
+            lastClockOutTimestamp: nowTs,
             clockOutTimestamp: nowTs,
             isClockedIn: false,
             isOnBreak: false,
@@ -799,7 +818,7 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
 
       if (!attChanged) {
         // Fallback: Create today's attendance record with First In and Last Out
-        const firstClockIn = readTimerStorage(user, 'login_time') || timeStr;
+        const firstClockIn = readTimerStorage(user, 'first_clock_in_time') || readTimerStorage(user, 'login_time') || timeStr;
         const companySettings = getCompanySettings();
         const standardWorkHours = Number(companySettings.standardWorkHours) || 9;
         const standardShiftSecs = standardWorkHours * 3600;
@@ -821,10 +840,13 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
           employeeName: user.name || 'Team Member',
           date: today,
           status: initialStatus,
+          firstClockInTime: firstClockIn,
           clockInTime: firstClockIn,
           clockIn: firstClockIn,
+          lastClockOutTime: timeStr,
           clockOutTime: timeStr,
           clockOut: timeStr,
+          lastClockOutTimestamp: nowTs,
           clockOutTimestamp: nowTs,
           isClockedIn: false,
           isOnBreak: false,
