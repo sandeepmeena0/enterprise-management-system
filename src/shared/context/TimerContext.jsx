@@ -2199,25 +2199,37 @@ export const TimerProvider = ({ children }) => {
           workSeconds: state.workSeconds !== undefined ? state.workSeconds : workSeconds,
           breakSeconds: state.breakSeconds !== undefined ? state.breakSeconds : breakSeconds,
           activeTask: activeTaskData
+        }).then(resp => {
+          if (resp && resp.serverIsClockedIn === false && isClockedIn) {
+            window.dispatchEvent(new CustomEvent('ems_force_clock_out', { detail: { adminName: 'Admin' } }));
+          }
         }).catch(() => {});
       } catch (_) {}
     };
 
     pulseHeartbeat();
-    const hbInterval = setInterval(pulseHeartbeat, 2000);
+    const hbInterval = setInterval(pulseHeartbeat, 1500);
 
-    const onTaskTimerChange = () => {
+    const onInstantStateChange = () => {
       pulseHeartbeat();
     };
-    window.addEventListener('ems_task_timer_started', onTaskTimerChange);
-    window.addEventListener('ems_task_timer_paused', onTaskTimerChange);
-    window.addEventListener('ems_task_timer_stopped', onTaskTimerChange);
+    window.addEventListener('ems_task_timer_started', onInstantStateChange);
+    window.addEventListener('ems_task_timer_paused', onInstantStateChange);
+    window.addEventListener('ems_task_timer_stopped', onInstantStateChange);
+    window.addEventListener('ems_clocked_in', onInstantStateChange);
+    window.addEventListener('ems_clocked_out', onInstantStateChange);
+    window.addEventListener('ems_break_started', onInstantStateChange);
+    window.addEventListener('ems_break_ended', onInstantStateChange);
 
     return () => {
       clearInterval(hbInterval);
-      window.removeEventListener('ems_task_timer_started', onTaskTimerChange);
-      window.removeEventListener('ems_task_timer_paused', onTaskTimerChange);
-      window.removeEventListener('ems_task_timer_stopped', onTaskTimerChange);
+      window.removeEventListener('ems_task_timer_started', onInstantStateChange);
+      window.removeEventListener('ems_task_timer_paused', onInstantStateChange);
+      window.removeEventListener('ems_task_timer_stopped', onInstantStateChange);
+      window.removeEventListener('ems_clocked_in', onInstantStateChange);
+      window.removeEventListener('ems_clocked_out', onInstantStateChange);
+      window.removeEventListener('ems_break_started', onInstantStateChange);
+      window.removeEventListener('ems_break_ended', onInstantStateChange);
     };
   }, [isClockedIn, userKey]);
 

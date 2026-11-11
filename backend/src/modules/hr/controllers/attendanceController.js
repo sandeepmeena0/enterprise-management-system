@@ -1033,7 +1033,13 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     }
   } catch (_) {}
 
-  res.json({ success: true, timestamp: Date.now() });
+  const cachedState = liveTelemetryCache.get(cacheKey);
+  res.json({
+    success: true,
+    timestamp: Date.now(),
+    serverActiveTask: cachedState?.activeTask || null,
+    serverIsClockedIn: cachedState?.isClockedIn !== undefined ? cachedState.isClockedIn : true
+  });
 });
 
 // ─── GET /api/attendance/live-telemetry ────────────────────────────────────────

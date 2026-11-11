@@ -40,7 +40,7 @@ import { hrService } from '../services/hrService';
 import { getCollection, saveCollection, KEYS } from '../../../shared/services/storageService';
 import { DayTimeLogModal } from '../../../shared/components/modals/DayTimeLogModal';
 import { getUserModulePermissions, isHRorAdmin as checkIsHRorAdmin, isAdmin as checkIsAdmin, canAccessModule } from '../../../shared/utils/permissionUtils';
-import { subscribeToSyncEvents } from '../../../shared/services/realtimeSyncService';
+import { subscribeToSyncEvents, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
 import { calculateShiftWorkSeconds, getTaskTodaySeconds, readTimerStorage, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';
 
@@ -159,15 +159,77 @@ export const TeamOperationsPage = () => {
     fetchTelemetry();
     const interval = setInterval(fetchTelemetry, 1500);
 
-    // Instant Reactive Sync: Whenever ANY sync event or storage change happens, fetch immediately!
-    const unsub = subscribeToSyncEvents(() => {
-      fetchTelemetry();
+    // Instant 0ms Optimistic Reactive Sync: Whenever ANY sync event occurs, update state immediately!
+    const unsub = subscribeToSyncEvents((ev) => {
+      if (ev?.type && ev?.payload) {
+        const { type, payload } = ev;
+        const targetKeys = [payload.empKey, payload.employeeId, payload.employeeCode].filter(Boolean);
+        if (targetKeys.length > 0) {
+          setLiveTelemetryMap(prev => {
+            const next = { ...prev };
+            targetKeys.forEach(k => {
+              const cur = next[k] || {};
+              if (type === SYNC_EVENTS.TASK_TIMER_STARTED) {
+                next[k] = {
+                  ...cur,
+                  isClockedIn: true,
+                  activeTask: {
+                    taskId: payload.taskId,
+                    taskCode: payload.taskCode || '',
+                    title: payload.taskTitle || 'Active Task',
+                    projectName: payload.projectName || 'General Work',
+                    timerRunning: true,
+                    startedAt: payload.startedAt || Date.now(),
+                    accumulatedSeconds: payload.accumulatedSeconds || 0
+                  }
+                };
+              } else if (
+                type === SYNC_EVENTS.TASK_TIMER_PAUSED ||
+                type === SYNC_EVENTS.TASK_TIMER_STOPPED ||
+                type === SYNC_EVENTS.TASK_COMPLETED
+              ) {
+                next[k] = { ...cur, activeTask: null };
+              } else if (type === SYNC_EVENTS.SHIFT_BREAK_STARTED) {
+                next[k] = {
+                  ...cur,
+                  isOnBreak: true,
+                  breakType: payload.breakType || 'Break',
+                  breakStartTimestamp: Date.now()
+                };
+              } else if (type === SYNC_EVENTS.SHIFT_BREAK_ENDED) {
+                next[k] = {
+                  ...cur,
+                  isOnBreak: false,
+                  breakType: null
+                };
+              } else if (type === SYNC_EVENTS.SHIFT_CLOCKED_OUT) {
+                next[k] = {
+                  ...cur,
+                  isClockedIn: false,
+                  isOnBreak: false,
+                  activeTask: null,
+                  clockOutTime: payload.clockOutTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                };
+              } else if (type === SYNC_EVENTS.SHIFT_CLOCKED_IN) {
+                next[k] = {
+                  ...cur,
+                  isClockedIn: true,
+                  isOnBreak: false,
+                  loginTime: payload.loginTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                };
+              }
+            });
+            return next;
+          });
+        }
+      }
       setSyncTick(t => t + 1);
+      fetchTelemetry();
     });
 
     const handleInstantSync = () => {
-      fetchTelemetry();
       setSyncTick(t => t + 1);
+      fetchTelemetry();
     };
 
     window.addEventListener('hrms_storage_change', handleInstantSync);

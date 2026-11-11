@@ -24,6 +24,7 @@ import {
   canDeleteLead
 } from '../utils/permissionUtils';
 import { readTimerStorage } from '../utils/timerUtils';
+import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../services/realtimeSyncService';
 
 const DEFAULT_WEEKLY_TIMELOGS = [
   { day: 'Monday', shortDay: 'Mo', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
@@ -762,7 +763,34 @@ export const CRMProvider = ({ children }) => {
         loadConversations();
       }
     }, 1000);
-    return () => clearInterval(interval);
+
+    // 🚀 0ms Instant Cross-Tab Chat Message Delivery via BroadcastChannel
+    const unsub = subscribeToSyncEvents((ev) => {
+      if (ev?.type === 'CHAT_MESSAGE_SENT' && ev?.payload) {
+        const { conversationId, message } = ev.payload;
+        setConversations(prev => {
+          const idx = prev.findIndex(c => c.id === conversationId);
+          if (idx === -1) return prev;
+          const conv = prev[idx];
+          const existingMsgs = conv.messages || [];
+          if (existingMsgs.some(m => m.id === message.id)) return prev;
+          const updated = [...prev];
+          updated[idx] = {
+            ...conv,
+            messages: [...existingMsgs, message],
+            lastMessage: message.text || (message.attachments?.length ? `📎 Shared ${message.attachments.length} file(s)` : 'Attachment'),
+            lastMessageTime: message.timestamp,
+            updatedAt: message.createdAt || Date.now()
+          };
+          return updated;
+        });
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsub();
+    };
   }, [currentUser]);
 
   // ── Multi-User CRM Sync Poller (Every 15s for notices, tickets, events, leads) ──
@@ -1878,6 +1906,7 @@ export const CRMProvider = ({ children }) => {
     setConversations([...currentConvs]);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.CONVERSATIONS } }));
     window.dispatchEvent(new CustomEvent('ems_chat_message_sent', { detail: { message: newMsg, conversationId } }));
+    broadcastSyncEvent('CHAT_MESSAGE_SENT', { conversationId, message: newMsg });
 
     // Persist message and ensure conversation participants are synchronized in MongoDB Atlas
     try {

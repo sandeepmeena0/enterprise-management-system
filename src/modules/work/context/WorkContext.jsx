@@ -577,11 +577,20 @@ export const WorkProvider = ({ children }) => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(() => {
         loadWorkData(silent);
-      }, 400);
+      }, 80);
     };
 
     const handleStorageUpdate = (e) => {
       const changedKey = e?.key || e?.detail?.key;
+      // 🚀 0ms Synchronous local tasks injection
+      if (!changedKey || changedKey === KEYS.TASKS) {
+        try {
+          const localTasks = getCollection(KEYS.TASKS);
+          if (Array.isArray(localTasks) && localTasks.length > 0) {
+            setTasks(localTasks);
+          }
+        } catch (_) {}
+      }
       if (
         !changedKey ||
         ['ems_projects', 'ems_tasks', 'ems_timesheets', activeTimerKey, 'ems_active_task_timer'].includes(changedKey) ||
@@ -1346,9 +1355,15 @@ export const WorkProvider = ({ children }) => {
 
   const updateTask = async (id, taskData) => {
     try {
+      // 🚀 0ms Instant Optimistic Local Update
+      const allTasks = getCollection(KEYS.TASKS) || [];
+      const updatedAll = allTasks.map(t => String(t._id || t.id) === String(id) ? { ...t, ...taskData } : t);
+      saveCollection(KEYS.TASKS, updatedAll);
+      setTasks(updatedAll);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+
       const updated = await workService.updateTask(id, taskData);
-      addToast(`Task "${updated.title}" updated`, 'success');
-      await loadWorkData();
+      addToast(`Task "${updated?.title || 'Task'}" updated`, 'success');
       return updated;
     } catch (err) {
       addToast('Failed to update task', 'error');
@@ -1374,13 +1389,19 @@ export const WorkProvider = ({ children }) => {
         if (status === 'on_hold' || status === 'incomplete' || status === 'pending') {
           pauseTaskTimer(id);
         } else {
-          await stopTaskTimer(id, `Status changed to ${status}`);
+          stopTaskTimer(id, `Status changed to ${status}`).catch(() => {});
         }
       }
-      await workService.updateTaskStatus(id, status);
-      await workService.updateTask(id, { status });
+
+      // 🚀 0ms Instant Optimistic Local Update
+      const updatedAll = allTasks.map(t => String(t._id || t.id) === String(id) ? { ...t, status } : t);
+      saveCollection(KEYS.TASKS, updatedAll);
+      setTasks(updatedAll);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
       addToast(`Task status changed to ${status.replace('_', ' ').toUpperCase()}`, 'success');
-      await loadWorkData();
+
+      // Sync backend asynchronously
+      workService.updateTask(id, { status }).catch(err => console.warn('Sync status to backend:', err));
     } catch (err) {
       addToast('Failed to change task status', 'error');
     }
@@ -1401,9 +1422,16 @@ export const WorkProvider = ({ children }) => {
       if (activeTimer && (activeTimer.taskId === id || activeTimer._id === id)) {
         saveActiveTimerSnapshot(null);
       }
-      await workService.deleteTask(id);
+
+      // 🚀 0ms Instant Optimistic Delete
+      const filtered = allTasks.filter(t => String(t._id || t.id) !== String(id));
+      saveCollection(KEYS.TASKS, filtered);
+      setTasks(filtered);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
       addToast('Task deleted successfully', 'info');
-      await loadWorkData();
+
+      // Sync backend asynchronously
+      workService.deleteTask(id).catch(err => console.warn('Sync delete to backend:', err));
     } catch (err) {
       addToast('Failed to delete task', 'error');
     }
@@ -2217,21 +2245,17 @@ export const WorkProvider = ({ children }) => {
         }
 
         if (durationToLogToday > 0) {
-          try {
-            await workService.stopTimer({
-              taskId: targetTask._id || taskId,
-              taskCode: targetTask.taskCode,
-              taskTitle: targetTask.title,
-              projectName: targetTask.projectName,
-              totalDurationSeconds: durationToLogToday,
-              date: todayStr,
-              employeeId: assignedEmpId,
-              employeeName: assignedEmpName,
-              memo: customMemo || `Completed task: ${targetTask.title}${isForOtherEmployee ? ` (completed by ${currentUser?.name || 'Admin'})` : ''}`
-            });
-          } catch (stopErr) {
-            console.warn('Timesheet log error during task completion:', stopErr);
-          }
+          workService.stopTimer({
+            taskId: targetTask._id || taskId,
+            taskCode: targetTask.taskCode,
+            taskTitle: targetTask.title,
+            projectName: targetTask.projectName,
+            totalDurationSeconds: durationToLogToday,
+            date: todayStr,
+            employeeId: assignedEmpId,
+            employeeName: assignedEmpName,
+            memo: customMemo || `Completed task: ${targetTask.title}${isForOtherEmployee ? ` (completed by ${currentUser?.name || 'Admin'})` : ''}`
+          }).catch(stopErr => console.warn('Timesheet log error during task completion:', stopErr));
         }
       }
 
@@ -2318,50 +2342,29 @@ export const WorkProvider = ({ children }) => {
       });
       saveCollection(KEYS.TASKS, updatedAll);
 
-      try {
-        const currentTarget = tasks.find(t => String(t._id || t.id) === String(taskId));
-        const fullHist = Array.isArray(currentTarget?.history) ? [...currentTarget.history, completionHistory] : [completionHistory];
-        await workService.updateTask(taskId, {
-          status: 'completed',
-          progress: 100,
-          timerRunning: false,
-          timerSeconds: finalTaskDuration,
-          durationSeconds: finalTaskDuration,
-          accumulatedSeconds: finalTaskDuration,
-          todayWorkSeconds: durationToLogToday,
-          dailySessions: updatedDailySessions,
-          hoursLogged: hoursLoggedNum,
-          hoursLoggedText: hoursLoggedFormatted,
-          completedAt: completedIso,
-          completedOn: todayStr,
-          sessionDate: todayStr,
-          history: fullHist
-        });
-      } catch (svcErr) {}
+      // 🚀 0ms Instant Optimistic State Update
+      setTasks(updatedAll);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
 
-      setTasks(prev => prev.map(t => {
-        if (String(t._id || t.id) === String(taskId)) {
-          const hist = Array.isArray(t.history) ? [...t.history, completionHistory] : [completionHistory];
-          return {
-            ...t,
-            status: 'completed',
-            progress: 100,
-            timerRunning: false,
-            timerSeconds: finalTaskDuration,
-            durationSeconds: finalTaskDuration,
-            accumulatedSeconds: finalTaskDuration,
-            todayWorkSeconds: durationToLogToday,
-            dailySessions: updatedDailySessions,
-            hoursLogged: hoursLoggedNum,
-            hoursLoggedText: hoursLoggedFormatted,
-            completedAt: completedIso,
-            completedOn: todayStr,
-            sessionDate: todayStr,
-            history: hist
-          };
-        }
-        return t;
-      }));
+      // Asynchronous background persistence to MongoDB Atlas
+      const currentTarget = tasks.find(t => String(t._id || t.id) === String(taskId));
+      const fullHist = Array.isArray(currentTarget?.history) ? [...currentTarget.history, completionHistory] : [completionHistory];
+      workService.updateTask(taskId, {
+        status: 'completed',
+        progress: 100,
+        timerRunning: false,
+        timerSeconds: finalTaskDuration,
+        durationSeconds: finalTaskDuration,
+        accumulatedSeconds: finalTaskDuration,
+        todayWorkSeconds: durationToLogToday,
+        dailySessions: updatedDailySessions,
+        hoursLogged: hoursLoggedNum,
+        hoursLoggedText: hoursLoggedFormatted,
+        completedAt: completedIso,
+        completedOn: todayStr,
+        sessionDate: todayStr,
+        history: fullHist
+      }).catch(err => console.warn('Background completeTask sync notice:', err));
 
       // Find remaining pending tasks assigned to this user
       const remainingTasks = updatedAll.filter(t => 
