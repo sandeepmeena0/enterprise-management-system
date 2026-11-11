@@ -423,8 +423,23 @@ export const TeamOperationsPage = () => {
       const elapsed = isTimerRunning
         ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
         : 0;
-      const baseAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
-      const rawLiveSecs = Math.max(Number(candidateTask.timerSeconds || 0), Number(candidateTask.liveTaskSecs || 0), baseAccum + elapsed);
+
+      // STRICT SAME-DAY TASK ISOLATION:
+      // In Live Operations, track and display strictly today's work seconds.
+      // Prior day's work on older tasks must NEVER leak into today's timer!
+      let todayTaskBase = 0;
+      if (candidateTask.dailySessions && typeof candidateTask.dailySessions === 'object' && candidateTask.dailySessions[todayStr] !== undefined) {
+        todayTaskBase = Number(candidateTask.dailySessions[todayStr]) || 0;
+      } else if (candidateTask.sessionDate === todayStr && candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
+        todayTaskBase = Number(candidateTask.todayWorkSeconds);
+      } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
+        todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
+      } else {
+        todayTaskBase = 0;
+      }
+
+      const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
+      const rawLiveSecs = todayTaskBase + elapsed;
 
       // Monotonic Shield: timer seconds can NEVER jump backwards or reset to 1-2-3s!
       const prevSecs = liveTaskMemoryRef.current.get(taskIdentityKey)?.lastLiveSecs || 0;
@@ -444,7 +459,8 @@ export const TeamOperationsPage = () => {
         projectName: candidateTask.projectName || 'General Work',
         timerRunning: isTimerRunning,
         startedAt: startedAtMs,
-        accumulatedSeconds: baseAccum,
+        accumulatedSeconds: totalAccum,
+        todayWorkSeconds: todayTaskBase,
         liveTaskSecs,
         liveDurationText: formatSeconds(liveTaskSecs)
       };

@@ -1003,6 +1003,11 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
   const shiftStartSecs = parseTimeStringToSeconds(shiftStartTime);
   const graceLimitSecs = shiftStartSecs + (graceMins * 60);
 
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayMidnightMs = todayMidnight.getTime();
+  const maxPossibleGrossToday = Math.max(0, Math.floor((now - todayMidnightMs) / 1000));
+
   // Load all today's attendance records from MongoDB
   const query = { date: today };
   const records = await Attendance.find(query).lean();
@@ -1042,10 +1047,6 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     }
 
     let clockInTs = Number(r.clockInTimestamp || 0);
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
-    const todayMidnightMs = todayMidnight.getTime();
-    const maxPossibleGrossToday = Math.max(0, Math.floor((now - todayMidnightMs) / 1000));
 
     if (!clockInTs || clockInTs < todayMidnightMs) {
       if (inTimeStr && inTimeStr !== '--' && inTimeStr !== '—') {
@@ -1109,7 +1110,21 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     if (matchedTask && isClockedIn && !isOnBreak) {
       const taskStart = Number(matchedTask.startedAt || now);
       const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
-      const accum = Number(matchedTask.accumulatedSeconds !== undefined ? matchedTask.accumulatedSeconds : (matchedTask.timerSeconds || 0));
+      
+      // Strict same-day isolation in backend telemetry: never count prior day's accumulated duration!
+      let todayTaskBase = 0;
+      if (matchedTask.dailySessions && typeof matchedTask.dailySessions === 'object' && matchedTask.dailySessions[today] !== undefined) {
+        todayTaskBase = Number(matchedTask.dailySessions[today]) || 0;
+      } else if (matchedTask.sessionDate === today && matchedTask.todayWorkSeconds !== undefined && Number(matchedTask.todayWorkSeconds) > 0) {
+        todayTaskBase = Number(matchedTask.todayWorkSeconds);
+      } else if (matchedTask.startDate === today || String(matchedTask.createdAt || '').startsWith(today)) {
+        todayTaskBase = Number(matchedTask.accumulatedSeconds || matchedTask.timerSeconds || 0);
+      } else {
+        todayTaskBase = 0;
+      }
+      const liveTaskTodaySecs = todayTaskBase + elapsedTask;
+      const totalAccum = Number(matchedTask.accumulatedSeconds !== undefined ? matchedTask.accumulatedSeconds : (matchedTask.timerSeconds || 0));
+
       runningTask = {
         _id: matchedTask._id,
         id: matchedTask.id || matchedTask._id,
@@ -1117,18 +1132,33 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         taskCode: matchedTask.taskCode,
         title: matchedTask.title,
         projectName: matchedTask.projectName,
-        accumulatedSeconds: accum,
-        liveTaskSecs: accum + elapsedTask,
+        accumulatedSeconds: totalAccum,
+        todayWorkSeconds: todayTaskBase,
+        liveTaskSecs: liveTaskTodaySecs,
         startedAt: matchedTask.startedAt,
         timerRunning: true
       };
     } else if (r.activeTask && r.activeTask.startedAt && isClockedIn && !isOnBreak) {
       const taskStart = Number(r.activeTask.startedAt);
       const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
-      const accum = Number(r.activeTask.accumulatedSeconds || 0);
+      let todayTaskBase = 0;
+      if (r.activeTask.dailySessions && typeof r.activeTask.dailySessions === 'object' && r.activeTask.dailySessions[today] !== undefined) {
+        todayTaskBase = Number(r.activeTask.dailySessions[today]) || 0;
+      } else if (r.activeTask.sessionDate === today && r.activeTask.todayWorkSeconds !== undefined && Number(r.activeTask.todayWorkSeconds) > 0) {
+        todayTaskBase = Number(r.activeTask.todayWorkSeconds);
+      } else if (r.activeTask.startDate === today || String(r.activeTask.createdAt || '').startsWith(today)) {
+        todayTaskBase = Number(r.activeTask.accumulatedSeconds || r.activeTask.timerSeconds || 0);
+      } else {
+        todayTaskBase = 0;
+      }
+      const liveTaskTodaySecs = todayTaskBase + elapsedTask;
+      const totalAccum = Number(r.activeTask.accumulatedSeconds || 0);
+
       runningTask = {
         ...r.activeTask,
-        liveTaskSecs: accum + elapsedTask,
+        accumulatedSeconds: totalAccum,
+        todayWorkSeconds: todayTaskBase,
+        liveTaskSecs: liveTaskTodaySecs,
         timerRunning: true
       };
     }
@@ -1183,12 +1213,24 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       if (effectiveActiveTask && effectiveActiveTask.startedAt && cachedVal.isClockedIn && !cachedVal.isOnBreak) {
         const taskStart = Number(effectiveActiveTask.startedAt);
         const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
-        const accum = Number(effectiveActiveTask.accumulatedSeconds || 0);
+        let todayTaskBase = 0;
+        if (effectiveActiveTask.dailySessions && typeof effectiveActiveTask.dailySessions === 'object' && effectiveActiveTask.dailySessions[today] !== undefined) {
+          todayTaskBase = Number(effectiveActiveTask.dailySessions[today]) || 0;
+        } else if (effectiveActiveTask.sessionDate === today && effectiveActiveTask.todayWorkSeconds !== undefined && Number(effectiveActiveTask.todayWorkSeconds) > 0) {
+          todayTaskBase = Number(effectiveActiveTask.todayWorkSeconds);
+        } else if (effectiveActiveTask.startDate === today || String(effectiveActiveTask.createdAt || '').startsWith(today)) {
+          todayTaskBase = Number(effectiveActiveTask.accumulatedSeconds || effectiveActiveTask.timerSeconds || 0);
+        } else {
+          todayTaskBase = 0;
+        }
+        const liveTaskTodaySecs = todayTaskBase + elapsedTask;
+        const totalAccum = Number(effectiveActiveTask.accumulatedSeconds || 0);
         effectiveActiveTask = {
           ...effectiveActiveTask,
           startedAt: taskStart,
-          accumulatedSeconds: accum,
-          liveTaskSecs: accum + elapsedTask,
+          accumulatedSeconds: totalAccum,
+          todayWorkSeconds: todayTaskBase,
+          liveTaskSecs: liveTaskTodaySecs,
           timerRunning: true
         };
       }
@@ -1211,26 +1253,26 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         currentSessionStartTimestamp: cachedVal.currentSessionStartTimestamp || existingTelem?.currentSessionStartTimestamp || null,
         workSeconds: (() => {
           let cacheClockInTs = Number(cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || 0);
-          if (!cacheClockInTs || cacheClockInTs < todayMidnight.getTime()) {
+          if (!cacheClockInTs || cacheClockInTs < todayMidnightMs) {
             const inStr = cachedVal.clockInTime || existingTelem?.clockInTime;
             if (inStr && inStr !== '--' && inStr !== '—') {
-              cacheClockInTs = todayMidnight.getTime() + parseTimeStringToSeconds(inStr) * 1000;
+              cacheClockInTs = todayMidnightMs + parseTimeStringToSeconds(inStr) * 1000;
             }
           }
-          const maxAllowedForMerged = (cacheClockInTs && cacheClockInTs >= todayMidnight.getTime())
+          const maxAllowedForMerged = (cacheClockInTs && cacheClockInTs >= todayMidnightMs)
             ? Math.max(0, Math.floor((now - cacheClockInTs) / 1000))
             : maxPossibleGrossToday;
           return Math.min(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)), maxAllowedForMerged);
         })(),
         totalWorkingHours: +((() => {
           let cacheClockInTs = Number(cachedVal.clockInTimestamp || existingTelem?.clockInTimestamp || 0);
-          if (!cacheClockInTs || cacheClockInTs < todayMidnight.getTime()) {
+          if (!cacheClockInTs || cacheClockInTs < todayMidnightMs) {
             const inStr = cachedVal.clockInTime || existingTelem?.clockInTime;
             if (inStr && inStr !== '--' && inStr !== '—') {
-              cacheClockInTs = todayMidnight.getTime() + parseTimeStringToSeconds(inStr) * 1000;
+              cacheClockInTs = todayMidnightMs + parseTimeStringToSeconds(inStr) * 1000;
             }
           }
-          const maxAllowedForMerged = (cacheClockInTs && cacheClockInTs >= todayMidnight.getTime())
+          const maxAllowedForMerged = (cacheClockInTs && cacheClockInTs >= todayMidnightMs)
             ? Math.max(0, Math.floor((now - cacheClockInTs) / 1000))
             : maxPossibleGrossToday;
           return Math.min(Math.max(Number(existingTelem?.workSeconds || 0), Number(cachedVal.workSeconds || 0)), maxAllowedForMerged) / 3600;
