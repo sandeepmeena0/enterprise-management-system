@@ -793,18 +793,32 @@ export const CRMProvider = ({ children }) => {
     };
   }, [currentUser]);
 
-  // ── Multi-User CRM Sync Poller (Every 15s for notices, tickets, events, leads) ──
+  // ── Multi-User CRM Sync Poller (Fast 4.5s poll + Tab Focus for tickets, notices, events, leads) ──
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+
+    const syncCRMData = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
         loadTickets();
         loadNotices();
         loadEvents();
         loadLeads();
       }
-    }, 15000);
-    return () => clearInterval(interval);
+    };
+
+    const interval = setInterval(syncCRMData, 4500);
+
+    const handleFocus = () => syncCRMData();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [currentUser]);
 
   useEffect(() => {
@@ -1467,14 +1481,7 @@ export const CRMProvider = ({ children }) => {
   };
 
   const updateExpenseStatus = async (expenseId, status) => {
-    try {
-      await fetch(`${API_BASE}/expenses/${expenseId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-    } catch (_) {}
-
+    // 🚀 0ms Instant Optimistic Local Update
     const currentList = getCollection(KEYS.EXPENSES);
     const idx = currentList.findIndex(e => e._id === expenseId);
     if (idx !== -1) {
@@ -1485,19 +1492,30 @@ export const CRMProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EXPENSES } }));
       addToast(`Expense status marked as ${status.toUpperCase()}`, status === 'approved' ? 'success' : 'info');
     }
+
+    // Background sync
+    try {
+      fetch(`${API_BASE}/expenses/${expenseId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      }).catch(err => console.warn('[CRMContext] Sync expense update:', err));
+    } catch (_) {}
   };
 
   const deleteExpense = async (expenseId) => {
-    try {
-      await fetch(`${API_BASE}/expenses/${expenseId}`, { method: 'DELETE' });
-    } catch (_) {}
-
+    // 🚀 0ms Instant Optimistic Local Removal
     const currentList = getCollection(KEYS.EXPENSES);
     const filtered = currentList.filter(e => e._id !== expenseId);
     saveCollection(KEYS.EXPENSES, filtered);
     setExpenses(filtered);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EXPENSES } }));
     addToast('Expense record removed', 'info');
+
+    // Background sync
+    try {
+      fetch(`${API_BASE}/expenses/${expenseId}`, { method: 'DELETE' }).catch(err => console.warn('[CRMContext] Sync expense deletion:', err));
+    } catch (_) {}
   };
 
   const importExpensesBatch = async (importedList) => {
@@ -1551,9 +1569,10 @@ export const CRMProvider = ({ children }) => {
     const reqName = u?.name || 'Employee';
     const reqAvatar = u?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100';
     const reqRole = u?.role || 'Team Member';
+    const tempId = `tkt_${Date.now()}`;
 
     const newTicket = {
-      _id: `tkt_${Date.now()}`,
+      _id: tempId,
       ticketCode: `TKT-${nextNum}`,
       subject: ticketData.subject || 'Helpdesk Support Request',
       category: ticketData.category || 'General Support',
@@ -1580,40 +1599,38 @@ export const CRMProvider = ({ children }) => {
       ...ticketData
     };
 
-    try {
-      const payload = { ...newTicket };
-      delete payload._id;
-      const res = await fetch(`${API_BASE}/tickets`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data?._id) newTicket._id = String(json.data._id);
-        if (json.data?.ticketCode) newTicket.ticketCode = json.data.ticketCode;
-      }
-    } catch (e) {
-      console.warn('[CRMContext] Ticket offline save:', e);
-    }
-
-    currentList.unshift(newTicket);
-    saveCollection(KEYS.TICKETS, currentList);
-    setTickets([...currentList]);
+    // 🚀 0ms Instant Optimistic Local Update
+    const updatedTickets = [newTicket, ...currentList];
+    saveCollection(KEYS.TICKETS, updatedTickets);
+    setTickets(updatedTickets);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
     addToast(`Ticket "${newTicket.ticketCode}" raised! Admin has been notified immediately.`, 'success');
+
+    // Asynchronous background sync to MongoDB Atlas
+    const payload = { ...newTicket };
+    delete payload._id;
+    fetch(`${API_BASE}/tickets`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (json?.data?._id) {
+          const cur = getCollection(KEYS.TICKETS) || [];
+          const swapped = cur.map(t => (t._id === tempId ? { ...t, _id: String(json.data._id), ticketCode: json.data.ticketCode || t.ticketCode } : t));
+          saveCollection(KEYS.TICKETS, swapped);
+          setTickets(swapped);
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
+        }
+      })
+      .catch(e => console.warn('[CRMContext] Ticket offline save queued:', e));
+
     return newTicket;
   };
 
   const updateTicketStatus = async (ticketId, status) => {
-    try {
-      await fetch(`${API_BASE}/tickets/${ticketId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ status })
-      });
-    } catch (_) {}
-
+    // 🚀 0ms Instant Optimistic Local Update
     const currentList = getCollection(KEYS.TICKETS) || [];
     const idx = currentList.findIndex(t => String(t._id) === String(ticketId) || String(t.id) === String(ticketId) || String(t.ticketCode) === String(ticketId));
     if (idx !== -1) {
@@ -1624,6 +1641,13 @@ export const CRMProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
       addToast(`Ticket status updated to ${status.replace('_', ' ').toUpperCase()}`, 'success');
     }
+
+    // Asynchronous background sync
+    fetch(`${API_BASE}/tickets/${ticketId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status })
+    }).catch(err => console.warn('[CRMContext] Sync ticket status update:', err));
   };
 
   const replyToTicket = async (ticketId, messageText) => {
@@ -1642,30 +1666,30 @@ export const CRMProvider = ({ children }) => {
         isAdminReply: isUserAdmin
       };
 
-      try {
-        await fetch(`${API_BASE}/tickets/${ticketId}/comments`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            authorName: newReply.senderName,
-            authorAvatar: newReply.senderAvatar,
-            authorRole: isUserAdmin ? 'Administrator' : 'Team Member',
-            text: messageText,
-            message: messageText,
-            isAdminReply: isUserAdmin
-          })
-        });
-      } catch (_) {}
-
       currentList[idx].replies = [...(currentList[idx].replies || []), newReply];
       if (currentList[idx].status === 'open' && isUserAdmin) {
         currentList[idx].status = 'in_progress';
       }
 
+      // 🚀 0ms Instant Optimistic Local Update
       saveCollection(KEYS.TICKETS, currentList);
       setTickets([...currentList]);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
       addToast('Reply sent successfully!', 'success');
+
+      // Asynchronous background sync
+      fetch(`${API_BASE}/tickets/${ticketId}/comments`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          authorName: newReply.senderName,
+          authorAvatar: newReply.senderAvatar,
+          authorRole: isUserAdmin ? 'Administrator' : 'Team Member',
+          text: messageText,
+          message: messageText,
+          isAdminReply: isUserAdmin
+        })
+      }).catch(err => console.warn('[CRMContext] Sync ticket reply:', err));
     }
   };
 
@@ -1681,17 +1705,16 @@ export const CRMProvider = ({ children }) => {
         date: new Date().toISOString()
       };
       currentList[idx].internalNotes = [...(currentList[idx].internalNotes || []), newNote];
-      try {
-        await fetch(`${API_BASE}/tickets/${ticketId}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ internalNotes: currentList[idx].internalNotes })
-        });
-      } catch (_) {}
       saveCollection(KEYS.TICKETS, currentList);
       setTickets([...currentList]);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
       addToast('Internal admin note attached to ticket', 'info');
+
+      fetch(`${API_BASE}/tickets/${ticketId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ internalNotes: currentList[idx].internalNotes })
+      }).catch(err => console.warn('[CRMContext] Sync internal note:', err));
     }
   };
 
@@ -1702,17 +1725,16 @@ export const CRMProvider = ({ children }) => {
     if (idx !== -1 && emp) {
       currentList[idx].assignedToId = emp._id;
       currentList[idx].assignedToName = emp.name;
-      try {
-        await fetch(`${API_BASE}/tickets/${ticketId}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ assignedTo: emp._id, assignedToId: emp._id, assignedToName: emp.name })
-        });
-      } catch (_) {}
       saveCollection(KEYS.TICKETS, currentList);
       setTickets([...currentList]);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
       addToast(`Ticket reassigned to ${emp.name}`, 'info');
+
+      fetch(`${API_BASE}/tickets/${ticketId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ assignedTo: emp._id, assignedToId: emp._id, assignedToName: emp.name })
+      }).catch(err => console.warn('[CRMContext] Sync assign ticket:', err));
     }
   };
 
@@ -1725,19 +1747,18 @@ export const CRMProvider = ({ children }) => {
       return false;
     }
 
-    try {
-      await fetch(`${API_BASE}/tickets/${ticketId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-    } catch (e) {
-      console.warn('[CRMContext] Ticket deleted offline:', e);
-    }
+    // 🚀 0ms Instant Optimistic Local Removal
     const filtered = currentList.filter(t => String(t._id) !== String(ticketId) && String(t.ticketCode) !== String(ticketId));
     saveCollection(KEYS.TICKETS, filtered);
     setTickets(filtered);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TICKETS } }));
     addToast('Ticket removed successfully', 'info');
+
+    fetch(`${API_BASE}/tickets/${ticketId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    }).catch(e => console.warn('[CRMContext] Ticket deleted offline:', e));
+
     return true;
   };
 
@@ -1745,9 +1766,10 @@ export const CRMProvider = ({ children }) => {
   // 📅 EVENTS & COMPANY CALENDAR
   // =========================================================================
   const createEvent = async (eventData) => {
-    const currentList = getCollection(KEYS.EVENTS);
+    const currentList = getCollection(KEYS.EVENTS) || [];
+    const tempId = `ev_${Date.now()}`;
     const newEvent = {
-      _id: `ev_${Date.now()}`,
+      _id: tempId,
       eventName: eventData.eventName || eventData.title || 'Company Event',
       title: eventData.eventName || eventData.title || 'Company Event',
       eventType: eventData.eventType || 'Company Event',
@@ -1767,40 +1789,39 @@ export const CRMProvider = ({ children }) => {
       ...eventData
     };
 
-    try {
-      const payload = { ...newEvent };
-      delete payload._id;
-      const res = await fetch(`${API_BASE}/events`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data?._id) newEvent._id = String(json.data._id);
-      }
-    } catch (_) {}
-
-    currentList.unshift(newEvent);
-    saveCollection(KEYS.EVENTS, currentList);
-    setEvents([...currentList]);
+    // 🚀 0ms Instant Optimistic Local Update
+    const updatedEvents = [newEvent, ...currentList];
+    saveCollection(KEYS.EVENTS, updatedEvents);
+    setEvents(updatedEvents);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EVENTS } }));
     addToast(`Event "${newEvent.eventName}" scheduled on company calendar!`, 'success');
+
+    // Asynchronous background sync
+    const payload = { ...newEvent };
+    delete payload._id;
+    fetch(`${API_BASE}/events`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (json?.data?._id) {
+          const cur = getCollection(KEYS.EVENTS) || [];
+          const swapped = cur.map(e => e._id === tempId ? { ...e, _id: String(json.data._id) } : e);
+          saveCollection(KEYS.EVENTS, swapped);
+          setEvents(swapped);
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EVENTS } }));
+        }
+      })
+      .catch(err => console.warn('[CRMContext] Event cloud sync queued:', err));
+
     return newEvent;
   };
 
   const updateEvent = async (eventId, updateData) => {
-    try {
-      const payload = { ...updateData };
-      delete payload._id;
-      await fetch(`${API_BASE}/events/${eventId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-    } catch (_) {}
-
-    const currentList = getCollection(KEYS.EVENTS);
+    // 🚀 0ms Instant Optimistic Local Update
+    const currentList = getCollection(KEYS.EVENTS) || [];
     const idx = currentList.findIndex(e => e._id === eventId || e.id === eventId);
     if (idx !== -1) {
       currentList[idx] = {
@@ -1813,22 +1834,29 @@ export const CRMProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EVENTS } }));
       addToast('Calendar event updated!', 'success');
     }
+
+    const payload = { ...updateData };
+    delete payload._id;
+    fetch(`${API_BASE}/events/${eventId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    }).catch(err => console.warn('[CRMContext] Sync event update:', err));
   };
 
   const deleteEvent = async (eventId) => {
-    try {
-      await fetch(`${API_BASE}/events/${eventId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-    } catch (_) {}
-
-    const currentList = getCollection(KEYS.EVENTS);
+    // 🚀 0ms Instant Optimistic Local Removal
+    const currentList = getCollection(KEYS.EVENTS) || [];
     const filtered = currentList.filter(e => e._id !== eventId && e.id !== eventId);
     saveCollection(KEYS.EVENTS, filtered);
     setEvents(filtered);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EVENTS } }));
     addToast('Event removed from calendar', 'info');
+
+    fetch(`${API_BASE}/events/${eventId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    }).catch(err => console.warn('[CRMContext] Sync event deletion:', err));
   };
 
   // =========================================================================
@@ -2165,8 +2193,9 @@ export const CRMProvider = ({ children }) => {
   // 📢 NOTICE BOARD MODULE
   // =========================================================================
   const createNotice = async (noticeData) => {
-    const currentList = getCollection(KEYS.NOTICES);
+    const currentList = getCollection(KEYS.NOTICES) || [];
     const now = new Date();
+    const tempId = `not_${Date.now()}`;
     const noticePayload = {
       title: noticeData.title || 'Company Notice',
       description: noticeData.description || noticeData.shortDescription || '',
@@ -2185,56 +2214,44 @@ export const CRMProvider = ({ children }) => {
       createdAt: now.toISOString(),
       ...noticeData
     };
-    // Never send client-side temporary string ID to backend
     delete noticePayload._id;
 
-    let savedNotice = {
-      _id: `not_${Date.now()}`,
+    const savedNotice = {
+      _id: tempId,
       ...noticePayload
     };
 
-    try {
-      const res = await fetch(`${API_BASE}/notices`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(noticePayload)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) {
-          savedNotice = {
-            ...savedNotice,
-            ...json.data,
-            _id: String(json.data._id || savedNotice._id)
-          };
-        }
-      } else {
-        console.warn('Backend rejected notice creation:', await res.text());
-      }
-    } catch (err) {
-      console.warn('Notice saved locally, offline sync will propagate to MongoDB:', err);
-    }
-
-    currentList.unshift(savedNotice);
-    saveCollection(KEYS.NOTICES, currentList);
-    setNotices([...currentList]);
+    // 🚀 0ms Instant Optimistic Local Update
+    const updatedNotices = [savedNotice, ...currentList];
+    saveCollection(KEYS.NOTICES, updatedNotices);
+    setNotices(updatedNotices);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.NOTICES } }));
     addToast('Company announcement published to Notice Board & Dashboards!', 'success');
+
+    // Asynchronous background sync
+    fetch(`${API_BASE}/notices`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(noticePayload)
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (json?.data?._id) {
+          const cur = getCollection(KEYS.NOTICES) || [];
+          const swapped = cur.map(n => n._id === tempId ? { ...n, _id: String(json.data._id) } : n);
+          saveCollection(KEYS.NOTICES, swapped);
+          setNotices(swapped);
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.NOTICES } }));
+        }
+      })
+      .catch(err => console.warn('Notice saved locally; offline sync queued:', err));
+
     return savedNotice;
   };
 
   const updateNotice = async (noticeId, updateData) => {
-    try {
-      const payload = { ...updateData };
-      delete payload._id;
-      await fetch(`${API_BASE}/notices/${noticeId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-    } catch (_) {}
-
-    const currentList = getCollection(KEYS.NOTICES);
+    // 🚀 0ms Instant Optimistic Local Update
+    const currentList = getCollection(KEYS.NOTICES) || [];
     const idx = currentList.findIndex(n => n._id === noticeId || n.id === noticeId || n.noticeCode === noticeId);
     if (idx !== -1) {
       currentList[idx] = {
@@ -2247,6 +2264,14 @@ export const CRMProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.NOTICES } }));
       addToast('Notice updated successfully!', 'success');
     }
+
+    const payload = { ...updateData };
+    delete payload._id;
+    fetch(`${API_BASE}/notices/${noticeId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    }).catch(err => console.warn('[CRMContext] Sync notice update:', err));
   };
 
   const dismissNoticeForUser = async (noticeId, userIdentifier) => {
@@ -2267,11 +2292,11 @@ export const CRMProvider = ({ children }) => {
 
       try {
         const realId = currentList[idx]._id || noticeId;
-        await fetch(`${API_BASE}/notices/${realId}`, {
+        fetch(`${API_BASE}/notices/${realId}`, {
           method: 'PUT',
           headers: getAuthHeaders(),
           body: JSON.stringify({ dismissedBy: updatedDismissed })
-        });
+        }).catch(() => {});
       } catch (_) {}
     }
   };
@@ -2285,18 +2310,18 @@ export const CRMProvider = ({ children }) => {
       return false;
     }
 
-    try {
-      await fetch(`${API_BASE}/notices/${noticeId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-    } catch (_) {}
-
+    // 🚀 0ms Instant Optimistic Local Removal
     const filtered = currentList.filter(n => n._id !== noticeId && n.id !== noticeId && n.noticeCode !== noticeId);
     saveCollection(KEYS.NOTICES, filtered);
     setNotices(filtered);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.NOTICES } }));
     addToast('Notice removed from board', 'info');
+
+    fetch(`${API_BASE}/notices/${noticeId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    }).catch(err => console.warn('[CRMContext] Sync notice deletion:', err));
+
     return true;
   };
 
@@ -2314,9 +2339,10 @@ export const CRMProvider = ({ children }) => {
   // 👥 LEADS MANAGEMENT
   // =========================================================================
   const createLead = async (leadData) => {
-    const currentList = getCollection(KEYS.LEADS);
+    const currentList = getCollection(KEYS.LEADS) || [];
     const nextNum = (currentList.length > 0 ? Math.max(...currentList.map(l => l.idNumber || 0)) + 1 : 1);
     const now = new Date();
+    const tempId = `lead_${Date.now()}`;
 
     const leadPayload = {
       idNumber: nextNum,
@@ -2349,49 +2375,42 @@ export const CRMProvider = ({ children }) => {
     };
     delete leadPayload._id;
 
-    let savedLead = {
-      _id: `lead_${Date.now()}`,
+    const savedLead = {
+      _id: tempId,
       ...leadPayload
     };
 
-    try {
-      const res = await fetch(`${API_BASE}/leads`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(leadPayload)
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data) {
-          savedLead = {
-            ...savedLead,
-            ...json.data,
-            _id: String(json.data._id || savedLead._id)
-          };
-        }
-      }
-    } catch (_) {}
-
-    currentList.unshift(savedLead);
-    saveCollection(KEYS.LEADS, currentList);
-    setLeads([...currentList]);
+    // 🚀 0ms Instant Optimistic Local Update
+    const updatedLeads = [savedLead, ...currentList];
+    saveCollection(KEYS.LEADS, updatedLeads);
+    setLeads(updatedLeads);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEADS } }));
     addToast(`Lead "${savedLead.name}" added successfully!`, 'success');
+
+    // Asynchronous background sync
+    fetch(`${API_BASE}/leads`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(leadPayload)
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(json => {
+        if (json?.data?._id) {
+          const cur = getCollection(KEYS.LEADS) || [];
+          const swapped = cur.map(l => l._id === tempId ? { ...l, _id: String(json.data._id) } : l);
+          saveCollection(KEYS.LEADS, swapped);
+          setLeads(swapped);
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEADS } }));
+        }
+      })
+      .catch(err => console.warn('[CRMContext] Lead cloud sync queued:', err));
+
     return savedLead;
   };
 
   const updateLead = async (leadId, updateData) => {
-    try {
-      const payload = { ...updateData };
-      delete payload._id;
-      await fetch(`${API_BASE}/leads/${leadId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-    } catch (_) {}
-
-    const currentList = getCollection(KEYS.LEADS);
+    // 🚀 0ms Instant Optimistic Local Update
+    const currentList = getCollection(KEYS.LEADS) || [];
     const idx = currentList.findIndex(l => l._id === leadId || l.id === leadId || l.leadCode === leadId);
     if (idx !== -1) {
       currentList[idx] = {
@@ -2403,20 +2422,20 @@ export const CRMProvider = ({ children }) => {
       setLeads([...currentList]);
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEADS } }));
       addToast('Lead updated successfully!', 'success');
-      return currentList[idx];
     }
+
+    const payload = { ...updateData };
+    delete payload._id;
+    fetch(`${API_BASE}/leads/${leadId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    }).catch(err => console.warn('[CRMContext] Sync lead update:', err));
   };
 
   const updateLeadStatus = async (leadId, status) => {
-    try {
-      await fetch(`${API_BASE}/leads/${leadId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ status })
-      });
-    } catch (_) {}
-
-    const currentList = getCollection(KEYS.LEADS);
+    // 🚀 0ms Instant Optimistic Local Update
+    const currentList = getCollection(KEYS.LEADS) || [];
     const idx = currentList.findIndex(l => l._id === leadId || l.id === leadId || l.leadCode === leadId);
     if (idx !== -1) {
       const prevStatus = currentList[idx].status;
@@ -2432,6 +2451,12 @@ export const CRMProvider = ({ children }) => {
         addToast(`Lead status updated to ${status.replace('_', ' ')}`, 'info');
       }
     }
+
+    fetch(`${API_BASE}/leads/${leadId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status })
+    }).catch(err => console.warn('[CRMContext] Sync lead status:', err));
   };
 
   const deleteLead = async (leadId) => {
@@ -2443,18 +2468,18 @@ export const CRMProvider = ({ children }) => {
       return false;
     }
 
-    try {
-      await fetch(`${API_BASE}/leads/${leadId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-    } catch (_) {}
-
+    // 🚀 0ms Instant Optimistic Local Removal
     const filtered = currentList.filter(l => l._id !== leadId && l.id !== leadId && l.leadCode !== leadId);
     saveCollection(KEYS.LEADS, filtered);
     setLeads(filtered);
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEADS } }));
-    addToast('Lead deleted from database', 'info');
+    addToast('Lead removed from CRM', 'info');
+
+    fetch(`${API_BASE}/leads/${leadId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    }).catch(err => console.warn('[CRMContext] Sync lead deletion:', err));
+
     return true;
   };
 

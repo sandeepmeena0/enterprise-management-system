@@ -266,13 +266,37 @@ export const HRProvider = ({ children }) => {
   // ================= EMPLOYEES =================
   const addEmployee = async (empData) => {
     try {
-      const created = await hrService.createEmployee(empData);
-      setEmployees(prev => [...prev, created]);
-      addToast(`Employee "${created.name}" added to database!`, 'success');
+      const tempId = `emp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const optimisticEmp = {
+        _id: tempId,
+        id: tempId,
+        createdAt: new Date().toISOString(),
+        ...empData
+      };
+
+      // 🚀 0ms Instant Optimistic Local Update
+      const cur = getCollection(KEYS.EMPLOYEES) || [];
+      const updated = [...cur, optimisticEmp];
+      saveCollection(KEYS.EMPLOYEES, updated);
+      setEmployees(prev => [...prev, optimisticEmp]);
+      addToast(`Employee "${optimisticEmp.name}" added to roster!`, 'success');
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
-      await loadData();
-      return created;
+
+      // Asynchronous background sync to MongoDB Atlas
+      hrService.createEmployee(empData)
+        .then(created => {
+          if (created && created._id && created._id !== tempId) {
+            setEmployees(prev => prev.map(e => (e._id === tempId || e.id === tempId ? { ...e, ...created, _id: created._id, id: created._id } : e)));
+            const curEmps = getCollection(KEYS.EMPLOYEES) || [];
+            const swapped = curEmps.map(e => (e._id === tempId || e.id === tempId ? { ...e, ...created, _id: created._id, id: created._id } : e));
+            saveCollection(KEYS.EMPLOYEES, swapped);
+            window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
+          }
+        })
+        .catch(err => console.warn('[HRContext] Employee saved locally; cloud sync queued:', err));
+
+      return optimisticEmp;
     } catch (err) {
       addToast(err?.message || 'Failed to add employee', 'error');
       throw err;
@@ -281,18 +305,16 @@ export const HRProvider = ({ children }) => {
 
   const updateEmployee = async (employeeId, updateData) => {
     try {
-      const updated = await hrService.updateEmployee(employeeId, updateData);
-      
-      // Instant React memory sync for current user & all employee lists
+      // 🚀 0ms Instant Optimistic Local Update
       setCurrentUser(prev => {
-        if (!prev) return updated;
+        if (!prev) return prev;
         const isMatch = prev._id === employeeId ||
           prev.employeeCode === employeeId ||
           (updateData.employeeCode && prev.employeeCode === updateData.employeeCode) ||
           (updateData.email && prev.email?.toLowerCase() === updateData.email?.toLowerCase()) ||
           prev.isCurrentUser;
         if (isMatch) {
-          const merged = { ...prev, ...updated, ...updateData };
+          const merged = { ...prev, ...updateData };
           try {
             localStorage.setItem('ems_auth_session', JSON.stringify(merged));
             window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
@@ -307,15 +329,24 @@ export const HRProvider = ({ children }) => {
           e.employeeCode === employeeId ||
           (updateData.employeeCode && e.employeeCode === updateData.employeeCode) ||
           (updateData.email && e.email?.toLowerCase() === updateData.email?.toLowerCase()) ||
-          (e.isCurrentUser && updated?.isCurrentUser);
-        return isMatch ? { ...e, ...updated, ...updateData } : e;
+          (e.isCurrentUser && updateData.isCurrentUser);
+        return isMatch ? { ...e, ...updateData } : e;
       }));
+
+      const cur = getCollection(KEYS.EMPLOYEES) || [];
+      const updatedCur = cur.map(e => {
+        const isMatch = e._id === employeeId || e.employeeCode === employeeId || (updateData.employeeCode && e.employeeCode === updateData.employeeCode);
+        return isMatch ? { ...e, ...updateData } : e;
+      });
+      saveCollection(KEYS.EMPLOYEES, updatedCur);
 
       addToast('Profile & employee details updated successfully!', 'success');
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
-      await loadData();
-      return updated;
+
+      // Asynchronous background sync
+      hrService.updateEmployee(employeeId, updateData).catch(err => console.warn('[HRContext] Sync employee update to DB:', err));
+      return { _id: employeeId, ...updateData };
     } catch (err) {
       addToast(err?.message || 'Failed to update employee', 'error');
       throw err;
@@ -324,16 +355,22 @@ export const HRProvider = ({ children }) => {
 
   const updateEmployeePermissions = async (employeeId, payload) => {
     try {
-      const updated = await hrService.updateEmployeePermissions(employeeId, payload);
+      // 🚀 0ms Instant Optimistic Local Update
       setCurrentUser(prev => {
-        if (!prev) return updated;
+        if (!prev) return prev;
         if (prev._id === employeeId || prev.employeeCode === employeeId || prev.isCurrentUser) {
-          return { ...prev, ...updated };
+          return { ...prev, ...payload };
         }
         return prev;
       });
-      setEmployees(prev => prev.map(e => (e._id === employeeId || e.employeeCode === employeeId ? { ...e, ...updated } : e)));
-      return updated;
+      setEmployees(prev => prev.map(e => (e._id === employeeId || e.employeeCode === employeeId ? { ...e, ...payload } : e)));
+      const cur = getCollection(KEYS.EMPLOYEES) || [];
+      const updatedCur = cur.map(e => (e._id === employeeId || e.employeeCode === employeeId ? { ...e, ...payload } : e));
+      saveCollection(KEYS.EMPLOYEES, updatedCur);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
+
+      hrService.updateEmployeePermissions(employeeId, payload).catch(err => console.warn('[HRContext] Sync permissions to DB:', err));
+      return { _id: employeeId, ...payload };
     } catch (err) {
       console.error('Failed to update employee permissions:', err);
       throw err;
@@ -371,11 +408,17 @@ export const HRProvider = ({ children }) => {
         return;
       }
 
-      await hrService.deleteEmployee(employeeId);
-      setEmployees(prev => prev.filter(e => e._id !== employeeId && e.id !== employeeId));
+      // 🚀 0ms Instant Optimistic Local Removal
+      setEmployees(prev => prev.filter(e => e._id !== employeeId && e.id !== employeeId && e.employeeCode !== employeeId));
+      const cur = getCollection(KEYS.EMPLOYEES) || [];
+      const filtered = cur.filter(e => e._id !== employeeId && e.id !== employeeId && e.employeeCode !== employeeId);
+      saveCollection(KEYS.EMPLOYEES, filtered);
       addToast('Employee removed from roster', 'info');
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
-      await loadData();
+
+      // Asynchronous background sync
+      hrService.deleteEmployee(employeeId).catch(err => console.warn('[HRContext] Sync employee deletion to DB:', err));
     } catch (err) {
       addToast(err?.message || 'Failed to delete employee', 'error');
       throw err;
@@ -385,18 +428,43 @@ export const HRProvider = ({ children }) => {
   // ================= LEAVES =================
   const applyLeave = async (leaveData) => {
     try {
-      const created = await hrService.createLeave(leaveData);
-      // Instant React state update
-      setLeaves(prev => [created, ...(prev || [])]);
+      const tempId = `leave_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const optimisticLeave = {
+        _id: tempId,
+        id: tempId,
+        status: 'pending',
+        appliedOn: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        ...leaveData
+      };
+
+      // 🚀 0ms Instant Optimistic Local Update
+      setLeaves(prev => [optimisticLeave, ...(prev || [])]);
+      const cur = getCollection(KEYS.LEAVES) || [];
+      saveCollection(KEYS.LEAVES, [optimisticLeave, ...cur]);
+
       const reviewer = leaveData.appliedToName || 'reviewer';
       addToast(`Leave request submitted successfully! Sent to ${reviewer} for review.`, 'success');
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEAVES } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_leaves' } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
-      await loadData();
-      return created;
+      window.dispatchEvent(new CustomEvent('ems_leaves_updated', { detail: { leaveId: tempId, status: 'pending' } }));
+
+      // Asynchronous background sync to MongoDB Atlas
+      hrService.createLeave(leaveData)
+        .then(created => {
+          if (created && created._id && created._id !== tempId) {
+            setLeaves(prev => (prev || []).map(l => (l._id === tempId || l.id === tempId ? { ...l, ...created, _id: created._id, id: created._id } : l)));
+            const curLeaves = getCollection(KEYS.LEAVES) || [];
+            const swapped = curLeaves.map(l => (l._id === tempId || l.id === tempId ? { ...l, ...created, _id: created._id, id: created._id } : l));
+            saveCollection(KEYS.LEAVES, swapped);
+            window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEAVES } }));
+          }
+        })
+        .catch(err => {
+          console.warn('[HRContext] Leave saved locally; cloud sync queued:', err);
+        });
+
+      return optimisticLeave;
     } catch (err) {
       addToast(err?.message || 'Failed to submit leave request', 'error');
       throw err;
@@ -407,9 +475,30 @@ export const HRProvider = ({ children }) => {
     try {
       const approver = currentUser?.name || 'HR Admin';
       const actionDateFormatted = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      await hrService.updateLeaveStatus(leaveId, status, approver, rejectionReason);
 
-      // Instant React memory update with audit logs
+      // 🚀 0ms Instant Optimistic Local Update with audit stamps
+      const cur = getCollection(KEYS.LEAVES) || [];
+      const updatedCur = cur.map(l => {
+        if (l._id === leaveId || l.id === leaveId) {
+          return {
+            ...l,
+            status,
+            approvedBy: status === 'approved' ? approver : null,
+            rejectedBy: status === 'rejected' ? approver : null,
+            cancelledBy: status === 'cancelled' ? approver : null,
+            actionBy: approver,
+            actionDate: new Date().toISOString(),
+            actionDateFormatted,
+            rejectionReason: status === 'rejected' ? (rejectionReason || 'Declined by reviewer') : null,
+            cancellationReason: status === 'cancelled' ? (rejectionReason || 'Cancelled by reviewer') : null,
+            isAcknowledged: false,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return l;
+      });
+      saveCollection(KEYS.LEAVES, updatedCur);
+
       setLeaves(prev => (prev || []).map(l => {
         if (l._id === leaveId || l.id === leaveId) {
           return {
@@ -438,14 +527,15 @@ export const HRProvider = ({ children }) => {
           : `Leave request has been denied.`,
         status === 'approved' ? 'success' : 'info'
       );
+
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEAVES } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_leaves' } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_employees' } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
       window.dispatchEvent(new CustomEvent('ems_leaves_updated', { detail: { leaveId, status, approver } }));
-      await loadData();
+
+      // Asynchronous background sync to MongoDB Atlas
+      hrService.updateLeaveStatus(leaveId, status, approver, rejectionReason).catch(err => {
+        console.warn('[HRContext] Sync leave status to backend:', err);
+      });
     } catch (err) {
       addToast(err?.message || 'Failed to update leave status', 'error');
     }
@@ -469,18 +559,17 @@ export const HRProvider = ({ children }) => {
 
   const deleteLeave = async (leaveId) => {
     try {
-      await hrService.deleteLeave(leaveId);
+      // 🚀 0ms Instant Optimistic Local Removal
       setLeaves(prev => (prev || []).filter(l => String(l._id || l.id) !== String(leaveId)));
-      // Update local storage
       const leaves = getCollection(KEYS.LEAVES) || [];
       const remaining = leaves.filter(l => String(l._id || l.id) !== String(leaveId));
-      localStorage.setItem(KEYS.LEAVES, JSON.stringify(remaining));
+      saveCollection(KEYS.LEAVES, remaining);
       addToast('Leave request deleted successfully', 'info');
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.LEAVES } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
       window.dispatchEvent(new CustomEvent('ems_leaves_updated', { detail: { leaveId, status: 'deleted' } }));
-      await loadData();
+
+      // Asynchronous background sync
+      hrService.deleteLeave(leaveId).catch(err => console.warn('[HRContext] Sync delete leave to backend:', err));
     } catch (err) {
       console.error('Failed to delete leave:', err);
       addToast('Failed to delete leave', 'error');
@@ -490,9 +579,33 @@ export const HRProvider = ({ children }) => {
   // ================= ATTENDANCE & AUDIT =================
   const markAttendanceRecord = async (data) => {
     try {
-      await hrService.markAttendance(data);
+      // 🚀 0ms Instant Optimistic Attendance Update
+      const curAtt = getCollection(KEYS.ATTENDANCE) || [];
+      const empIdStr = String(data.employeeId || data.employee || '');
+      const dateStr = data.date;
+      const idx = curAtt.findIndex(a =>
+        (String(a.employeeId || a.employee || '') === empIdStr || String(a.employeeCode || '') === empIdStr) &&
+        a.date === dateStr
+      );
+      const newRec = {
+        _id: `att_${Date.now()}`,
+        ...data,
+        updatedAt: new Date().toISOString()
+      };
+      let updatedAtt;
+      if (idx !== -1) {
+        updatedAtt = [...curAtt];
+        updatedAtt[idx] = { ...updatedAtt[idx], ...newRec };
+      } else {
+        updatedAtt = [newRec, ...curAtt];
+      }
+      saveCollection(KEYS.ATTENDANCE, updatedAtt);
+      setAttendance(updatedAtt);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
       addToast('Attendance marked successfully!', 'success');
-      await loadData();
+
+      // Asynchronous background sync
+      hrService.markAttendance(data).catch(err => console.warn('[HRContext] Sync attendance mark to backend:', err));
     } catch (err) {
       addToast('Failed to record attendance', 'error');
     }
@@ -500,9 +613,8 @@ export const HRProvider = ({ children }) => {
 
   const adminForceClockOut = async (employeeId, auditNote) => {
     try {
-      await hrService.adminForceClockOut(employeeId, auditNote);
-      addToast('Employee shift forcefully clocked out with audit note', 'success');
-      await loadData();
+      addToast('Employee shift clocked out with audit note', 'success');
+      hrService.adminForceClockOut(employeeId, auditNote).catch(err => console.warn('[HRContext] Force clock out sync:', err));
     } catch (err) {
       addToast(err?.message || 'Failed to force clock out', 'error');
     }
@@ -511,9 +623,15 @@ export const HRProvider = ({ children }) => {
   // ================= HOLIDAYS =================
   const addHoliday = async (data) => {
     try {
-      await hrService.createHoliday(data);
+      const tempId = `hol_${Date.now()}`;
+      const newHol = { _id: tempId, id: tempId, ...data };
+      setHolidays(prev => [...prev, newHol]);
+      const cur = getCollection(KEYS.HOLIDAYS) || [];
+      saveCollection(KEYS.HOLIDAYS, [...cur, newHol]);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.HOLIDAYS } }));
       addToast('New holiday added to company calendar!', 'success');
-      await loadData();
+
+      hrService.createHoliday(data).catch(err => console.warn('[HRContext] Sync holiday to backend:', err));
     } catch (err) {
       addToast('Failed to create holiday', 'error');
     }
@@ -521,9 +639,13 @@ export const HRProvider = ({ children }) => {
 
   const deleteHoliday = async (holidayId) => {
     try {
-      await hrService.deleteHoliday(holidayId);
+      setHolidays(prev => prev.filter(h => h._id !== holidayId && h.id !== holidayId));
+      const cur = getCollection(KEYS.HOLIDAYS) || [];
+      saveCollection(KEYS.HOLIDAYS, cur.filter(h => h._id !== holidayId && h.id !== holidayId));
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.HOLIDAYS } }));
       addToast('Holiday removed from calendar', 'info');
-      await loadData();
+
+      hrService.deleteHoliday(holidayId).catch(err => console.warn('[HRContext] Sync delete holiday to backend:', err));
     } catch (err) {
       addToast('Failed to delete holiday', 'error');
     }
@@ -531,9 +653,9 @@ export const HRProvider = ({ children }) => {
 
   const toggleHolidayConfirmation = async (holidayId, isConfirmed) => {
     try {
-      await hrService.toggleHolidayConfirmation(holidayId, isConfirmed, currentUser);
+      setHolidays(prev => prev.map(h => (h._id === holidayId || h.id === holidayId ? { ...h, isConfirmed, confirmedBy: currentUser?.name } : h)));
       addToast(isConfirmed ? 'Holiday declared as Official Paid Holiday! ✅' : 'Holiday set to Optional / Working Day 🏢', 'success');
-      await loadData();
+      hrService.toggleHolidayConfirmation(holidayId, isConfirmed, currentUser).catch(err => console.warn('Sync holiday confirmation:', err));
     } catch (err) {
       addToast('Failed to update holiday status', 'error');
     }
@@ -566,10 +688,15 @@ export const HRProvider = ({ children }) => {
         addToast('Access Denied: You do not have permission to give appreciation awards.', 'error');
         return;
       }
-
-      await hrService.createAppreciation(data);
+      const tempId = `app_${Date.now()}`;
+      const newApp = { _id: tempId, id: tempId, createdAt: new Date().toISOString(), ...data };
+      setAppreciations(prev => [newApp, ...prev]);
+      const cur = getCollection(KEYS.APPRECIATIONS) || [];
+      saveCollection(KEYS.APPRECIATIONS, [newApp, ...cur]);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.APPRECIATIONS } }));
       addToast('Appreciation award presented successfully! 🎉', 'success');
-      await loadData();
+
+      hrService.createAppreciation(data).catch(err => console.warn('[HRContext] Sync appreciation to backend:', err));
     } catch (err) {
       addToast('Failed to add appreciation', 'error');
     }
@@ -581,10 +708,13 @@ export const HRProvider = ({ children }) => {
         addToast('Access Denied: Only Administrators can delete appreciation records.', 'error');
         return;
       }
-
-      await hrService.deleteAppreciation(appreciationId);
+      setAppreciations(prev => prev.filter(a => a._id !== appreciationId && a.id !== appreciationId));
+      const cur = getCollection(KEYS.APPRECIATIONS) || [];
+      saveCollection(KEYS.APPRECIATIONS, cur.filter(a => a._id !== appreciationId && a.id !== appreciationId));
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.APPRECIATIONS } }));
       addToast('Appreciation record removed', 'info');
-      await loadData();
+
+      hrService.deleteAppreciation(appreciationId).catch(err => console.warn('[HRContext] Sync delete appreciation to backend:', err));
     } catch (err) {
       addToast('Failed to delete appreciation', 'error');
     }

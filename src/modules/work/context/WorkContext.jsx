@@ -1195,10 +1195,50 @@ export const WorkProvider = ({ children }) => {
   // =========================================================================
   const createProject = async (projectData) => {
     try {
-      const created = await workService.createProject(projectData);
-      addToast(`Project "${created.name}" created successfully!`, 'success');
-      await loadWorkData();
-      return created;
+      const allProjects = getCollection(KEYS.PROJECTS) || [];
+      const tempId = `prj_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      let nextCode = projectData.projectCode;
+      if (!nextCode) {
+        const existingNums = allProjects.map(p => {
+          const m = String(p.projectCode || '').match(/PRJ-(\d+)/i);
+          return m ? parseInt(m[1], 10) : 0;
+        });
+        const maxNum = existingNums.length > 0 ? Math.max(0, ...existingNums) : 100;
+        nextCode = `PRJ-${maxNum + 1}`;
+      }
+
+      const optimisticProject = {
+        _id: tempId,
+        id: tempId,
+        projectCode: nextCode,
+        name: projectData.name || projectData.title || 'New Project',
+        status: projectData.status || 'in_progress',
+        progress: Number(projectData.progress) || 0,
+        createdAt: new Date().toISOString(),
+        ...projectData
+      };
+
+      // 🚀 0ms Instant Optimistic Local Update
+      const updatedList = [optimisticProject, ...allProjects];
+      saveCollection(KEYS.PROJECTS, updatedList);
+      setProjects(updatedList);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
+      addToast(`Project "${optimisticProject.name}" created successfully!`, 'success');
+
+      // Asynchronous background sync
+      workService.createProject(projectData)
+        .then(created => {
+          if (created && created._id && created._id !== tempId) {
+            setProjects(prev => prev.map(p => (p._id === tempId || p.id === tempId ? { ...p, ...created, _id: created._id, id: created._id } : p)));
+            const cur = getCollection(KEYS.PROJECTS) || [];
+            const swapped = cur.map(p => (p._id === tempId || p.id === tempId ? { ...p, ...created, _id: created._id, id: created._id } : p));
+            saveCollection(KEYS.PROJECTS, swapped);
+            window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
+          }
+        })
+        .catch(err => console.warn('[WorkContext] Project saved locally; cloud sync queued:', err));
+
+      return optimisticProject;
     } catch (err) {
       addToast('Failed to create project', 'error');
       throw err;
@@ -1207,10 +1247,17 @@ export const WorkProvider = ({ children }) => {
 
   const updateProject = async (id, projectData) => {
     try {
-      const updated = await workService.updateProject(id, projectData);
-      addToast(`Project "${updated.name}" updated`, 'success');
-      await loadWorkData();
-      return updated;
+      // 🚀 0ms Instant Optimistic Local Update
+      const allProjects = getCollection(KEYS.PROJECTS) || [];
+      const updatedList = allProjects.map(p => (String(p._id || p.id) === String(id) || p.projectCode === id ? { ...p, ...projectData, updatedAt: new Date().toISOString() } : p));
+      saveCollection(KEYS.PROJECTS, updatedList);
+      setProjects(updatedList);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
+      addToast(`Project "${projectData.name || 'Project'}" updated`, 'success');
+
+      // Asynchronous background sync
+      workService.updateProject(id, projectData).catch(err => console.warn('[WorkContext] Sync project update to DB:', err));
+      return { _id: id, ...projectData };
     } catch (err) {
       addToast('Failed to update project', 'error');
       throw err;
@@ -1228,9 +1275,15 @@ export const WorkProvider = ({ children }) => {
         return;
       }
 
-      await workService.deleteProject(id);
+      // 🚀 0ms Instant Optimistic Local Removal
+      const filtered = allProjects.filter(p => String(p._id || p.id) !== String(id) && p.projectCode !== id);
+      saveCollection(KEYS.PROJECTS, filtered);
+      setProjects(filtered);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.PROJECTS } }));
       addToast('Project removed successfully', 'info');
-      await loadWorkData();
+
+      // Asynchronous background sync
+      workService.deleteProject(id).catch(err => console.warn('[WorkContext] Sync project deletion to DB:', err));
     } catch (err) {
       addToast('Failed to delete project', 'error');
       throw err;
@@ -1344,9 +1397,60 @@ export const WorkProvider = ({ children }) => {
   // =========================================================================
   const createTask = async (taskData) => {
     try {
-      const created = await workService.createTask(taskData);
-      await loadWorkData();
-      return created;
+      const allTasks = getCollection(KEYS.TASKS) || [];
+      const tempId = `tsk_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+      // Auto-compute next sequential taskCode if not provided
+      let nextCode = taskData.taskCode;
+      if (!nextCode) {
+        const existingNums = allTasks.map(t => {
+          const m = String(t.taskCode || '').match(/TSK-(\d+)/i);
+          return m ? parseInt(m[1], 10) : 0;
+        });
+        const maxNum = existingNums.length > 0 ? Math.max(0, ...existingNums) : 100;
+        nextCode = `TSK-${maxNum + 1}`;
+      }
+
+      const optimisticTask = {
+        _id: tempId,
+        id: tempId,
+        taskCode: nextCode,
+        status: taskData.status || 'incomplete',
+        priority: taskData.priority || 'medium',
+        progress: 0,
+        hoursLogged: 0,
+        hoursLoggedText: '00h 00m',
+        timerRunning: false,
+        timerSeconds: 0,
+        accumulatedSeconds: 0,
+        createdAt: new Date().toISOString(),
+        ...taskData
+      };
+
+      // 🚀 0ms Instant Optimistic Local Update
+      const updatedList = [optimisticTask, ...allTasks];
+      saveCollection(KEYS.TASKS, updatedList);
+      setTasks(updatedList);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+      broadcastSyncEvent('TASK_CREATED', optimisticTask);
+
+      // Asynchronous background sync to MongoDB Atlas
+      workService.createTask(taskData)
+        .then(created => {
+          if (created && created._id && created._id !== tempId) {
+            // Smart ID swap: update temporary ID in state and cache silently
+            setTasks(prev => prev.map(t => (t._id === tempId || t.id === tempId ? { ...t, ...created, _id: created._id, id: created._id } : t)));
+            const cur = getCollection(KEYS.TASKS) || [];
+            const swapped = cur.map(t => (t._id === tempId || t.id === tempId ? { ...t, ...created, _id: created._id, id: created._id } : t));
+            saveCollection(KEYS.TASKS, swapped);
+            window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+          }
+        })
+        .catch(err => {
+          console.warn('[WorkContext] Task saved locally; cloud sync queued:', err);
+        });
+
+      return optimisticTask;
     } catch (err) {
       addToast('Failed to create task', 'error');
       throw err;

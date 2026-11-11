@@ -852,12 +852,7 @@ export const DashboardPage = () => {
       // Execute canonical shift clock-out to preserve punch sessions and final work time
       performShiftClockOut(empObj, { reason: note, nowTs, nowStr });
 
-      try {
-        await hrService.adminForceClockOut(empId, note, todayStr);
-      } catch (backendErr) {
-        console.warn('Backend adminForceClockOut warning:', backendErr);
-      }
-
+      // 🚀 0ms Instant Local Storage & Timer update
       if (targetEmp) {
         writeTimerStorage(targetEmp, 'work_session_date', todayStr);
         writeTimerStorage(targetEmp, 'is_clocked_in', 'false');
@@ -877,6 +872,11 @@ export const DashboardPage = () => {
         localStorage.setItem(`ems_timer_${empKey}_clockout_time`, nowStr);
         localStorage.setItem(`ems_timer_${empKey}_clock_out_timestamp`, Date.now().toString());
       }
+
+      // Background cloud sync
+      hrService.adminForceClockOut(empId, note, todayStr).catch(backendErr => {
+        console.warn('Backend adminForceClockOut warning:', backendErr);
+      });
 
       const allTasks = getCollection(KEYS.TASKS) || [];
       let taskChanged = false;
@@ -995,9 +995,16 @@ export const DashboardPage = () => {
         }
       }
 
-      // Persist to MongoDB Atlas backend!
+      // 🚀 0ms Instant Broadcast & Local Dispatch
+      broadcastSyncEvent(SYNC_EVENTS.TASK_TIMER_PAUSED, { taskId: matchedTaskId, empKey, pausedBy: currentUser?.name || 'Admin', empName });
+      window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { taskId: matchedTaskId, empKey } }));
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+      setSyncTick(t => t + 1);
+      addToast(`⏸️ Task paused for ${empName}!`, 'info');
+
+      // Asynchronous background sync to MongoDB Atlas
       if (matchedTaskId) {
-        await workService.updateTask(matchedTaskId, {
+        workService.updateTask(matchedTaskId, {
           timerRunning: false,
           startedAt: null,
           accumulatedSeconds: currentSecs,
@@ -1007,12 +1014,6 @@ export const DashboardPage = () => {
           hoursLoggedText: formatSeconds(currentSecs)
         }).catch(err => console.warn('Sync admin pause to DB:', err));
       }
-
-      broadcastSyncEvent(SYNC_EVENTS.TASK_TIMER_PAUSED, { taskId: matchedTaskId, empKey, pausedBy: currentUser?.name || 'Admin', empName });
-      window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { taskId: matchedTaskId, empKey } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
-      setSyncTick(t => t + 1);
-      addToast(`⏸️ Task paused for ${empName}!`, 'info');
     } catch (err) {
       console.error('Failed to pause employee task:', err);
       addToast('Failed to pause task', 'error');

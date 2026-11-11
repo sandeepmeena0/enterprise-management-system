@@ -678,41 +678,7 @@ export const TeamOperationsPage = () => {
         localStorage.removeItem(`ems_timer_${emp._id}_clockout_time`);
       }
 
-      // Persist attendance directly to MongoDB & Local Storage
-      try {
-        await hrService.markAttendance({
-          employee: emp._id || empKey,
-          employeeId: emp._id || empKey,
-          employeeCode: emp.employeeCode || empKey,
-          employeeName: emp.name,
-          date: todayStr,
-          status: 'present',
-          clockInTime: punchTime,
-          markedBy: currentUser?.name || 'Administrator',
-          isAdminOverride: true,
-          auditNote: emergencyReason ? `Emergency Clock-In: ${emergencyReason}` : 'Emergency Clock-In by Admin'
-        });
-      } catch (markErr) {
-        console.warn('markAttendance warning during emergency clock-in:', markErr);
-      }
-
-      try {
-        await hrService.createAttendanceAuditLog({
-          type: 'admin_emergency_clock_in',
-          action: 'admin_emergency_clock_in',
-          date: todayStr,
-          employeeId: empKey,
-          employeeCode: emp.employeeCode || empKey,
-          employeeName: emp.name,
-          actorId: currentUser?._id,
-          actorName: currentUser?.name || 'Admin',
-          actorRole: 'Administrator',
-          note: `Emergency Clock-In by Admin: "${emergencyReason}" (In Time: ${punchTime})`
-        });
-      } catch (auditErr) {
-        console.warn('Audit log warning:', auditErr);
-      }
-
+      // 🚀 0ms Instant Dispatch & Modal Close
       window.dispatchEvent(new CustomEvent('ems_clocked_in', {
         detail: { userKey: empKey, employeeId: emp._id, employeeCode: emp.employeeCode, loginTime: punchTime, date: todayStr }
       }));
@@ -722,6 +688,33 @@ export const TeamOperationsPage = () => {
       setClockInModalTarget(null);
       setCustomPunchTime('');
       setSyncTick(t => t + 1);
+
+      // Asynchronous background persistence to MongoDB Atlas
+      hrService.markAttendance({
+        employee: emp._id || empKey,
+        employeeId: emp._id || empKey,
+        employeeCode: emp.employeeCode || empKey,
+        employeeName: emp.name,
+        date: todayStr,
+        status: 'present',
+        clockInTime: punchTime,
+        markedBy: currentUser?.name || 'Administrator',
+        isAdminOverride: true,
+        auditNote: emergencyReason ? `Emergency Clock-In: ${emergencyReason}` : 'Emergency Clock-In by Admin'
+      }).catch(markErr => console.warn('markAttendance warning during emergency clock-in:', markErr));
+
+      hrService.createAttendanceAuditLog({
+        type: 'admin_emergency_clock_in',
+        action: 'admin_emergency_clock_in',
+        date: todayStr,
+        employeeId: empKey,
+        employeeCode: emp.employeeCode || empKey,
+        employeeName: emp.name,
+        actorId: currentUser?._id,
+        actorName: currentUser?.name || 'Admin',
+        actorRole: 'Administrator',
+        note: `Emergency Clock-In by Admin: "${emergencyReason}" (In Time: ${punchTime})`
+      }).catch(auditErr => console.warn('Audit log warning:', auditErr));
     } catch (err) {
       console.error('Emergency clock-in encountered error:', err);
       addToast(`⚡ Emergency Clock-In recorded for ${emp.name}!`, 'success');
@@ -743,12 +736,7 @@ export const TeamOperationsPage = () => {
       // Execute canonical shift clock-out to preserve punch sessions and final work time
       performShiftClockOut(emp, { reason: `Emergency Shift End: ${emergencyReason} (${punchTime})`, nowTs, nowStr: punchTime });
 
-      try {
-        await hrService.adminForceClockOut(emp._id || empKey, `Emergency Shift End: ${emergencyReason} (${punchTime})`, todayStr);
-      } catch (backendErr) {
-        console.warn('Backend adminForceClockOut warning:', backendErr);
-      }
-
+      // 🚀 0ms Instant Local Storage & Timer update
       localStorage.setItem(`ems_timer_${empKey}_work_session_date`, todayStr);
       localStorage.setItem(`ems_timer_${empKey}_is_clocked_in`, 'false');
       localStorage.setItem(`ems_timer_${empKey}_is_running`, 'false');
@@ -788,23 +776,7 @@ export const TeamOperationsPage = () => {
         } catch {}
       }
 
-      try {
-        await hrService.createAttendanceAuditLog({
-          type: 'admin_emergency_clock_out',
-          action: 'admin_emergency_clock_out',
-          date: todayStr,
-          employeeId: empKey,
-          employeeCode: emp.employeeCode || empKey,
-          employeeName: emp.name,
-          actorId: currentUser?._id,
-          actorName: currentUser?.name || 'Admin',
-          actorRole: 'Administrator',
-          note: `Emergency Clock-Out by Admin: "${emergencyReason}" (Out Time: ${punchTime})`
-        });
-      } catch (auditErr) {
-        console.warn('Audit log warning:', auditErr);
-      }
-
+      // 🚀 0ms Instant Dispatch & Modal Close
       window.dispatchEvent(new CustomEvent('ems_force_clock_out', { detail: { employeeId: emp._id, adminName: currentUser?.name } }));
       window.dispatchEvent(new CustomEvent('ems_clocked_out', { detail: { employeeId: emp._id } }));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
@@ -814,6 +786,24 @@ export const TeamOperationsPage = () => {
       setClockOutModalTarget(null);
       setCustomPunchTime('');
       setSyncTick(t => t + 1);
+
+      // Asynchronous background persistence to MongoDB Atlas
+      hrService.adminForceClockOut(emp._id || empKey, `Emergency Shift End: ${emergencyReason} (${punchTime})`, todayStr).catch(backendErr => {
+        console.warn('Backend adminForceClockOut warning:', backendErr);
+      });
+
+      hrService.createAttendanceAuditLog({
+        type: 'admin_emergency_clock_out',
+        action: 'admin_emergency_clock_out',
+        date: todayStr,
+        employeeId: empKey,
+        employeeCode: emp.employeeCode || empKey,
+        employeeName: emp.name,
+        actorId: currentUser?._id,
+        actorName: currentUser?.name || 'Admin',
+        actorRole: 'Administrator',
+        note: `Emergency Clock-Out by Admin: "${emergencyReason}" (Out Time: ${punchTime})`
+      }).catch(auditErr => console.warn('Audit log warning:', auditErr));
     } catch (err) {
       console.error('Emergency clock out encountered error:', err);
       addToast(`🛑 Clocked out ${emp.name} successfully!`, 'success');
