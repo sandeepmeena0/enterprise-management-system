@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Square, Coffee, Utensils, Clock, Eye } from 'lucide-react';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { useWork } from '../../../work/context/WorkContext';
@@ -44,7 +44,12 @@ export const ShiftClockCard = ({
   const [showBreakDropdown, setShowBreakDropdown] = useState(false);
   const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
 
-  const companySettings = getCompanySettings();
+  const [companySettings, setCompanySettings] = useState(getCompanySettings);
+  useEffect(() => {
+    const handleUpdate = () => setCompanySettings(getCompanySettings());
+    window.addEventListener('company-settings-updated', handleUpdate);
+    return () => window.removeEventListener('company-settings-updated', handleUpdate);
+  }, []);
   const standardWorkHours = Number(companySettings.standardWorkHours) || 9;
 
   const effectiveWorkSecs = isViewingOtherEmployee

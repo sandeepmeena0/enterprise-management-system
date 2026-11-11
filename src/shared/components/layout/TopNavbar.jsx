@@ -493,11 +493,11 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
           )}
         </div>
 
-        {/* ── ☕ Break Status or Take Break Controls in Header ── */}
+        {/* ── ☕ Break Status or Take Break Controls in Header (Hidden on Mobile for Clean UI) ── */}
         {isOnBreak ? (
           <button
             onClick={() => setIsBreakModalOpen(true)}
-            className="h-8 px-2 sm:px-2.5 rounded-md text-xs font-bold cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 transition-all duration-150 animate-pulse shadow-xs shrink-0"
+            className="hidden md:flex h-8 px-2 sm:px-2.5 rounded-md text-xs font-bold cursor-pointer items-center justify-center gap-1 sm:gap-1.5 bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 transition-all duration-150 animate-pulse shadow-xs shrink-0"
             title={`Currently on ${breakType || 'Break'}. Click to manage or resume work.`}
           >
             <Coffee size={15} className="text-amber-600 dark:text-amber-400" />
@@ -510,7 +510,7 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
           isClockedIn && (
             <button
               onClick={() => setIsBreakModalOpen(true)}
-              className="h-8 px-2 sm:px-2.5 rounded-md text-xs font-semibold cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all duration-150 shadow-xs shrink-0"
+              className="hidden md:flex h-8 px-2 sm:px-2.5 rounded-md text-xs font-semibold cursor-pointer items-center justify-center gap-1 sm:gap-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-all duration-150 shadow-xs shrink-0"
               title="Take a break (Tea/Coffee, Lunch, etc.)"
             >
               <Coffee size={15} className="text-amber-600 dark:text-amber-400" />
@@ -519,11 +519,11 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
           )
         )}
 
-        {/* ── ⏱️ Clock-in / Clock-out Shift Button ── */}
+        {/* ── ⏱️ Clock-in / Clock-out Shift Button (Hidden on Mobile for Clean UI) ── */}
         {!isOnBreak && (
           <button
             onClick={isClockedIn ? handleClockOut : handleClockIn}
-            className={`h-8 px-2 sm:px-2.5 rounded-md text-xs font-semibold cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 transition-all duration-150 shrink-0 ${isClockedIn ? 'bg-emerald-50 text-green-600 border border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900' : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900'}`}
+            className={`hidden md:flex h-8 px-2 sm:px-2.5 rounded-md text-xs font-semibold cursor-pointer items-center justify-center gap-1 sm:gap-1.5 transition-all duration-150 shrink-0 ${isClockedIn ? 'bg-emerald-50 text-green-600 border border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900' : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900'}`}
             title={isClockedIn ? 'Click to Clock Out shift' : 'Click to Clock In shift'}
           >
             <Clock size={15} className={isClockedIn ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'} />

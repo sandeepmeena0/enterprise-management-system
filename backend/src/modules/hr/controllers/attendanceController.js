@@ -961,11 +961,24 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
         }
         safeWorkSecs = Math.min(safeWorkSecs, maxAllowed);
 
+        let companySettings = null;
+        try {
+          const CompanySettings = require('../../settings/models/CompanySettings');
+          companySettings = await CompanySettings.findOne().lean();
+        } catch (_) {}
+        const standardWorkHours = Number(companySettings?.standardWorkHours) || 9;
+        const standardWorkSecs = standardWorkHours * 3600;
+        const overtimeSecs = Math.max(0, safeWorkSecs - standardWorkSecs);
+        const overtimeHours = +(overtimeSecs / 3600).toFixed(2);
+
         const updateObj = {
           isClockedIn: payload.isClockedIn,
           workSeconds: safeWorkSecs,
           breakSeconds: payload.breakSeconds,
           totalWorkingHours: +(safeWorkSecs / 3600).toFixed(2),
+          overtimeSeconds: overtimeSecs,
+          overtimeHours: overtimeHours,
+          hasOvertime: overtimeSecs > 0,
           isOnBreak: payload.isOnBreak,
           breakType: payload.breakType,
           breakStartTimestamp: payload.breakStartTimestamp,

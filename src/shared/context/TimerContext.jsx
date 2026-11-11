@@ -45,6 +45,9 @@ const defaultTimerContext = {
   workDurationText: '00h 00m',
   breakDurationText: '00h 00m',
   overtimeText: '00h 00m',
+  overtimeSeconds: 0,
+  overtimeHours: 0,
+  isOvertime: false,
   clockIn: async () => {},
   clockOut: async () => {},
   startBreak: async () => {},
@@ -72,6 +75,14 @@ export const TimerProvider = ({ children }) => {
   const currentUser = authUser || hrUser;
 
   const getTodayStr = () => getLocalDateStr();
+
+  // ⏱️ Dynamic Company Shift Policy from Settings (Syncs across changes)
+  const [companySettings, setCompanySettings] = useState(getCompanySettings);
+  useEffect(() => {
+    const handleSettingsUpdate = () => setCompanySettings(getCompanySettings());
+    window.addEventListener('company-settings-updated', handleSettingsUpdate);
+    return () => window.removeEventListener('company-settings-updated', handleSettingsUpdate);
+  }, []);
 
   // Derive canonical userKey for multi-user storage isolation
   const userKey = useMemo(() => {
@@ -2472,13 +2483,16 @@ export const TimerProvider = ({ children }) => {
     }
   };
 
-  // ── Format Helpers & Target Calculations ──
-  const TARGET_SHIFT_SECONDS = 8.5 * 3600; // Standard 8 hours 30 mins daily shift target
-  const targetShiftSeconds = TARGET_SHIFT_SECONDS;
-  const targetShiftHoursText = '8h 30m';
-  const shiftProgressPercent = Math.min(100, Math.round((workSeconds / TARGET_SHIFT_SECONDS) * 100));
-  const isShiftTargetReached = workSeconds >= TARGET_SHIFT_SECONDS;
-  const remainingShiftSeconds = Math.max(0, TARGET_SHIFT_SECONDS - workSeconds);
+  // ── Format Helpers & Target Calculations (Dynamic Shift Policy) ──
+  const standardWorkHours = Number(companySettings?.standardWorkHours) || 9;
+  const targetShiftSeconds = standardWorkHours * 3600;
+  const targetShiftHoursText = `${standardWorkHours}h 00m`;
+  const overtimeSeconds = Math.max(0, workSeconds - targetShiftSeconds);
+  const overtimeHours = +(overtimeSeconds / 3600).toFixed(2);
+  const isOvertime = overtimeSeconds > 0;
+  const shiftProgressPercent = Math.min(100, Math.round((workSeconds / targetShiftSeconds) * 100));
+  const isShiftTargetReached = workSeconds >= targetShiftSeconds;
+  const remainingShiftSeconds = Math.max(0, targetShiftSeconds - workSeconds);
 
   const formatSeconds = (totalSecs) => {
     const hrs = String(Math.floor(totalSecs / 3600)).padStart(2, '0');
@@ -2543,18 +2557,24 @@ export const TimerProvider = ({ children }) => {
       isBreakOverdue,
       breakRemainingSeconds,
       breakRemainingTimeString: formatMinutesSeconds(breakRemainingSeconds),
+      overtimeSeconds,
+      overtimeHours,
+      overtimeText: formatHoursMinutes(overtimeSeconds),
+      isOvertime,
+      standardWorkHours,
       targetShiftSeconds,
       targetShiftHoursText,
       shiftProgressPercent,
       isShiftTargetReached,
       remainingShiftSeconds,
       remainingShiftText: isShiftTargetReached
-        ? '🎉 8h 30m Shift Target Completed!'
-        : `${formatHoursMinutes(remainingShiftSeconds)} remaining to 8h 30m target`,
+        ? `🎉 ${targetShiftHoursText} Shift Target Completed!${isOvertime ? ` (+${formatHoursMinutes(overtimeSeconds)} Overtime)` : ''}`
+        : `${formatHoursMinutes(remainingShiftSeconds)} remaining to ${targetShiftHoursText} target`,
       timeString: (!isClockedIn && !hadClockedOutToday) ? '00:00:00' : formatSeconds(workSeconds),
       breakTimeString: formatSeconds(breakSeconds),
       currentBreakTimeString: formatSeconds(currentBreakSeconds),
       workDurationText: (!isClockedIn && !hadClockedOutToday) ? '00h 00m' : formatHoursMinutes(workSeconds),
+      overtimeDurationText: formatHoursMinutes(overtimeSeconds),
       breakDurationText: formatBreakDuration(breakSeconds),
       grossDurationText: formatHoursMinutes(grossSeconds),
       togglePauseResume,

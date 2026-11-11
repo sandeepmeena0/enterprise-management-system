@@ -505,6 +505,11 @@ export const TeamOperationsPage = () => {
       };
     }
 
+    const standardWorkHours = Number(companySettings?.standardWorkHours) || 9;
+    const standardWorkSecs = standardWorkHours * 3600;
+    const isOvertime = workSecs > standardWorkSecs;
+    const overtimeSecs = Math.max(0, workSecs - standardWorkSecs);
+
     return {
       emp,
       empKey,
@@ -520,6 +525,8 @@ export const TeamOperationsPage = () => {
       clockOutTime,
       workSecs,
       breakSecs: effectiveBreakSecs,
+      isOvertime,
+      overtimeSecs,
       runningTask,
       empTasks
     };
@@ -1357,6 +1364,9 @@ export const TeamOperationsPage = () => {
 
       const totalTaskSeconds = tasksWorked.reduce((sum, t) => sum + (Number(t.durationSeconds) || 0), 0);
       const isTaskExceedingShift = workSecs > 0 && totalTaskSeconds > (workSecs + 300);
+      const stdWorkSecs = (Number(companySettings?.standardWorkHours) || 9) * 3600;
+      const isOvertime = workSecs > stdWorkSecs;
+      const overtimeSecs = Math.max(0, workSecs - stdWorkSecs);
 
       return {
         emp,
@@ -1371,6 +1381,8 @@ export const TeamOperationsPage = () => {
         logoutTime,
         workSecs,
         workDurationText: formatTimeDurationSafe(workSecs),
+        isOvertime,
+        overtimeSecs,
         breakSecs,
         breakDurationText: formatTimeDurationSafe(breakSecs),
         totalBreaksCount: breakHistory.length,
@@ -2208,8 +2220,13 @@ export const TeamOperationsPage = () => {
                         {/* Clock Punches & Net Hours */}
                         <td className="px-4 py-3">
                           <div className="flex flex-col gap-0.5">
-                            <div className="font-extrabold text-[12.5px] text-sky-600 dark:text-sky-400">
-                              {record.workDurationText}
+                            <div className="font-extrabold text-[12.5px] text-sky-600 dark:text-sky-400 flex items-center gap-1.5 flex-wrap">
+                              <span>{record.workDurationText}</span>
+                              {record.isOvertime && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                  +{formatTimeDurationSafe(record.overtimeSecs)} OT
+                                </span>
+                              )}
                             </div>
                             <div className="text-[11px] text-slate-600 dark:text-slate-400">
                               In: <strong className="text-slate-800 dark:text-slate-200">{record.loginTime}</strong> | Out: <strong className="text-slate-800 dark:text-slate-200">{record.logoutTime}</strong>
