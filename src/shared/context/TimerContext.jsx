@@ -1252,8 +1252,8 @@ export const TimerProvider = ({ children }) => {
                 );
                 if (isMatch && !a.clockOutTime) {
                   changed = true;
-                  const prevSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || Number(a.workSeconds) || 32400;
-                  const cappedSecs = Math.min(Math.max(prevSecs, 28800), 32400);
+                  const prevSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) || Number(a.workSeconds) || 0;
+                  const cappedSecs = prevSecs > 0 ? Math.min(prevSecs, 32400) : 28800;
                   return {
                     ...a,
                     clockOutTime: '11:59 PM',

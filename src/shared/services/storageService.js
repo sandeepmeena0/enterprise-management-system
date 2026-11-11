@@ -72,7 +72,9 @@ export const sanitizeRunawayTimers = () => {
                 parsed.timerRunning = false;
                 parsed.startedAt = null;
                 if (isDifferentDate) {
-                  parsed.accumulatedSeconds = 0;
+                  parsed.todayWorkSeconds = 0;
+                  parsed.sessionDate = today;
+                  parsed.date = today;
                 }
                 localStorage.setItem(key, JSON.stringify(parsed));
               }
@@ -290,7 +292,27 @@ export const syncDatabaseToStorage = async () => {
                 });
                 localStorage.setItem(key, JSON.stringify(cleanConvs));
               } else {
-                localStorage.setItem(key, JSON.stringify(data));
+                let toSave = data;
+    if (key === KEYS.CONVERSATIONS && Array.isArray(data)) {
+      toSave = data.map(conv => {
+        if (!conv || !Array.isArray(conv.messages)) return conv;
+        const cleanMsgs = conv.messages.map(m => {
+          if (!m || !Array.isArray(m.attachments) || m.attachments.length === 0) return m;
+          const cleanAtts = m.attachments.map(a => {
+            if (a && a.dataUrl && a.dataUrl.length > 80000) {
+              return {
+                ...a,
+                dataUrl: a.dataUrl.startsWith('data:image/') ? a.dataUrl.substring(0, 50000) : '[cloud_document]'
+              };
+            }
+            return a;
+          });
+          return { ...m, attachments: cleanAtts };
+        });
+        return { ...conv, messages: cleanMsgs };
+      });
+    }
+    localStorage.setItem(key, JSON.stringify(toSave));
               }
               if (key === KEYS.EMPLOYEES) {
                 try {
@@ -354,7 +376,27 @@ export const getCollection = (key) => {
 // Generic write with instant cross-tab broadcast
 export const saveCollection = (key, data) => {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    let toSave = data;
+    if (key === KEYS.CONVERSATIONS && Array.isArray(data)) {
+      toSave = data.map(conv => {
+        if (!conv || !Array.isArray(conv.messages)) return conv;
+        const cleanMsgs = conv.messages.map(m => {
+          if (!m || !Array.isArray(m.attachments) || m.attachments.length === 0) return m;
+          const cleanAtts = m.attachments.map(a => {
+            if (a && a.dataUrl && a.dataUrl.length > 80000) {
+              return {
+                ...a,
+                dataUrl: a.dataUrl.startsWith('data:image/') ? a.dataUrl.substring(0, 50000) : '[cloud_document]'
+              };
+            }
+            return a;
+          });
+          return { ...m, attachments: cleanAtts };
+        });
+        return { ...conv, messages: cleanMsgs };
+      });
+    }
+    localStorage.setItem(key, JSON.stringify(toSave));
     // Deferred dispatch via queueMicrotask prevents setState-in-render warnings across components
     if (typeof queueMicrotask === 'function') {
       queueMicrotask(() => {

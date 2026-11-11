@@ -203,11 +203,9 @@ const markAttendance = asyncHandler(async (req, res) => {
   }
 
   const todayStr = getLocalTodayStr();
-  // Allow midnight / time zone shifts: only reject if date is strictly > tomorrow in local time
-  const tomorrowObj = new Date();
-  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-  const tomorrowStr = getLocalTodayStr(tomorrowObj);
-  if (date > tomorrowStr && ['present', 'late', 'half_day', 'absent'].includes(status)) {
+  // Reject future date attendance for active presence statuses (present, late, half_day, absent).
+  // Future dates can only be scheduled for 'on_leave' or 'holiday'.
+  if (date > todayStr && ['present', 'late', 'half_day', 'absent'].includes(status)) {
     return res.status(400).json({
       success: false,
       message: `Cannot mark attendance as '${status}' for a future date (${date}). Attendance can only be recorded for today or past dates.`
@@ -290,7 +288,11 @@ const markAttendance = asyncHandler(async (req, res) => {
   if (clockInTime && clockOutTime) {
     const inSecs = parseTimeStringToSeconds(clockInTime);
     const outSecs = parseTimeStringToSeconds(clockOutTime);
-    const diffSecs = Math.max(0, outSecs - inSecs);
+    let diffSecs = outSecs - inSecs;
+    if (diffSecs < 0) {
+      // Cross-midnight shift (e.g. 10:00 PM to 06:00 AM)
+      diffSecs += 24 * 3600;
+    }
     totalWorkingHours = +(diffSecs / 3600).toFixed(2);
   }
 
