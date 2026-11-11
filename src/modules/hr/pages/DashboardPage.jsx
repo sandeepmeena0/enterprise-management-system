@@ -845,6 +845,7 @@ export const DashboardPage = () => {
     try {
       const targetEmp = (employees || []).find(e => e._id === empId || e.employeeCode === empId);
       const empObj = targetEmp || { _id: empId, employeeCode: empId, name: empName };
+      const empKey = getCanonicalTimerKey(empObj);
       const nowTs = Date.now();
       const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 

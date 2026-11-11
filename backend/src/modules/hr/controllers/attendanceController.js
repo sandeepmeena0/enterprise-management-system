@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Attendance = require('../models/Attendance');
 const AttendanceAudit = require('../models/AttendanceAudit');
 const Task = require('../../work/models/Task');

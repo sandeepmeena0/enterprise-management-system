@@ -24,6 +24,7 @@ import {
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';
+import { canDeleteTask as checkCanDeleteTask } from '../../../../shared/utils/permissionUtils';
 
 export const TaskDetailModal = ({ task, onClose }) => {
   const {

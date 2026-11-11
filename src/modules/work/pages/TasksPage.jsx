@@ -573,10 +573,10 @@ export const TasksPage = () => {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onTaskCreated={(newTask) => {
-          if (newTask && !isTaskAssignedToMe(newTask)) {
-            setTaskScopeFilter('assigned_by_me');
+          if (newTask && !isTaskAssignedToUser(newTask, currentUser)) {
+            setScopeMode('assigned_by_me');
           } else {
-            setTaskScopeFilter('assigned_to_me');
+            setScopeMode('assigned_to_me');
           }
         }}
       />

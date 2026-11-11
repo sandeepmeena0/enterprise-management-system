@@ -16,6 +16,7 @@ import { useHR } from '../../modules/hr/context/HRContext';
 import { useAuth } from './AuthContext';
 import { hrService } from '../../modules/hr/services/hrService';
 import { getCompanySettings } from '../services/companySettingsService';
+import { broadcastSyncEvent, SYNC_EVENTS } from '../services/realtimeSyncService';
 import {
   getCanonicalTimerKey,
   getTimerMirrorKeys,
@@ -353,14 +354,14 @@ export const TimerProvider = ({ children }) => {
     const sessionD = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
     if (sessionD && sessionD !== getTodayStr()) return false;
     const saved = localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`);
-    if (saved !== null) return JSON.parse(saved) === true;
+    if (saved !== null) return saved === 'true';
     return Boolean(clockOutTime && clockOutTime !== '--' && clockOutTime !== '—');
   });
 
   const [isClockedIn, setIsClockedIn] = useState(() => {
     if (!isTodaySession) return false;
     const saved = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`);
-    if (saved !== null) return JSON.parse(saved);
+    if (saved !== null) return saved === 'true';
     try {
       const attRaw = localStorage.getItem('hrms_attendance');
       if (attRaw) {
@@ -378,7 +379,7 @@ export const TimerProvider = ({ children }) => {
   const [isRunning, setIsRunning] = useState(() => {
     if (!isTodaySession) return false;
     const saved = localStorage.getItem(`ems_timer_${userKey}_is_running`);
-    if (saved !== null) return JSON.parse(saved);
+    if (saved !== null) return saved === 'true';
     return false;
   });
 
@@ -434,7 +435,7 @@ export const TimerProvider = ({ children }) => {
   const [isOnBreak, setIsOnBreak] = useState(() => {
     if (!isTodaySession) return false;
     const saved = localStorage.getItem(`ems_timer_${userKey}_is_on_break`);
-    if (saved) return JSON.parse(saved);
+    if (saved) return saved === 'true';
     return false;
   });
 
@@ -1415,16 +1416,18 @@ export const TimerProvider = ({ children }) => {
         const maxPossibleElapsedSinceClockIn = Math.max(0, Math.floor((Date.now() - firstClockInTs) / 1000));
         const maxPossibleNetWorkSecs = Math.max(0, maxPossibleElapsedSinceClockIn - totalBreaks);
 
+        let netWorkSecs = 0;
         if (onBreakVal) {
           // STRICT FREEZE: While actively on break, work seconds is mathematically FROZEN!
           // Do NOT calculate floating (curSessionGrossSecs - curSessionBreaks) which oscillates due to sub-second phase differences!
           const frozenWorkSecs = Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds_at_break`)) ||
                                  Number(localStorage.getItem(`ems_timer_${userKey}_work_seconds`)) ||
                                  workSeconds || 0;
+          netWorkSecs = frozenWorkSecs;
           setWorkSeconds(frozenWorkSecs);
         } else {
           // Total working time = completed sessions + (current active session minus active & completed breaks in this session)
-          let netWorkSecs = Math.min(maxPossibleNetWorkSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
+          netWorkSecs = Math.min(maxPossibleNetWorkSecs, pastSessionsSecs + Math.max(0, curSessionGrossSecs - curSessionBreaks));
           setWorkSeconds(netWorkSecs);
 
           const nowTs = Date.now();
@@ -2107,7 +2110,7 @@ export const TimerProvider = ({ children }) => {
         : `Shift resumed at ${nowStr}. Continuing time tracking.`
     });
 
-    const isOvertimePeriod = now.getHours() >= 19;
+    const isOvertimePeriod = new Date().getHours() >= 19;
     addToast({
       title: isFirstClockIn
         ? 'Clocked In Successfully! 🟢'
