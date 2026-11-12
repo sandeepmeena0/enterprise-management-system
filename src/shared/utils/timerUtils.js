@@ -377,14 +377,27 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
         return breakFrozen;
       }
       // Smoothly tick forward every second between backend telemetry polls without resetting
-      const heartbeatTs = Number(telem.timestamp || telem.fetchedAt || telem.lastHeartbeatAt || nowMs);
-      const elapsedSinceHeartbeat = (heartbeatTs > 0 && heartbeatTs <= nowMs) ? Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000)) : 0;
-      const rawTelemSecs = (Number(telem.workSeconds) || 0) + elapsedSinceHeartbeat;
+      let elapsedSinceHeartbeat = 0;
+      if (telem.localReceivedAt && telem.localReceivedAt <= nowMs) {
+        elapsedSinceHeartbeat = Math.max(0, Math.floor((nowMs - telem.localReceivedAt) / 1000));
+      } else {
+        const heartbeatTs = Number(telem.fetchedAt || telem.lastHeartbeatAt || telem.timestamp || nowMs);
+        elapsedSinceHeartbeat = (heartbeatTs > 0 && heartbeatTs <= nowMs) ? Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000)) : 0;
+      }
+      let rawTelemSecs = (Number(telem.workSeconds) || 0) + elapsedSinceHeartbeat;
+
+      // If telemetry workSeconds is unhydrated, compute from physical clock-in time
+      if (rawTelemSecs <= 0 && firstClockInTs > 0 && firstClockInTs <= nowMs) {
+        rawTelemSecs = Math.max(0, Math.floor((nowMs - firstClockInTs) / 1000) - (Number(telem.breakSeconds) || 0));
+      }
 
       // Monotonic Shield: Telemetry work seconds for an active employee ticks smoothly and NEVER drops or flickers backwards
       let liveTelemSecs = Math.max(prevMonotonic, rawTelemSecs);
 
-      let finalLiveSecs = Math.min(liveTelemSecs, maxPossibleGrossToday);
+      const physicalCap = (firstClockInTs && firstClockInTs >= todayMidnightMs)
+        ? Math.max(0, Math.floor((nowMs - firstClockInTs) / 1000))
+        : maxPossibleGrossToday;
+      let finalLiveSecs = Math.min(liveTelemSecs, physicalCap, maxPossibleGrossToday);
       if (empKey && finalLiveSecs > 0) {
         monotonicTelemetryWorkSecsMap.set(empKey, finalLiveSecs);
       }
@@ -433,17 +446,21 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       return Math.min(frozenSecs, maxPossibleGrossToday);
     }
 
+    const physicalCap = (firstClockInTs && firstClockInTs >= todayMidnightMs)
+      ? Math.max(0, Math.floor((nowMs - firstClockInTs) / 1000))
+      : maxPossibleGrossToday;
+
     // Remote multi-user fallback: If this employee has active monotonic telemetry memory (remote employee on another device),
     // smoothly tick forward from prevMonotonic rather than falling through to local wall-clock (which evaluates to 0 on another laptop)!
     if (prevMonotonic > 0 && liveWallClockSecs === 0) {
-      const smoothRemoteSecs = Math.min(prevMonotonic + 1, maxPossibleGrossToday);
+      const smoothRemoteSecs = Math.min(prevMonotonic + 1, physicalCap, maxPossibleGrossToday);
       if (empKey) monotonicTelemetryWorkSecsMap.set(empKey, smoothRemoteSecs);
       return smoothRemoteSecs;
     }
 
     // For local user or when liveWallClockSecs is active:
-    const safeLive = Math.max(liveWallClockSecs, prevMonotonic);
-    const finalSecs = Math.min(safeLive, maxPossibleGrossToday);
+    const safeLive = Math.max(liveWallClockSecs, prevMonotonic, Number(attRec?.workSeconds) || 0);
+    const finalSecs = Math.min(safeLive, physicalCap, maxPossibleGrossToday);
     if (empKey && finalSecs > 0) monotonicTelemetryWorkSecsMap.set(empKey, finalSecs);
     return finalSecs;
   } else if (isEffectivelyClockedOut) {

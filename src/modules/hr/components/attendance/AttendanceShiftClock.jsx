@@ -64,11 +64,13 @@ export const AttendanceShiftClock = ({
   const displayTime = externalCurrentTime || internalTime;
   const effectiveDate = todayStr || new Date().toISOString().split('T')[0];
 
-  // Safe duration formatter for read-only employee state
+  // Safe digital duration formatter for live ticking shift state
   const formatDurationSafe = (secs = 0) => {
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    return `${h}h ${m}m`;
+    const s = Math.max(0, Number(secs) || 0);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const remSecs = s % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(remSecs).padStart(2, '0')}`;
   };
 
   // Resolve state depending on whether viewing self or viewing another employee (Admin read-only)
@@ -79,11 +81,11 @@ export const AttendanceShiftClock = ({
   const displayedClockOutTime = isViewingOtherEmployee ? empState?.clockOutTime : clockOutTime;
   const displayedWorkDuration = isViewingOtherEmployee
     ? formatDurationSafe(empState?.workSecs || 0)
-    : (workDurationText || '0h 0m');
+    : (workSeconds > 0 ? formatDurationSafe(workSeconds) : (workDurationText || '00:00:00'));
   const displayedHadClockedOut = isViewingOtherEmployee ? !!empState?.isClockedOut : hadClockedOutToday;
   const displayedBreakDuration = isViewingOtherEmployee
     ? formatDurationSafe(empState?.breakSecs || 0)
-    : (breakDurationText || '0s');
+    : (breakSeconds > 0 ? formatDurationSafe(breakSeconds) : (breakDurationText || '0s'));
 
   const handleOpenBreakOptions = () => {
     setShowBreakDropdown(false);

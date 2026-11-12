@@ -165,6 +165,7 @@ export const TeamOperationsPage = () => {
                   ...existing,
                   ...incoming,
                   workSeconds: safeWorkSecs,
+                  localReceivedAt: now,
                   fetchedAt: incoming.fetchedAt || now
                 };
                 next[k] = merged;

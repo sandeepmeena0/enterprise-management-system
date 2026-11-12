@@ -29,16 +29,18 @@ const getAuthUser = () => {
 };
 
 const getAuthHeaders = () => {
+  const headers = {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache'
+  };
   const u = getAuthUser();
   if (u) {
-    return {
-      'x-user-id': String(u._id || u.id || u.employeeCode || u.email || ''),
-      'x-user-email': String(u.email || ''),
-      'x-user-code': String(u.employeeCode || ''),
-      'x-user-role': String(u.systemRole || (u.isAdmin ? 'admin' : (u.department === 'Human Resources' ? 'hr' : 'team_member')))
-    };
+    headers['x-user-id'] = String(u._id || u.id || u.employeeCode || u.email || '');
+    headers['x-user-email'] = String(u.email || '');
+    headers['x-user-code'] = String(u.employeeCode || '');
+    headers['x-user-role'] = String(u.systemRole || (u.isAdmin ? 'admin' : (u.department === 'Human Resources' ? 'hr' : 'team_member')));
   }
-  return {};
+  return headers;
 };
 
 let hrBackendOnline = null;
@@ -1191,7 +1193,7 @@ export const hrService = {
 
   async getLiveTelemetry(dateStr) {
     const today = dateStr || new Date().toISOString().split('T')[0];
-    const res = await fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}`, {
+    const res = await fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}&_t=${Date.now()}`, {
       method: 'GET'
     }, async () => {
       // LocalStorage fallback for offline / mock

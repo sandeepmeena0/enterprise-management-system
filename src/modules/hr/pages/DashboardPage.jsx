@@ -211,6 +211,7 @@ export const DashboardPage = () => {
                   ...existing,
                   ...incoming,
                   workSeconds: safeWorkSecs,
+                  localReceivedAt: now,
                   fetchedAt: incoming.fetchedAt || now
                 };
                 next[k] = merged;
@@ -1779,7 +1780,7 @@ export const DashboardPage = () => {
     : (workSeconds || activeEmpState?.workSecs || 0);
   const displayedWorkDuration = displayedWorkSecs > 0
     ? formatTimeDurationSafe(displayedWorkSecs)
-    : ((!displayedIsClockedIn && !displayedHadClockedOut) ? '00h 00m' : workDurationText);
+    : ((!displayedIsClockedIn && !displayedHadClockedOut) ? '00h 00m' : formatTimeDurationSafe(displayedWorkSecs || workSeconds || 0));
   const displayedBreakDuration = isViewingOtherEmployee ? formatTimeDurationSafe(activeEmpState?.breakSecs || 0) : (breakDurationText || '0s');
 
   const userScopedProjects = React.useMemo(() => {
