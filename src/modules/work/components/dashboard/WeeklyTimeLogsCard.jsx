@@ -52,16 +52,40 @@ export const WeeklyTimeLogsCard = ({
     // Helper: check if task is assigned to effective user
     const isMyTask = (t) => {
         if (!effectiveUser || !t) return false;
-        const tAssignedId = t.assignedToId || (typeof t.assignedTo === 'string' ? t.assignedTo : t.assignedTo?._id);
-        const tAssignedCode = t.assignedToCode || t.employeeCode;
-        const tAssignedName = t.assignedToName || (typeof t.assignedTo === 'object' ? t.assignedTo?.name : null);
+        const uIds = [
+            uId,
+            uCode,
+            effectiveUser?._id,
+            effectiveUser?.id,
+            effectiveUser?.employeeCode,
+            effectiveUser?.email
+        ].filter(Boolean).map(s => String(s).toLowerCase().trim());
 
-        if (uId && String(tAssignedId).toLowerCase() === uId) return true;
-        if (uCode && String(tAssignedCode).toLowerCase() === uCode) return true;
-        if (uName && tAssignedName && tAssignedName.toLowerCase().trim() === uName) return true;
+        const directAssignedTo = (t.assignedTo && typeof t.assignedTo === 'object')
+            ? String(t.assignedTo._id || t.assignedTo.id || '')
+            : String(t.assignedTo || '');
+        const directIds = [
+            t.assignedToId,
+            directAssignedTo,
+            t.employeeId,
+            t.assignedToCode,
+            t.employeeCode,
+            t.assignedToEmail
+        ].filter(Boolean).map(s => String(s).toLowerCase().trim());
 
-        if (Array.isArray(t.assignedToIds) && uId && t.assignedToIds.some(id => String(id).toLowerCase() === uId)) return true;
-        if (Array.isArray(t.assignees) && t.assignees.some(a => (uId && String(a._id).toLowerCase() === uId) || (uCode && String(a.employeeCode).toLowerCase() === uCode))) return true;
+        if (uIds.some(uid => directIds.includes(uid))) return true;
+
+        const tAssignedName = (t.assignedToName || (typeof t.assignedTo === 'object' ? t.assignedTo?.name : '') || '').toLowerCase().trim();
+        if (uName && tAssignedName && (tAssignedName === uName || tAssignedName.includes(uName) || uName.includes(tAssignedName))) return true;
+
+        if (Array.isArray(t.assignedToIds) && t.assignedToIds.some(id => uIds.includes(String(id).toLowerCase().trim()))) return true;
+        if (Array.isArray(t.assignees) && t.assignees.some(a => {
+            const aIds = [a._id, a.id, a.employeeCode, a.email].filter(Boolean).map(s => String(s).toLowerCase().trim());
+            if (uIds.some(uid => aIds.includes(uid))) return true;
+            if (uName && a.name && a.name.toLowerCase().trim() === uName) return true;
+            return false;
+        })) return true;
+
         return false;
     };
 
@@ -195,19 +219,38 @@ export const WeeklyTimeLogsCard = ({
             // 2. Add unsubmitted work portions for tasks worked on this date
             if (isCurrentDay && dateStr === currentTodayStr) {
                 const nowMs = Date.now();
-                (tasks || []).forEach(t => {
+                const allTasksToEvaluate = [ ...(tasks || []) ];
+                if (activeRunningTask && (activeRunningTask.taskId || activeRunningTask._id)) {
+                    const actId = String(activeRunningTask.taskId || activeRunningTask._id);
+                    const exists = allTasksToEvaluate.some(t => String(t._id || t.id) === actId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode));
+                    if (!exists) {
+                        allTasksToEvaluate.push(activeRunningTask);
+                    }
+                }
+
+                allTasksToEvaluate.forEach(t => {
                     if (!isMyTask(t)) return;
                     const tId = String(t._id || t.id);
 
                     const isRunning = Boolean(
-                        (t.timerRunning || (activeRunningTask && String(activeRunningTask.taskId || activeRunningTask._id) === tId)) &&
-                        isEffectiveClockedIn
+                        t.timerRunning ||
+                        (activeRunningTask && (
+                            String(activeRunningTask.taskId || activeRunningTask._id) === tId ||
+                            (activeRunningTask.taskCode && t.taskCode && activeRunningTask.taskCode === t.taskCode)
+                        ))
                     );
 
-                    const isWorkedToday = isRunning || (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) || (t.sessionDate === dateStr && Number(t.todayWorkSeconds) > 0);
+                    const isWorkedToday = isRunning ||
+                        (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) ||
+                        (t.sessionDate === dateStr && (Number(t.todayWorkSeconds) > 0 || Number(t.accumulatedSeconds) > 0 || Number(t.timerSeconds) > 0)) ||
+                        (t.startDate === dateStr && Number(t.timerSeconds) > 0);
                     if (!isWorkedToday) return;
 
-                    const taskTodaySecs = getTaskTodaySeconds(t, dateStr, nowMs, isEffectiveClockedIn, false);
+                    const activeTaskObj = isRunning
+                        ? { ...t, ...(activeRunningTask || {}), timerRunning: true }
+                        : t;
+
+                    const taskTodaySecs = getTaskTodaySeconds(activeTaskObj, dateStr, nowMs, true, false);
                     if (taskTodaySecs <= 0) return;
 
                     const alreadyLoggedToday = dayTs
@@ -218,7 +261,7 @@ export const WeeklyTimeLogsCard = ({
                     if (unsubmitted > 0) {
                         dayTotalSecs += unsubmitted;
                         // Avoid duplicate task items in tasksWorked
-                        const existingIdx = tasksWorked.findIndex(tw => String(tw.taskId) === tId);
+                        const existingIdx = tasksWorked.findIndex(tw => String(tw.taskId) === tId || (t.taskCode && tw.taskCode === t.taskCode));
                         if (existingIdx >= 0) {
                             tasksWorked[existingIdx].durationSeconds = taskTodaySecs;
                             tasksWorked[existingIdx].durationText = formatSeconds(taskTodaySecs);

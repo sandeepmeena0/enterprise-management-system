@@ -467,29 +467,50 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
   const targetDate = dateStr || getLocalDateStr();
   const actualToday = getLocalDateStr();
 
-  let baseSecs = 0;
+  // 1. If dailySessions explicitly records this date:
   if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
-    baseSecs = Math.max(0, Number(task.dailySessions[targetDate]) || 0);
-  } else if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined && Number(task.todayWorkSeconds) > 0) {
-    baseSecs = Math.max(0, Number(task.todayWorkSeconds) || 0);
-  } else {
-    // STRICT: If not recorded in dailySessions or todayWorkSeconds, base seconds for targetDate is 0!
-    // NEVER assume all-time accumulatedSeconds or timerSeconds belongs to today!
-    baseSecs = 0;
+    const baseSecs = Math.max(0, Number(task.dailySessions[targetDate]) || 0);
+    let liveSecs = 0;
+    if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
+      const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
+      liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
+    }
+    return Math.min(baseSecs + liveSecs, 14 * 3600);
   }
 
-  let liveSecs = 0;
-  // STRICT: live ticking elapsed timer ONLY counts on actualToday when timer is actively running
-  if (task.timerRunning && targetDate === actualToday && isEffectiveClockedIn && !isEffectiveOnBreak) {
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
-    const todayMidnightMs = todayMidnight.getTime();
+  // 2. If sessionDate is targetDate, or if task is actively ticking today:
+  if (task.sessionDate === targetDate) {
+    if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
+      const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
+      const base = Number(task.accumulatedSeconds ?? task.todayWorkSeconds ?? 0);
+      const elapsed = Math.max(0, Math.floor((nowMs - startTs) / 1000));
+      const liveSecs = base + elapsed;
+      const storedTimer = Number(task.timerSeconds) || 0;
+      return Math.min(Math.max(liveSecs, storedTimer), 14 * 3600);
+    }
+    const todaySecs = Number(task.todayWorkSeconds ?? task.accumulatedSeconds ?? task.timerSeconds ?? 0);
+    if (todaySecs > 0) return Math.min(todaySecs, 14 * 3600);
+  }
+
+  // 3. Actively running task today:
+  if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
     const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-    const safeStart = Math.max(startTs, todayMidnightMs);
-    liveSecs = Math.max(0, Math.floor((nowMs - safeStart) / 1000));
+    const base = Number(task.accumulatedSeconds ?? task.todayWorkSeconds ?? 0);
+    const elapsed = Math.max(0, Math.floor((nowMs - startTs) / 1000));
+    const liveSecs = base + elapsed;
+    const storedTimer = Number(task.timerSeconds) || 0;
+    return Math.min(Math.max(liveSecs, storedTimer), 14 * 3600);
   }
 
-  return Math.min(baseSecs + liveSecs, 14 * 3600);
+  // 4. Task was created today:
+  if (targetDate === actualToday && (task.startDate === actualToday || String(task.createdAt || '').startsWith(actualToday))) {
+    const secs = Number(task.todayWorkSeconds ?? task.accumulatedSeconds ?? task.timerSeconds ?? 0);
+    return Math.min(secs, 14 * 3600);
+  }
+
+  return 0;
 };
 
 /**

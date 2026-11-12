@@ -1019,14 +1019,39 @@ export const CRMProvider = ({ children }) => {
       // Helper to check if task belongs to user
       const isTaskForMe = (t) => {
         if (!t) return false;
-        const cId = currentUser?._id ? String(currentUser._id) : null;
-        const cCode = currentUser?.employeeCode ? String(currentUser.employeeCode) : null;
-        const cName = currentUser?.name ? currentUser.name.toLowerCase().trim() : null;
-        if (cId && (String(t.assignedToId) === cId || String(t.assignedTo) === cId)) return true;
-        if (cCode && (t.assignedToId === cCode || t.assignedTo === cCode)) return true;
-        if (cName && t.assignedToName && t.assignedToName.toLowerCase().trim() === cName) return true;
-        if (Array.isArray(t.assignedToIds) && (cId && t.assignedToIds.includes(cId) || cCode && t.assignedToIds.includes(cCode))) return true;
-        if (Array.isArray(t.assignees) && t.assignees.some(a => (cId && String(a._id) === cId) || (cCode && a.employeeCode === cCode))) return true;
+        const uIds = [
+          currentUser?._id,
+          currentUser?.id,
+          currentUser?.employeeCode,
+          currentUser?.email
+        ].filter(Boolean).map(s => String(s).toLowerCase().trim());
+        const uName = currentUser?.name ? currentUser.name.toLowerCase().trim() : '';
+
+        const directAssignedTo = (t.assignedTo && typeof t.assignedTo === 'object')
+          ? String(t.assignedTo._id || t.assignedTo.id || '')
+          : String(t.assignedTo || '');
+        const directIds = [
+          t.assignedToId,
+          directAssignedTo,
+          t.employeeId,
+          t.assignedToCode,
+          t.employeeCode,
+          t.assignedToEmail
+        ].filter(Boolean).map(s => String(s).toLowerCase().trim());
+
+        if (uIds.some(uid => directIds.includes(uid))) return true;
+
+        const tAssignedName = (t.assignedToName || (typeof t.assignedTo === 'object' ? t.assignedTo?.name : '') || '').toLowerCase().trim();
+        if (uName && tAssignedName && (tAssignedName === uName || tAssignedName.includes(uName) || uName.includes(tAssignedName))) return true;
+
+        if (Array.isArray(t.assignedToIds) && t.assignedToIds.some(id => uIds.includes(String(id).toLowerCase().trim()))) return true;
+        if (Array.isArray(t.assignees) && t.assignees.some(a => {
+          const aIds = [a._id, a.id, a.employeeCode, a.email].filter(Boolean).map(s => String(s).toLowerCase().trim());
+          if (uIds.some(uid => aIds.includes(uid))) return true;
+          if (uName && a.name && a.name.toLowerCase().trim() === uName) return true;
+          return false;
+        })) return true;
+
         return false;
       };
 
@@ -1081,10 +1106,10 @@ export const CRMProvider = ({ children }) => {
         todayMidnight.setHours(0, 0, 0, 0);
         const todayMidnightMs = todayMidnight.getTime();
 
-        if (activeTimer && activeTimer.date === dateStr && isClockedInToday && !hadClockedOutToday) {
+        if (activeTimer && (activeTimer.date === dateStr || activeTimer.sessionDate === dateStr || activeTimer.timerRunning)) {
           const nowMs = Date.now();
           const isStartedToday = activeTimer.startedAt && Number(activeTimer.startedAt) >= todayMidnightMs;
-          const runningElapsed = (activeTimer.timerRunning && isClockedInToday && !hadClockedOutToday && isStartedToday)
+          const runningElapsed = (activeTimer.timerRunning && isStartedToday)
             ? Math.max(0, Math.floor((nowMs - Number(activeTimer.startedAt)) / 1000))
             : 0;
 
@@ -1095,7 +1120,9 @@ export const CRMProvider = ({ children }) => {
           } else if (activeTimer.sessionDate === dateStr && activeTimer.todayWorkSeconds !== undefined) {
             dayPortion = (Number(activeTimer.todayWorkSeconds) || 0) + runningElapsed;
           } else if (activeTimer.timerRunning) {
-            dayPortion = runningElapsed;
+            dayPortion = (Number(activeTimer.accumulatedSeconds) || 0) + runningElapsed;
+          } else {
+            dayPortion = Number(activeTimer.todayWorkSeconds || activeTimer.accumulatedSeconds || activeTimer.timerSeconds || 0);
           }
 
           activeTimerTask = activeTimer;
@@ -1109,38 +1136,38 @@ export const CRMProvider = ({ children }) => {
         }
 
         // 2. Check any other paused or worked tasks today (strictly tasks worked today!)
-        if (isClockedInToday || hadClockedOutToday) {
-          allTasks.forEach(t => {
-            if (!isTaskForMe(t)) return;
-            const tId = String(t._id || t.id);
-            if (activeTimerTask && (String(activeTimerTask.taskId) === tId || String(activeTimerTask._id) === tId)) return;
+        allTasks.forEach(t => {
+          if (!isTaskForMe(t)) return;
+          const tId = String(t._id || t.id);
+          if (activeTimerTask && (String(activeTimerTask.taskId) === tId || String(activeTimerTask._id) === tId || (t.taskCode && activeTimerTask.taskCode === t.taskCode))) return;
 
-            // Strict guard: Skip tasks completed on other days
-            const isCompletedToday = t.completedOn === dateStr || (t.completedAt && String(t.completedAt).startsWith(dateStr));
-            if (t.status === 'completed' && !isCompletedToday) return;
+          // Strict guard: Skip tasks completed on other days
+          const isCompletedToday = t.completedOn === dateStr || (t.completedAt && String(t.completedAt).startsWith(dateStr));
+          if (t.status === 'completed' && !isCompletedToday) return;
 
-            // Only consider tasks explicitly worked today or completed today
-            const hasSessionToday = (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) || (t.sessionDate === dateStr && Number(t.todayWorkSeconds) > 0);
-            const isWorkedToday = hasSessionToday || isCompletedToday;
-            if (!isWorkedToday) return;
+          // Only consider tasks explicitly worked today or completed today
+          const hasSessionToday = (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) || (t.sessionDate === dateStr && (Number(t.todayWorkSeconds) > 0 || Number(t.accumulatedSeconds) > 0 || Number(t.timerSeconds) > 0));
+          const isWorkedToday = hasSessionToday || isCompletedToday;
+          if (!isWorkedToday) return;
 
-            let dayPortion = 0;
-            if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
-              dayPortion = Number(t.dailySessions[dateStr]) || 0;
-            } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
-              dayPortion = Number(t.todayWorkSeconds) || 0;
-            } else if (isCompletedToday && (t.startDate === dateStr || t.createdAt?.startsWith(dateStr))) {
-              dayPortion = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
-            }
+          let dayPortion = 0;
+          if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
+            dayPortion = Number(t.dailySessions[dateStr]) || 0;
+          } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
+            dayPortion = Number(t.todayWorkSeconds) || 0;
+          } else if (isCompletedToday && (t.startDate === dateStr || t.createdAt?.startsWith(dateStr))) {
+            dayPortion = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+          } else {
+            dayPortion = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+          }
 
-            const timesheetsForThisTask = matchingTimesheets
-              .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode))
-              .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
+          const timesheetsForThisTask = matchingTimesheets
+            .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode))
+            .reduce((s, ts) => s + (Number(ts.totalDurationSeconds) || 0), 0);
 
-            const unsubmitted = Math.max(0, dayPortion - timesheetsForThisTask);
-            dayTotalTaskSeconds += unsubmitted;
-          });
-        }
+          const unsubmitted = Math.max(0, dayPortion - timesheetsForThisTask);
+          dayTotalTaskSeconds += unsubmitted;
+        });
       } else {
         const completedTaskSeconds = matchingCompletedTasks.reduce((acc, curr) => {
           let secs = 0;

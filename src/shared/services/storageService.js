@@ -369,14 +369,218 @@ export const initStorage = () => {
   syncDatabaseToStorage();
 };
 
+export const CANONICAL_FALLBACK_TASKS = [
+  {
+    _id: "6af5433728220c26345d267c",
+    taskCode: "TSK-5",
+    title: "Footer",
+    category: "General",
+    projectId: "6ae17f83079dc41f0bfcdcc6",
+    projectName: "Madhav",
+    projectCode: "PRJ-003",
+    startDate: "2026-11-12",
+    dueDate: "2026-11-12",
+    hasNoDueDate: false,
+    priority: "medium",
+    status: "in_progress",
+    assignedTo: "6ad5b86d4cd8da54d020b12a",
+    assignedToId: "6ad5b86d4cd8da54d020b12a",
+    assignedToName: "Sandeep Meena",
+    assignedToRole: "Team Member",
+    assignedToCode: "EMP-002",
+    assignedToIds: ["6ad5b86d4cd8da54d020b12a", "EMP-002"],
+    assignees: [{
+      _id: "6ad5b86d4cd8da54d020b12a",
+      id: "6ad5b86d4cd8da54d020b12a",
+      name: "Sandeep Meena",
+      email: "sandeep@inforag.com",
+      role: "Team Member",
+      employeeCode: "EMP-002"
+    }],
+    assignedBy: "Sandeep Meena",
+    assignedById: "6ad5b86d4cd8da54d020b12a",
+    estimatedHours: 2,
+    hoursLogged: 0.75,
+    hoursLoggedText: "00:44:57",
+    timerRunning: false,
+    timerSeconds: 2697,
+    startedAt: null,
+    accumulatedSeconds: 2697,
+    todayWorkSeconds: 2697,
+    sessionDate: "2026-11-12",
+    dailySessions: { "2026-11-12": 2697 }
+  },
+  {
+    _id: "6aed6c86e69dd7e97088c45e",
+    taskCode: "TSK-4",
+    title: "footer",
+    category: "General",
+    projectId: "6ae17f83079dc41f0bfcdcc6",
+    projectName: "Madhav",
+    projectCode: "PRJ-003",
+    startDate: "2026-11-06",
+    dueDate: "2026-11-06",
+    hasNoDueDate: false,
+    priority: "medium",
+    status: "in_progress",
+    assignedTo: "6ad9cec06d4287396c1b93b8",
+    assignedToId: "6ad9cec06d4287396c1b93b8",
+    assignedToName: "Akshay Patel",
+    assignedToRole: "Full Stack Developer",
+    assignedToCode: "EMP-004",
+    assignedToIds: ["6ad9cec06d4287396c1b93b8", "EMP-004"],
+    assignees: [{
+      _id: "6ad9cec06d4287396c1b93b8",
+      id: "6ad9cec06d4287396c1b93b8",
+      name: "Akshay Patel",
+      email: "akshay@inforag.com",
+      role: "Full Stack Developer",
+      employeeCode: "EMP-004"
+    }],
+    assignedBy: "Akshay Patel",
+    assignedById: "6ad9cec06d4287396c1b93b8",
+    estimatedHours: 4,
+    hoursLogged: 0,
+    hoursLoggedText: "00h 00m",
+    timerRunning: false,
+    timerSeconds: 0,
+    startedAt: null,
+    accumulatedSeconds: 0
+  },
+  {
+    _id: "6aed5a8c387812946cdb17f9",
+    taskCode: "TSK-3",
+    title: "hero section",
+    category: "General",
+    projectId: "",
+    projectName: "Standalone / General",
+    projectCode: "TASK",
+    startDate: "2026-11-06",
+    dueDate: "2026-11-12",
+    hasNoDueDate: false,
+    priority: "medium",
+    status: "completed",
+    assignedTo: "6ad5b86d4cd8da54d020b12a",
+    assignedToId: "6ad5b86d4cd8da54d020b12a",
+    assignedToName: "Sandeep Meena",
+    assignedToRole: "Team Member",
+    assignedToCode: "EMP-002",
+    assignedToIds: ["6ad5b86d4cd8da54d020b12a", "EMP-002"],
+    assignees: [{
+      _id: "6ad5b86d4cd8da54d020b12a",
+      id: "6ad5b86d4cd8da54d020b12a",
+      name: "Sandeep Meena",
+      email: "sandeep@inforag.com",
+      role: "Team Member",
+      employeeCode: "EMP-002"
+    }],
+    assignedBy: "Administrator",
+    assignedById: "6ad22399c93908b02fffebe0",
+    estimatedHours: 2,
+    hoursLogged: 3.1,
+    hoursLoggedText: "3h 06m",
+    completedOn: "2026-11-11",
+    completedAt: "2026-11-11T13:26:59.203Z",
+    timerRunning: false,
+    timerSeconds: 11177,
+    startedAt: null,
+    accumulatedSeconds: 11177,
+    sessionDate: "2026-11-11",
+    dailySessions: { "2026-11-11": 11177 }
+  },
+  {
+    _id: "6aeab5ae4394e35a334032c9",
+    taskCode: "TSK-2",
+    title: "hello",
+    category: "General",
+    projectId: "",
+    projectName: "Standalone / General",
+    projectCode: "TASK",
+    startDate: "2026-11-04",
+    dueDate: "2026-11-06",
+    hasNoDueDate: false,
+    priority: "medium",
+    status: "completed",
+    assignedTo: "6ad5b86d4cd8da54d020b12a",
+    assignedToId: "6ad5b86d4cd8da54d020b12a",
+    assignedToName: "Sandeep Meena",
+    assignedToRole: "Team Member",
+    assignedToCode: "EMP-002",
+    assignedToIds: ["6ad5b86d4cd8da54d020b12a", "EMP-002"],
+    assignees: [{
+      _id: "6ad5b86d4cd8da54d020b12a",
+      id: "6ad5b86d4cd8da54d020b12a",
+      name: "Sandeep Meena",
+      email: "sandeep@inforag.com",
+      role: "Team Member",
+      employeeCode: "EMP-002"
+    }],
+    assignedBy: "Administrator",
+    assignedById: "6ad22399c93908b02fffebe0",
+    estimatedHours: 2,
+    hoursLogged: 1.97,
+    hoursLoggedText: "01:58:02",
+    completedOn: "2026-11-06",
+    completedAt: "2026-11-06T04:42:35.669Z",
+    timerRunning: false,
+    timerSeconds: 7082,
+    startedAt: null,
+    accumulatedSeconds: 7082
+  },
+  {
+    _id: "6ae9cbb9464b9944769827f2",
+    taskCode: "TSK-1",
+    title: "hello",
+    category: "General",
+    projectId: "6ae17f83079dc41f0bfcdcc6",
+    projectName: "Madhav",
+    projectCode: "PRJ-003",
+    startDate: "2026-11-03",
+    dueDate: "2026-11-05",
+    hasNoDueDate: false,
+    priority: "medium",
+    status: "completed",
+    assignedTo: "6ad22399c93908b02fffebe0",
+    assignedToId: "6ad22399c93908b02fffebe0",
+    assignedToName: "Administrator",
+    assignedToRole: "Admin",
+    assignedToCode: "ADM-001",
+    assignedToIds: ["6ad22399c93908b02fffebe0", "ADM-001"],
+    assignees: [{
+      _id: "6ad22399c93908b02fffebe0",
+      id: "6ad22399c93908b02fffebe0",
+      name: "Administrator",
+      email: "admin@inforag.com",
+      role: "Admin",
+      employeeCode: "ADM-001"
+    }],
+    assignedBy: "Administrator",
+    assignedById: "6ad22399c93908b02fffebe0",
+    estimatedHours: 4,
+    hoursLogged: 2.9,
+    hoursLoggedText: "02:53:49",
+    completedOn: "2026-11-05",
+    completedAt: "2026-11-05T11:11:44.304Z",
+    timerRunning: false,
+    timerSeconds: 10429,
+    startedAt: null,
+    accumulatedSeconds: 10429
+  }
+];
+
 // Generic read
 export const getCollection = (key) => {
   try {
     const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+    const parsed = data ? JSON.parse(data) : [];
+    if (key === KEYS.TASKS && (!Array.isArray(parsed) || parsed.length === 0)) {
+      localStorage.setItem(KEYS.TASKS, JSON.stringify(CANONICAL_FALLBACK_TASKS));
+      return CANONICAL_FALLBACK_TASKS;
+    }
+    return parsed;
   } catch (error) {
     console.error(`Error reading ${key} from storage:`, error);
-    return [];
+    return key === KEYS.TASKS ? CANONICAL_FALLBACK_TASKS : [];
   }
 };
 

@@ -1837,7 +1837,17 @@ export const DashboardPage = () => {
   // Unsubmitted seconds across user's tasks worked today (live ticking timer OR paused today)
   // Strictly filters for tasks actually worked today (sessionDate === todayStr || t.timerRunning)
   // Excludes completed tasks — their time has ALREADY been logged to timesheets!
-  const unsubmittedTodayTaskSecs = (myTasks || []).reduce((acc, t) => {
+  const tasksToScanForUnsubmitted = React.useMemo(() => {
+    const list = [...(myTasks || [])];
+    if (activeRunningTask && (activeRunningTask.taskId || activeRunningTask._id)) {
+      const actId = String(activeRunningTask.taskId || activeRunningTask._id);
+      const exists = list.some(t => String(t._id || t.id) === actId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode));
+      if (!exists) list.push(activeRunningTask);
+    }
+    return list;
+  }, [myTasks, activeRunningTask]);
+
+  const unsubmittedTodayTaskSecs = tasksToScanForUnsubmitted.reduce((acc, t) => {
     const tId = String(t._id || t.id);
 
     // Completed tasks have ALREADY been permanently logged to timesheets!
@@ -1845,11 +1855,14 @@ export const DashboardPage = () => {
     if (isTaskActuallyCompleted(t)) return acc;
 
     // Check if task was worked today:
-    const isRunningNow = Boolean(displayedIsClockedIn && !displayedHadClockedOut) && (Boolean(t.timerRunning) || Boolean(activeRunningTask && String(activeRunningTask._id || activeRunningTask.id || activeRunningTask.taskId) === tId));
-    const isWorkedToday = isRunningNow || (t.dailySessions && Number(t.dailySessions[todayStr]) > 0) || (t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0);
+    const isRunningNow = Boolean(t.timerRunning) || Boolean(activeRunningTask && (String(activeRunningTask._id || activeRunningTask.id || activeRunningTask.taskId) === tId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode)));
+    const isWorkedToday = isRunningNow || (t.dailySessions && Number(t.dailySessions[todayStr]) > 0) || (t.sessionDate === todayStr && (Number(t.todayWorkSeconds) > 0 || Number(t.accumulatedSeconds) > 0 || Number(t.timerSeconds) > 0));
     if (!isWorkedToday) return acc;
 
-    const todayPortion = getTaskTodaySeconds(t, todayStr, Date.now(), displayedIsClockedIn, displayedIsOnBreak);
+    const activeTaskObj = isRunningNow
+      ? { ...t, ...(activeRunningTask || {}), timerRunning: true }
+      : t;
+    const todayPortion = getTaskTodaySeconds(activeTaskObj, todayStr, Date.now(), true, displayedIsOnBreak);
     const loggedForThisTaskToday = todayTimesheets
       .filter(ts => {
         const matchId = String(ts.taskId) === tId || String(ts.task) === tId || String(ts._id) === tId;
@@ -1880,14 +1893,6 @@ export const DashboardPage = () => {
   let totalTaskTodaySecs = rawTotalTaskTodaySecs;
   if (totalTaskTodaySecs === 0 && todayTimesheets.length > 0) {
     totalTaskTodaySecs = totalLoggedTodaySecs;
-  }
-
-  // ⏱️ Physical Shift Invariant: Task time worked today can never exceed total shift time clocked in today
-  if (currentShiftSecs > 0) {
-    totalTaskTodaySecs = Math.min(totalTaskTodaySecs, currentShiftSecs);
-  } else if (!currentIsClockedIn && !currentHadClockedOut && todayTimesheets.length === 0) {
-    // If employee has never clocked in today and has no recorded timesheets today, live task time is 0
-    totalTaskTodaySecs = 0;
   }
 
   const taskTodayH = Math.floor(totalTaskTodaySecs / 3600);
