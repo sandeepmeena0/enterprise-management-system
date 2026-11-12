@@ -965,7 +965,7 @@ export const DEFAULT_MODULE_PERMISSIONS = {
     accessFinance: false,
     manageEmployees: false,
     grantPermissions: false,
-    liveOperations: false,
+    liveOperations: true,
     allAccess: false
   }
 };

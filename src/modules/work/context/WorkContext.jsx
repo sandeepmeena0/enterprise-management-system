@@ -415,9 +415,15 @@ export const WorkProvider = ({ children }) => {
         // For current user: ONLY the single active task timer is running!
         let isRunning = false;
         if (isAssignedToMe) {
-          isRunning = Boolean(isActive || isRemoteActive);
-          // If task is running remotely on Atlas but this fresh browser doesn't have activeTimer snapshot, hydrate it!
-          if (isRemoteActive && (!activeTimer || !activeTimer.timerRunning)) {
+          // If local snapshot explicitly matches this task and is paused, respect local pause!
+          const isExplicitlyPausedLocally = Boolean(isTaskIdMatch && activeTimer && activeTimer.timerRunning === false);
+          if (isExplicitlyPausedLocally) {
+            isRunning = false;
+          } else if (isActive) {
+            isRunning = true;
+          } else if (isRemoteActive && (!activeTimer || (!activeTimer.taskId && !activeTimer._id))) {
+            // Only hydrate from remote Atlas on a completely fresh browser session with no existing local timer
+            isRunning = true;
             const restoredTimer = {
               taskId: t._id,
               taskCode: t.taskCode,
@@ -433,6 +439,8 @@ export const WorkProvider = ({ children }) => {
               sessionDate: today
             };
             saveActiveTimerSnapshot(restoredTimer);
+          } else {
+            isRunning = false;
           }
         } else {
           isRunning = Boolean(t.timerRunning && isStartedToday);
@@ -488,11 +496,12 @@ export const WorkProvider = ({ children }) => {
           const isCurrentStub = String(t._id || '').startsWith('tsk_');
           const base = (!isCurrentStub && isExistingStub) ? t : existing;
           const other = (!isCurrentStub && isExistingStub) ? existing : t;
+          const resolvedTimerRunning = Boolean(existing.timerRunning && t.timerRunning);
           finalTasksMap.set(canonicalKey, {
             ...other,
             ...base,
-            timerRunning: existing.timerRunning || t.timerRunning,
-            startedAt: existing.timerRunning ? existing.startedAt : t.startedAt,
+            timerRunning: resolvedTimerRunning,
+            startedAt: resolvedTimerRunning ? (existing.startedAt || t.startedAt) : null,
             timerSeconds: Math.max(Number(existing.timerSeconds) || 0, Number(t.timerSeconds) || 0),
             accumulatedSeconds: Math.max(Number(existing.accumulatedSeconds) || 0, Number(t.accumulatedSeconds) || 0)
           });
@@ -962,39 +971,34 @@ export const WorkProvider = ({ children }) => {
     };
   }, [getActiveTimerSnapshot, getElapsedSeconds, saveActiveTimerSnapshot, formatSeconds, isEventForMe, userKey]);
 
-  // ── On Clock-In: Restore any task timer that was paused for clock-out ──
-  // NOTE: Do NOT pause running task timers on clock-in — task timer is independent of shift clock.
-  // Only restore wasPausedForClockOut tasks back to their previous state if applicable.
+  // ── On Clock-In: Shift Clock In does NOT automatically start or resume task timer ──
+  // User must explicitly click "Start" or "Resume" on a task for task time to begin ticking.
   useEffect(() => {
     const handleClockedIn = (e) => {
       if (!isEventForMe(e)) return; // Ignore clock-in for other employees!
       const activeTimer = getActiveTimerSnapshot();
-      // If there is a saved snapshot that was paused specifically because of clock-out, restore it
-      if (activeTimer && activeTimer.wasPausedForClockOut) {
-        // Resume the task timer from where it left off
-        const now = Date.now();
-        const resumedState = {
+      if (activeTimer) {
+        // Keep task timer safely paused so employee can start when ready
+        const pausedState = {
           ...activeTimer,
-          timerRunning: true,
-          startedAt: now,
+          timerRunning: false,
+          startedAt: null,
           wasPausedForClockOut: false
         };
-        saveActiveTimerSnapshot(resumedState);
+        saveActiveTimerSnapshot(pausedState);
 
         setTasks(prev => prev.map(t => {
-          if (t._id === activeTimer.taskId) {
+          if (String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id)) {
             return {
               ...t,
-              timerRunning: true,
-              startedAt: now,
-              liveDurationText: formatSeconds(Number(activeTimer.accumulatedSeconds) || 0)
+              timerRunning: false,
+              startedAt: null,
+              wasPausedForClockOut: false
             };
           }
           return t;
         }));
       }
-      // If there was NO active timer and no snapshot, nothing to do — task timer
-      // starts only when user explicitly clicks "Start Task"
     };
 
     window.addEventListener('ems_clocked_in', handleClockedIn);
@@ -1003,7 +1007,7 @@ export const WorkProvider = ({ children }) => {
       window.removeEventListener('ems_clocked_in', handleClockedIn);
       window.removeEventListener('ems_reclock_in', handleClockedIn);
     };
-  }, [getActiveTimerSnapshot, saveActiveTimerSnapshot, formatSeconds, isEventForMe]);
+  }, [getActiveTimerSnapshot, saveActiveTimerSnapshot, isEventForMe]);
 
   // ── Automatic Task Timer Pause on Clock-Out ──
   useEffect(() => {

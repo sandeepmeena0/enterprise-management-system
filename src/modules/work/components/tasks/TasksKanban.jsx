@@ -153,7 +153,7 @@ export const TasksKanban = ({ tasks: propTasks, onSelectTask }) => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            pauseTaskTimer(task._id);
+                            pauseTaskTimer(task._id || task.id);
                           }}
                           className="bg-white/25 hover:bg-white/35 border-none text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
                         >
@@ -162,7 +162,7 @@ export const TasksKanban = ({ tasks: propTasks, onSelectTask }) => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            stopTaskTimer(task._id);
+                            stopTaskTimer(task._id || task.id);
                           }}
                           className="bg-white/25 hover:bg-white/35 border-none text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
                         >
@@ -173,7 +173,7 @@ export const TasksKanban = ({ tasks: propTasks, onSelectTask }) => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          startTaskTimer(task._id);
+                          startTaskTimer(task._id || task.id);
                         }}
                         className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-sky-600 dark:text-sky-400 border border-slate-300 dark:border-slate-700 px-2 py-0.5 rounded text-[10.5px] font-bold cursor-pointer transition-colors"
                       >

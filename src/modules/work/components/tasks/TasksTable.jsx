@@ -204,7 +204,7 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                           title="Pause Timer"
                           onClick={(e) => {
                             e.stopPropagation();
-                            pauseTaskTimer(task._id);
+                            pauseTaskTimer(task._id || task.id);
                           }}
                           className="bg-white/25 border-none rounded-full w-4 h-4 flex items-center justify-center text-white cursor-pointer hover:bg-white/40 transition-colors"
                         >
@@ -216,7 +216,7 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                           title="Stop Timer & Log to Timesheet"
                           onClick={(e) => {
                             e.stopPropagation();
-                            stopTaskTimer(task._id);
+                            stopTaskTimer(task._id || task.id);
                           }}
                           className="bg-white/25 border-none rounded-full w-4 h-4 flex items-center justify-center text-white cursor-pointer hover:bg-white/40 transition-colors"
                         >
@@ -240,7 +240,7 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                           title="Resume task timer now"
                           onClick={(e) => {
                             e.stopPropagation();
-                            resumeSnoozedTask(task._id);
+                            resumeSnoozedTask(task._id || task.id);
                           }}
                           className="inline-flex items-center gap-0.5 bg-purple-700 text-white border-none py-0.5 px-1.5 rounded-lg text-[10px] font-bold cursor-pointer hover:bg-purple-800 transition-colors"
                         >
@@ -253,7 +253,7 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                         title="Start Tracking Work"
                         onClick={(e) => {
                           e.stopPropagation();
-                          startTaskTimer(task._id);
+                          startTaskTimer(task._id || task.id);
                         }}
                         className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 border border-slate-300 py-0.5 px-2 rounded-full text-[11px] font-semibold cursor-pointer transition-colors hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300"
                       >

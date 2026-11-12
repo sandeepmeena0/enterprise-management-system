@@ -899,6 +899,8 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     isClockedIn,
     clockInTime,
     clockInTimestamp,
+    clockOutTime,
+    clockOutTimestamp,
     currentSessionStartTimestamp,
     workSeconds,
     breakSeconds,
@@ -919,6 +921,9 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
   const cacheKey = targetCode || targetId;
   const existingCached = liveTelemetryCache.get(cacheKey);
 
+  const safeClockOutTime = clockOutTime || req.body.clockOutTime || null;
+  const safeClockOutTimestamp = clockOutTimestamp || req.body.clockOutTimestamp || null;
+
   const payload = {
     employeeId: targetId,
     employeeCode: targetCode,
@@ -927,9 +932,10 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     isClockedIn: isClockedIn !== undefined ? Boolean(isClockedIn) : (existingCached ? existingCached.isClockedIn : true),
     clockInTime: existingCached?.firstClockInTime || existingCached?.clockInTime || clockInTime || null,
     firstClockInTime: existingCached?.firstClockInTime || req.body.firstClockInTime || clockInTime || existingCached?.clockInTime || null,
-    clockOutTime: clockOutTime || (isClockedIn ? null : (existingCached?.clockOutTime || null)),
-    lastClockOutTime: clockOutTime || req.body.lastClockOutTime || existingCached?.lastClockOutTime || existingCached?.clockOutTime || null,
+    clockOutTime: safeClockOutTime || (isClockedIn ? null : (existingCached?.clockOutTime || null)),
+    lastClockOutTime: safeClockOutTime || req.body.lastClockOutTime || existingCached?.lastClockOutTime || existingCached?.clockOutTime || null,
     clockInTimestamp: existingCached?.clockInTimestamp || (clockInTimestamp ? Number(clockInTimestamp) : null),
+    clockOutTimestamp: safeClockOutTimestamp ? Number(safeClockOutTimestamp) : (existingCached?.clockOutTimestamp || null),
     currentSessionStartTimestamp: currentSessionStartTimestamp ? Number(currentSessionStartTimestamp) : null,
     workSeconds: workSeconds !== undefined ? Number(workSeconds) : 0,
     breakSeconds: breakSeconds !== undefined ? Number(breakSeconds) : (existingCached?.breakSeconds || 0),

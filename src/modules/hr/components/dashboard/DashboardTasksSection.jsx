@@ -284,7 +284,7 @@ export const DashboardTasksSection = ({
                           {!isDone && (
                             isRunningTask ? (
                               <button
-                                onClick={() => pauseTaskTimer(task._id)}
+                                onClick={() => pauseTaskTimer(task._id || task.id)}
                                 className="flex items-center gap-1 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800 py-[3px] px-[7px] rounded-[5px] text-[10.5px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors"
                                 title="Pause timer"
                               >
@@ -293,6 +293,7 @@ export const DashboardTasksSection = ({
                             ) : (
                               <button
                                 onClick={() => {
+                                  const tId = task._id || task.id;
                                   const isMyTask = isTaskAssignedToUser(task, currentUser);
                                   if (isMyTask && !isClockedIn) {
                                     handleClockIn();
@@ -301,8 +302,8 @@ export const DashboardTasksSection = ({
                                     addToast('☕ You are on break. Please resume work first!', 'warning');
                                     return;
                                   }
-                                  startTaskTimer(task._id);
-                                  setActiveSelectedTaskId(task._id);
+                                  startTaskTimer(tId);
+                                  setActiveSelectedTaskId(tId);
                                   setSelectedTask(task);
                                 }}
                                 className="flex items-center gap-1 bg-sky-600 text-white border-none py-[3px] px-[7px] rounded-[5px] text-[10.5px] font-bold cursor-pointer hover:bg-sky-700 transition-colors"
@@ -316,8 +317,9 @@ export const DashboardTasksSection = ({
                           {!isDone && (
                             <button
                               onClick={async () => {
-                                await completeTask(task._id, '', false);
-                                if (activeSelectedTaskId === task._id) {
+                                const tId = task._id || task.id;
+                                await completeTask(tId, '', false);
+                                if (activeSelectedTaskId === tId) {
                                   setActiveSelectedTaskId(null);
                                 }
                               }}

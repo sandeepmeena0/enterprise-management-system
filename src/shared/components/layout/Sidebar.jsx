@@ -371,8 +371,10 @@ export const Sidebar = ({ mobileMenuOpen = false, onCloseMobile = () => {} }) =>
             {!collapsed && (
               <div className="flex items-center justify-between w-full">
                 <span>Team Activity & Audit Hub</span>
-                <span className="text-[10px] bg-orange-600 text-white px-1.5 py-0.5 rounded-full font-bold">
-                  ADMIN
+                <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold ${
+                  (currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr') ? 'bg-orange-600' : 'bg-emerald-600'
+                }`}>
+                  {(currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr') ? 'ADMIN' : 'LIVE'}
                 </span>
               </div>
             )}

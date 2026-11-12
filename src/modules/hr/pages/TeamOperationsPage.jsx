@@ -1965,13 +1965,15 @@ export const TeamOperationsPage = () => {
                             </div>
                             <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
                               <span>⏱️ <strong className="text-sky-600 dark:text-sky-400">{item.runningTask.liveDurationText}</strong></span>
-                              <button
-                                onClick={() => handleAdminPauseTask(item.runningTask, emp)}
-                                className="border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                                title="Instant pause task timer for employee"
-                              >
-                                Pause ⏸️
-                              </button>
+                              {isPrivileged && (
+                                <button
+                                  onClick={() => handleAdminPauseTask(item.runningTask, emp)}
+                                  className="border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                                  title="Instant pause task timer for employee"
+                                >
+                                  Pause ⏸️
+                                </button>
+                              )}
                             </div>
                           </div>
                         ) : (() => {
@@ -1983,13 +1985,15 @@ export const TeamOperationsPage = () => {
                             const firstTask = empPendingTasks[0];
                             return (
                               <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => handleAdminStartTask(firstTask, emp)}
-                                  className="inline-flex items-center gap-1 border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/50 text-green-600 dark:text-green-400 rounded px-2 py-0.5 text-[10.5px] font-bold cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
-                                  title={`Start timer for ${emp.name} on #${firstTask.taskCode || 'TSK'}: ${firstTask.title}`}
-                                >
-                                  <Play size={9} className="fill-green-600" /> Start #{firstTask.taskCode || 'TSK'}
-                                </button>
+                                {isPrivileged && (
+                                  <button
+                                    onClick={() => handleAdminStartTask(firstTask, emp)}
+                                    className="inline-flex items-center gap-1 border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/50 text-green-600 dark:text-green-400 rounded px-2 py-0.5 text-[10.5px] font-bold cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
+                                    title={`Start timer for ${emp.name} on #${firstTask.taskCode || 'TSK'}: ${firstTask.title}`}
+                                  >
+                                    <Play size={9} className="fill-green-600" /> Start #{firstTask.taskCode || 'TSK'}
+                                  </button>
+                                )}
                                 {empPendingTasks.length > 1 && (
                                   <span className="text-[10px] text-slate-500 dark:text-slate-400">+{empPendingTasks.length - 1} more</span>
                                 )}
@@ -2007,8 +2011,8 @@ export const TeamOperationsPage = () => {
                       {/* Admin Actions */}
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex items-center gap-1.5">
-                          {/* Emergency Clock-In (If not clocked in or absent) */}
-                          {!item.isClockedIn && (
+                          {/* Emergency Clock-In (Admin/HR Only) */}
+                          {isPrivileged && !item.isClockedIn && (
                             <button
                               onClick={() => {
                                 setClockInModalTarget(emp);
@@ -2023,8 +2027,8 @@ export const TeamOperationsPage = () => {
                             </button>
                           )}
 
-                          {/* Emergency Clock-Out (If currently clocked in) */}
-                          {item.isClockedIn && (
+                          {/* Emergency Clock-Out (Admin/HR Only) */}
+                          {isPrivileged && item.isClockedIn && (
                             <button
                               onClick={() => {
                                 setClockOutModalTarget(emp);

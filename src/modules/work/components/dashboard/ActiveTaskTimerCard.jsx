@@ -166,6 +166,8 @@ export const ActiveTaskTimerCard = ({
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5">
             <button
               onClick={async () => {
+                const targetTaskId = displayActiveTask?._id || displayActiveTask?.id || displayActiveTask?.taskId;
+                if (!targetTaskId) return;
                 if (!isViewingOtherEmployee && !isClockedIn) {
                   addToast('⚠️ Shift is not clocked in! Please Clock In above before advancing tasks.', 'warning');
                   return;
@@ -174,9 +176,9 @@ export const ActiveTaskTimerCard = ({
                   addToast('☕ You are currently on break. Please resume work before running task timers!', 'warning');
                   return;
                 }
-                const res = await completeAndNextTask(displayActiveTask._id);
+                const res = await completeAndNextTask(targetTaskId);
                 if (res?.nextTask) {
-                  setActiveSelectedTaskId(res.nextTask._id);
+                  setActiveSelectedTaskId(res.nextTask._id || res.nextTask.id);
                 } else {
                   setActiveSelectedTaskId(null);
                 }
@@ -190,6 +192,8 @@ export const ActiveTaskTimerCard = ({
 
             <button
               onClick={() => {
+                const targetTaskId = displayActiveTask?._id || displayActiveTask?.id || displayActiveTask?.taskId;
+                if (!targetTaskId) return;
                 if (!isViewingOtherEmployee && !isClockedIn) {
                   addToast('⚠️ Shift is not clocked in! Please Clock In above before starting task timers.', 'warning');
                   return;
@@ -199,9 +203,9 @@ export const ActiveTaskTimerCard = ({
                   return;
                 }
                 if (displayActiveTask?.timerRunning) {
-                  pauseTaskTimer(displayActiveTask._id);
+                  pauseTaskTimer(targetTaskId);
                 } else {
-                  startTaskTimer(displayActiveTask._id);
+                  startTaskTimer(targetTaskId);
                 }
               }}
               className={`col-span-1 sm:flex-1 flex items-center justify-center gap-1 py-2 sm:py-1.5 px-2 rounded-lg text-[11.5px] font-semibold cursor-pointer border transition-colors ${
@@ -220,9 +224,11 @@ export const ActiveTaskTimerCard = ({
 
             <button
               onClick={async () => {
-                const res = await completeTask(displayActiveTask._id, '', false);
+                const targetTaskId = displayActiveTask?._id || displayActiveTask?.id || displayActiveTask?.taskId;
+                if (!targetTaskId) return;
+                const res = await completeTask(targetTaskId, '', false);
                 if (res?.nextTask) {
-                  setActiveSelectedTaskId(res.nextTask._id);
+                  setActiveSelectedTaskId(res.nextTask._id || res.nextTask.id);
                 } else {
                   setActiveSelectedTaskId(null);
                 }
