@@ -144,7 +144,23 @@ export const AuthProvider = ({ children }) => {
           );
           if (matched && isMounted) {
             const hasPermsChanged = JSON.stringify(matched.permissions || {}) !== JSON.stringify(parsed.permissions || {}) ||
-              Boolean(matched.isDelegatedAdmin) !== Boolean(parsed.isDelegatedAdmin);
+              Boolean(matched.isDelegatedAdmin) !== Boolean(parsed.isDelegatedAdmin) ||
+              // FIX: also detect systemRole changes (e.g. team_member → hr after Admin saves)
+              (matched.systemRole && matched.systemRole !== parsed.systemRole);
+
+            // FIX: Always keep EMS_USER_PERMISSIONS cache up-to-date from server truth,
+            // regardless of whether React state needs to change. This ensures Sidebar re-renders
+            // even when the auth session object hasn't structurally changed yet.
+            if (matched.permissions && typeof matched.permissions === 'object') {
+              try {
+                const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
+                const parsedMap = rawMap ? JSON.parse(rawMap) : {};
+                if (matched._id) parsedMap[String(matched._id)] = matched.permissions;
+                if (matched.employeeCode) parsedMap[String(matched.employeeCode)] = matched.permissions;
+                if (matched.email) parsedMap[String(matched.email).toLowerCase()] = matched.permissions;
+                localStorage.setItem('EMS_USER_PERMISSIONS', JSON.stringify(parsedMap));
+              } catch (_) {}
+            }
 
             if (hasPermsChanged) {
               const updatedUser = {
@@ -156,18 +172,6 @@ export const AuthProvider = ({ children }) => {
               };
               setCurrentUser(updatedUser);
               localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));
-
-              // Sync EMS_USER_PERMISSIONS cache
-              if (matched.permissions && typeof matched.permissions === 'object') {
-                try {
-                  const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
-                  const parsedMap = rawMap ? JSON.parse(rawMap) : {};
-                  if (matched._id) parsedMap[String(matched._id)] = matched.permissions;
-                  if (matched.employeeCode) parsedMap[String(matched.employeeCode)] = matched.permissions;
-                  if (matched.email) parsedMap[String(matched.email).toLowerCase()] = matched.permissions;
-                  localStorage.setItem('EMS_USER_PERMISSIONS', JSON.stringify(parsedMap));
-                } catch (_) {}
-              }
 
               window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
               window.dispatchEvent(new CustomEvent('ems_permissions_updated', { detail: { user: updatedUser } }));
@@ -202,9 +206,15 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
+    // FIX: Also listen to direct window event from EmployeePermissionsTab save
+    // so permissions reflect instantly on same device without waiting for 10s interval
+    const onPermissionsUpdated = () => syncCurrentSessionUser();
+    window.addEventListener('ems_permissions_updated', onPermissionsUpdated);
+
     return () => {
       isMounted = false;
       window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('ems_permissions_updated', onPermissionsUpdated);
       clearInterval(intervalId);
       unsubscribeSync();
     };

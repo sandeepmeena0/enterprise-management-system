@@ -289,6 +289,8 @@ export const EmployeePermissionsTab = () => {
       const loaded = getUserModulePermissions(selectedEmp);
       setPermissions(loaded || {});
       setIsDelegatedAdmin(Boolean(selectedEmp?.isDelegatedAdmin || selectedEmp?.isAdmin || selectedEmp?.role?.toLowerCase() === 'admin'));
+      // FIX: reset local role override whenever a new employee is selected
+      setLocalSystemRole(null);
 
       let exp = selectedEmp?.delegationExpiresAt || '';
       try {
@@ -306,6 +308,9 @@ export const EmployeePermissionsTab = () => {
     }
   }, [selectedEmpId, selectedEmp]);
 
+  // Track local systemRole override when a base role preset is applied
+  const [localSystemRole, setLocalSystemRole] = useState(null);
+
   // Apply baseline preset in 1 click
   const handleApplyBaseRole = (baseRoleId) => {
     if (isSelectedEmpPrimaryAdmin) {
@@ -322,6 +327,8 @@ export const EmployeePermissionsTab = () => {
 
     setIsDelegatedAdmin(false);
     setPermissions({ ...presetObj.presets });
+    // FIX: also store the chosen base role key so handleSave uses it correctly
+    setLocalSystemRole(presetObj.roleKey);
     setIsSaved(false);
     addToast(`${presetObj.emoji} Applied ${presetObj.title} baseline permissions`, 'info');
   };
@@ -541,12 +548,18 @@ export const EmployeePermissionsTab = () => {
       }
 
       // 1. Authoritative Save directly to MongoDB Atlas Cloud Database
+      // FIX: Preserve existing systemRole — use localSystemRole if preset was applied, else keep what's already on the employee record.
+      // Never silently overwrite 'hr' or 'team_leader' with 'team_member'.
+      const resolvedSystemRole = isDelegatedAdmin
+        ? 'admin'
+        : (localSystemRole || selectedEmp.systemRole || getUserRole(selectedEmp) || 'team_member');
+
       if (updateEmployeePermissions) {
         await updateEmployeePermissions(selectedEmp._id, {
           permissions: safePerms,
           isDelegatedAdmin: Boolean(isDelegatedAdmin),
           delegationExpiresAt: delegationExpiresAt || null,
-          systemRole: selectedEmp.systemRole || (isDelegatedAdmin ? 'admin' : 'team_member')
+          systemRole: resolvedSystemRole
         });
       } else if (updateEmployee) {
         await updateEmployee(selectedEmp._id, {
