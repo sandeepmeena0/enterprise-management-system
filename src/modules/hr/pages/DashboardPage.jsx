@@ -734,11 +734,19 @@ export const DashboardPage = () => {
       activeTimer = null;
     }
 
-    const localRunningTask = (activeTimer && activeTimer.timerRunning && !isTimerTaskCompleted)
-      ? activeTimer
-      : (empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)) || null);
+    const isExplicitlyPausedLocally = Boolean(
+      (activeTimer && activeTimer.timerRunning === false) ||
+      (isSelf && empTasks.length > 0 && empTasks.every(t => !t.timerRunning))
+    );
 
-    const telemRunningTask = (telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
+    let localRunningTask = null;
+    if (activeTimer && activeTimer.timerRunning && !isTimerTaskCompleted) {
+      localRunningTask = activeTimer;
+    } else if (!isExplicitlyPausedLocally) {
+      localRunningTask = empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)) || null;
+    }
+
+    const telemRunningTask = (!isSelf && !isExplicitlyPausedLocally && telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
       ? telem.activeTask
       : null;
 
@@ -1776,23 +1784,33 @@ export const DashboardPage = () => {
     let task = null;
     if (!isViewingOtherEmployee && activeRunningTask && !isTaskActuallyCompleted(activeRunningTask) && isTaskAssignedToUser(activeRunningTask, effectiveTargetUser)) {
       task = activeRunningTask;
-    } else if (activeEmpState?.runningTask && !isTaskActuallyCompleted(activeEmpState.runningTask)) {
+    } else if (isViewingOtherEmployee && activeEmpState?.runningTask && !isTaskActuallyCompleted(activeEmpState.runningTask)) {
       const match = cleanTasks.find(t => String(t._id || t.id) === String(activeEmpState.runningTask._id || activeEmpState.runningTask.taskId));
       if (!match || !isTaskActuallyCompleted(match)) {
         const liveSecs = Number(activeEmpState.runningTask.liveTaskSecs) || Number(activeEmpState.runningTask.timerSeconds) || 0;
         task = {
           ...(match || {}),
           ...activeEmpState.runningTask,
-          timerRunning: true,
+          timerRunning: Boolean(activeEmpState.runningTask.timerRunning),
           timerSeconds: liveSecs,
           liveDurationText: formatSeconds(liveSecs)
         };
       }
-    } else if (activeRunningTask && !isTaskActuallyCompleted(activeRunningTask) && isTaskAssignedToUser(activeRunningTask, effectiveTargetUser)) {
-      task = activeRunningTask;
-    } else if (activeSelectedTaskId) {
+    } else if (!isViewingOtherEmployee && activeSelectedTaskId) {
       const found = myTasks.find(t => String(t._id || t.id) === String(activeSelectedTaskId) && !isTaskActuallyCompleted(t));
       if (found) task = found;
+    } else if (!isViewingOtherEmployee) {
+      // Check if there is an activeTimer or last worked task in local storage
+      let lastTaskId = null;
+      try {
+        const raw = localStorage.getItem(`ems_active_task_timer_${effectiveTargetUser?._id || effectiveTargetUser?.employeeCode}`) || localStorage.getItem('ems_active_task_timer');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && (parsed.taskId || parsed._id)) lastTaskId = parsed.taskId || parsed._id;
+        }
+      } catch {}
+      const lastWorkedTask = lastTaskId ? myTasks.find(t => String(t._id || t.id) === String(lastTaskId) && !isTaskActuallyCompleted(t)) : null;
+      task = lastWorkedTask || myPendingTasks.find(t => !t.snoozed && !isTaskActuallyCompleted(t)) || myTasks.find(t => !isTaskActuallyCompleted(t)) || null;
     } else {
       task = myPendingTasks.find(t => !t.snoozed && !isTaskActuallyCompleted(t)) || myTasks.find(t => !isTaskActuallyCompleted(t)) || null;
     }
@@ -1812,13 +1830,14 @@ export const DashboardPage = () => {
       const pausedTodaySecs = Number(task.todayWorkSeconds ?? task.dailySessions?.[todayStr] ?? task.timerSeconds ?? 0);
       return {
         ...task,
+        timerRunning: false,
         timerSeconds: pausedTodaySecs,
         todayWorkSeconds: pausedTodaySecs,
         liveDurationText: formatSeconds(pausedTodaySecs)
       };
     }
     return task;
-  }, [isViewingOtherEmployee, activeEmpState?.runningTask, cleanTasks, activeRunningTask, effectiveTargetUser, isTaskAssignedToUser, activeSelectedTaskId, myTasks, myPendingTasks, formatSeconds, displayedIsClockedIn]);
+  }, [isViewingOtherEmployee, activeEmpState?.runningTask, cleanTasks, activeRunningTask, effectiveTargetUser, isTaskAssignedToUser, activeSelectedTaskId, myTasks, myPendingTasks, formatSeconds, displayedIsClockedIn, todayStr]);
 
   // Upcoming Next tasks in queue (strictly from user's personal pending queue)
   const upcomingQueueTasks = myPendingTasks

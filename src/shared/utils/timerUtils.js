@@ -573,11 +573,18 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
   const today = todayStr || getLocalDateStr();
 
   let sessionElapsed = 0;
-  if (task.timerRunning && task.startedAt) {
+  if (task.timerRunning && task.startedAt && Number(task.startedAt) > 0) {
     sessionElapsed = Math.max(0, Math.floor((nowMs - Number(task.startedAt)) / 1000));
   }
 
-  const baseAccum = Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0);
+  // Base lifetime accumulated seconds before this running session started
+  let baseAccum = 0;
+  if (task.accumulatedSeconds !== undefined && task.accumulatedSeconds !== null) {
+    baseAccum = Number(task.accumulatedSeconds) || 0;
+  } else if (task.timerSeconds !== undefined && task.timerSeconds !== null) {
+    baseAccum = Math.max(0, (Number(task.timerSeconds) || 0) - sessionElapsed);
+  }
+
   const totalSecs = baseAccum + sessionElapsed;
 
   const dailySessionsMap = (task.dailySessions && typeof task.dailySessions === 'object') ? { ...task.dailySessions } : {};
@@ -587,8 +594,20 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
   } else if (task.sessionDate === today && task.todayWorkSeconds !== undefined) {
     priorTodaySecs = Number(task.todayWorkSeconds) || 0;
   }
-  // STRICT: Do NOT copy baseAccum into priorTodaySecs! If priorTodaySecs was 0, it means 0 prior seconds for today.
-  const totalTodaySecs = priorTodaySecs + sessionElapsed;
+
+  let totalTodaySecs = 0;
+  if (sessionElapsed > 0) {
+    // If priorTodaySecs already equals or exceeds (baseAccum + sessionElapsed),
+    // it was already updated to live seconds — do NOT double-add sessionElapsed!
+    if (priorTodaySecs >= baseAccum + sessionElapsed) {
+      totalTodaySecs = baseAccum + sessionElapsed;
+    } else {
+      totalTodaySecs = Math.min(priorTodaySecs + sessionElapsed, totalSecs);
+    }
+  } else {
+    totalTodaySecs = Math.min(priorTodaySecs || baseAccum, totalSecs);
+  }
+
   dailySessionsMap[today] = totalTodaySecs;
 
   return {
@@ -600,6 +619,7 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
     todayWorkSeconds: totalTodaySecs,
     dailySessions: dailySessionsMap,
     sessionDate: today,
+    lastUpdated: nowMs,
     wasPausedForClockOut: Boolean(wasPausedForClockOut),
     wasPausedForBreak: Boolean(wasPausedForBreak),
     liveDurationText: formatSecondsToDigital(totalTodaySecs),

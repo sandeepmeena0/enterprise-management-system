@@ -315,23 +315,43 @@ export const workService = {
                 const isRemoteActive = Boolean(rt.timerRunning && rt.startedAt);
                 const isLocalActive = Boolean(local.timerRunning && local.startedAt);
 
-                const effectiveRunning = isRemoteActive || isLocalActive;
-                const effectiveStartedAt = isLocalActive ? local.startedAt : (isRemoteActive ? rt.startedAt : null);
-                const localElapsed = isLocalActive ? Math.max(0, Math.floor((Date.now() - Number(local.startedAt)) / 1000)) : 0;
-                // Invariant: Task timer seconds and accumulated seconds can never run backwards!
-                const effectiveSecs = Math.max(localTimerSecs, remoteTimerSecs, localAccum + localElapsed);
+                let effectiveRunning = false;
+                let effectiveStartedAt = null;
+
+                if (isLocalActive) {
+                  if (!isRemoteActive && rt.timerRunning === false && Number(rt.lastUpdated || rt.updatedAt || 0) > Number(local.startedAt || 0)) {
+                    effectiveRunning = false;
+                    effectiveStartedAt = null;
+                  } else {
+                    effectiveRunning = true;
+                    effectiveStartedAt = local.startedAt;
+                  }
+                } else {
+                  if (isRemoteActive && Number(rt.startedAt || 0) > Number(local.lastUpdated || 0)) {
+                    effectiveRunning = true;
+                    effectiveStartedAt = rt.startedAt;
+                  } else {
+                    effectiveRunning = false;
+                    effectiveStartedAt = null;
+                  }
+                }
+
                 const effectiveAccum = Math.max(localAccum, remoteAccum);
-                const maxHours = Math.max(localHoursLogged, remoteHoursLogged, +(effectiveSecs / 3600).toFixed(2));
+                const todayStr = getLocalDateString();
+                const localToday = Number(local.todayWorkSeconds ?? local.dailySessions?.[todayStr] ?? localTimerSecs) || 0;
+                const remoteToday = Number(rt.todayWorkSeconds ?? rt.dailySessions?.[todayStr] ?? remoteTimerSecs) || 0;
+                const effectiveTodaySecs = Math.min(Math.max(localToday, remoteToday), effectiveAccum || Math.max(localToday, remoteToday));
+                const maxHours = Math.max(localHoursLogged, remoteHoursLogged, +(effectiveAccum / 3600).toFixed(2));
 
                 return {
                   ...local,
                   ...rt,
                   timerRunning: effectiveRunning,
                   startedAt: effectiveStartedAt,
-                  timerSeconds: effectiveSecs,
+                  timerSeconds: effectiveTodaySecs,
                   accumulatedSeconds: effectiveAccum,
-                  todayWorkSeconds: Math.max(Number(local.todayWorkSeconds) || 0, Number(rt.todayWorkSeconds) || 0),
-                  dailySessions: { ...(rt.dailySessions || {}), ...(local.dailySessions || {}) },
+                  todayWorkSeconds: effectiveTodaySecs,
+                  dailySessions: { ...(rt.dailySessions || {}), ...(local.dailySessions || {}), [todayStr]: effectiveTodaySecs },
                   hoursLogged: maxHours,
                   hoursLoggedText: maxHours > 0 ? (local.hoursLoggedText || `${maxHours}h`) : (local.hoursLoggedText || rt.hoursLoggedText || '0s'),
                   sessionDate: rt.sessionDate || local.sessionDate,
@@ -371,11 +391,12 @@ export const workService = {
                 const isCurrentStub = String(t._id || '').startsWith('tsk_');
                 const base = (!isCurrentStub && isExistingStub) ? t : existing;
                 const other = (!isCurrentStub && isExistingStub) ? existing : t;
+                const resolvedDedupeRunning = Boolean(existing.timerRunning && t.timerRunning);
                 taskDedupeMap.set(cKey, {
                   ...other,
                   ...base,
-                  timerRunning: existing.timerRunning || t.timerRunning,
-                  startedAt: existing.timerRunning ? existing.startedAt : t.startedAt,
+                  timerRunning: resolvedDedupeRunning,
+                  startedAt: resolvedDedupeRunning ? (existing.startedAt || t.startedAt) : null,
                   timerSeconds: Math.max(Number(existing.timerSeconds) || 0, Number(t.timerSeconds) || 0),
                   accumulatedSeconds: Math.max(Number(existing.accumulatedSeconds) || 0, Number(t.accumulatedSeconds) || 0)
                 });

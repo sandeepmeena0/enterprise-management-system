@@ -564,12 +564,14 @@ export const WorkProvider = ({ children }) => {
           String(t._id || t.id) === String(curSnapshot.taskId) ||
           (curSnapshot.taskCode && t.taskCode && String(curSnapshot.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
         );
-        if (matchTask && (matchTask.status === 'completed' || matchTask.completedAt)) {
+        if (matchTask && (!matchTask.timerRunning || matchTask.status === 'completed' || matchTask.completedAt)) {
           saveActiveTimerSnapshot({
             ...curSnapshot,
             timerRunning: false,
             startedAt: null,
-            accumulatedSeconds: matchTask.accumulatedSeconds !== undefined ? Number(matchTask.accumulatedSeconds) : Number(matchTask.timerSeconds)
+            accumulatedSeconds: matchTask.accumulatedSeconds !== undefined ? Number(matchTask.accumulatedSeconds) : Number(matchTask.timerSeconds),
+            timerSeconds: Number(matchTask.todayWorkSeconds ?? matchTask.timerSeconds ?? 0),
+            todayWorkSeconds: Number(matchTask.todayWorkSeconds ?? matchTask.timerSeconds ?? 0)
           });
         }
       }
@@ -886,30 +888,39 @@ export const WorkProvider = ({ children }) => {
       if (!isEventForMe(e)) return; // Ignore breaks for other employees!
       const activeTimer = getActiveTimerSnapshot();
       const today = getTodayStr();
+      const now = Date.now();
       if (activeTimer && activeTimer.timerRunning) {
-        const currentSecs = getElapsedSeconds(activeTimer);
+        const allTasks = getCollection(KEYS.TASKS) || [];
+        const targetTask = allTasks.find(t => String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id)) || activeTimer;
+        const pausedTask = syncTaskPauseState(targetTask, { nowMs: now, todayStr: today, wasPausedForClockOut: false, wasPausedForBreak: true });
+        const currentSecs = pausedTask.accumulatedSeconds;
+        const todaySecs = pausedTask.todayWorkSeconds;
+
         const pausedState = {
           ...activeTimer,
+          ...pausedTask,
           timerRunning: false,
           startedAt: null,
           accumulatedSeconds: currentSecs,
-          timerSeconds: currentSecs,
+          timerSeconds: todaySecs,
+          todayWorkSeconds: todaySecs,
           date: today,
           wasPausedForBreak: true
         };
         saveActiveTimerSnapshot(pausedState);
 
-        const allTasks = getCollection(KEYS.TASKS) || [];
         const updatedAll = allTasks.map(t => {
-          if (String(t._id || t.id) === String(activeTimer.taskId)) {
+          if (String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id)) {
             return {
               ...t,
+              ...pausedTask,
               timerRunning: false,
               startedAt: null,
               accumulatedSeconds: currentSecs,
-              timerSeconds: currentSecs,
+              timerSeconds: todaySecs,
+              todayWorkSeconds: todaySecs,
               sessionDate: today,
-              liveDurationText: formatSeconds(currentSecs),
+              liveDurationText: formatSeconds(todaySecs),
               hoursLoggedText: formatSeconds(currentSecs),
               wasPausedForBreak: true
             };
@@ -919,15 +930,17 @@ export const WorkProvider = ({ children }) => {
         saveCollection(KEYS.TASKS, updatedAll);
 
         setTasks(prevTasks => prevTasks.map(t => {
-          if (String(t._id || t.id) === String(activeTimer.taskId)) {
+          if (String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id)) {
             return {
               ...t,
+              ...pausedTask,
               timerRunning: false,
               startedAt: null,
               accumulatedSeconds: currentSecs,
-              timerSeconds: currentSecs,
+              timerSeconds: todaySecs,
+              todayWorkSeconds: todaySecs,
               sessionDate: today,
-              liveDurationText: formatSeconds(currentSecs),
+              liveDurationText: formatSeconds(todaySecs),
               hoursLoggedText: formatSeconds(currentSecs),
               wasPausedForBreak: true
             };
@@ -936,11 +949,13 @@ export const WorkProvider = ({ children }) => {
         }));
 
         try {
-          workService.updateTask(activeTimer.taskId, {
+          workService.updateTask(activeTimer.taskId || activeTimer._id, {
             timerRunning: false,
             startedAt: null,
             accumulatedSeconds: currentSecs,
-            timerSeconds: currentSecs,
+            timerSeconds: todaySecs,
+            todayWorkSeconds: todaySecs,
+            dailySessions: pausedTask.dailySessions,
             sessionDate: today,
             hoursLogged: +(currentSecs / 3600).toFixed(2),
             hoursLoggedText: formatSeconds(currentSecs)
@@ -948,13 +963,13 @@ export const WorkProvider = ({ children }) => {
         } catch {}
 
         broadcastSyncEvent(SYNC_EVENTS.TASK_TIMER_PAUSED, {
-          taskId: activeTimer.taskId,
+          taskId: activeTimer.taskId || activeTimer._id,
           empKey: userKey,
           accumulatedSeconds: currentSecs,
           pausedForBreak: true
         });
         window.dispatchEvent(new CustomEvent('ems_task_timer_paused', {
-          detail: { taskId: activeTimer.taskId, userKey, empKey: userKey }
+          detail: { taskId: activeTimer.taskId || activeTimer._id, userKey, empKey: userKey }
         }));
       }
     };
@@ -1035,45 +1050,81 @@ export const WorkProvider = ({ children }) => {
       if (!isEventForMe(e)) return; // Ignore clock-out for other employees!
       const activeTimer = getActiveTimerSnapshot();
       const today = getTodayStr();
-      const currentSecs = activeTimer ? getElapsedSeconds(activeTimer) : 0;
+      const now = Date.now();
 
-      if (activeTimer) {
+      if (activeTimer && activeTimer.timerRunning) {
+        const allTasks = getCollection(KEYS.TASKS) || [];
+        const targetTask = allTasks.find(t => String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id)) || activeTimer;
+        const pausedTask = syncTaskPauseState(targetTask, { nowMs: now, todayStr: today, wasPausedForClockOut: true, wasPausedForBreak: false });
+        const currentSecs = pausedTask.accumulatedSeconds;
+        const todaySecs = pausedTask.todayWorkSeconds;
+
         const pausedState = {
           ...activeTimer,
+          ...pausedTask,
           timerRunning: false,
           startedAt: null,
           accumulatedSeconds: currentSecs,
+          timerSeconds: todaySecs,
+          todayWorkSeconds: todaySecs,
           date: today,
           wasPausedForClockOut: true
         };
         saveActiveTimerSnapshot(pausedState);
-      }
 
-      const allTasks = getCollection(KEYS.TASKS) || [];
-      const updatedAll = allTasks.map(t => {
-        const matchesActive = activeTimer && (String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id));
-        const matchesMe = isTaskAssignedToMe(t);
-        if (matchesActive || (matchesMe && t.timerRunning)) {
-          const secs = matchesActive ? currentSecs : (Number(t.accumulatedSeconds ?? t.timerSeconds) || 0);
-          return { ...t, timerRunning: false, startedAt: null, timerSeconds: secs, accumulatedSeconds: secs, sessionDate: today };
-        }
-        return t;
-      });
-      saveCollection(KEYS.TASKS, updatedAll);
+        const updatedAll = allTasks.map(t => {
+          const matchesActive = String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id);
+          const matchesMe = isTaskAssignedToMe(t);
+          if (matchesActive || (matchesMe && t.timerRunning)) {
+            return {
+              ...t,
+              ...pausedTask,
+              timerRunning: false,
+              startedAt: null,
+              accumulatedSeconds: currentSecs,
+              timerSeconds: todaySecs,
+              todayWorkSeconds: todaySecs,
+              sessionDate: today,
+              liveDurationText: formatSeconds(todaySecs)
+            };
+          }
+          return t;
+        });
+        saveCollection(KEYS.TASKS, updatedAll);
 
-      setTasks(prev => prev.map(t => {
-        const matchesActive = activeTimer && (String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id));
-        const matchesMe = isTaskAssignedToMe(t);
-        if (matchesActive || (matchesMe && t.timerRunning)) {
-          const secs = matchesActive ? currentSecs : (Number(t.accumulatedSeconds ?? t.timerSeconds) || 0);
-          return { ...t, timerRunning: false, startedAt: null, timerSeconds: secs, accumulatedSeconds: secs, sessionDate: today, liveDurationText: formatSeconds(secs) };
-        }
-        return t;
-      }));
+        setTasks(prev => prev.map(t => {
+          const matchesActive = String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id);
+          const matchesMe = isTaskAssignedToMe(t);
+          if (matchesActive || (matchesMe && t.timerRunning)) {
+            return {
+              ...t,
+              ...pausedTask,
+              timerRunning: false,
+              startedAt: null,
+              timerSeconds: todaySecs,
+              accumulatedSeconds: currentSecs,
+              todayWorkSeconds: todaySecs,
+              sessionDate: today,
+              liveDurationText: formatSeconds(todaySecs)
+            };
+          }
+          return t;
+        }));
 
-      // On shift clock-out: active task timer is paused cleanly.
-      // (Timesheet is logged when task is completed or stopped, preventing duplicate runaway entries)
-      if (activeTimer) {
+        try {
+          workService.updateTask(activeTimer.taskId || activeTimer._id, {
+            timerRunning: false,
+            startedAt: null,
+            accumulatedSeconds: currentSecs,
+            timerSeconds: todaySecs,
+            todayWorkSeconds: todaySecs,
+            dailySessions: pausedTask.dailySessions,
+            sessionDate: today,
+            hoursLogged: +(currentSecs / 3600).toFixed(2),
+            hoursLoggedText: formatSeconds(currentSecs)
+          }).catch(() => {});
+        } catch {}
+
         addToast('Shift Clocked Out: Active task timer paused ⏸️', 'info');
       }
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
@@ -1908,21 +1959,26 @@ export const WorkProvider = ({ children }) => {
         timerRunning: true,
         startedAt: now,
         accumulatedSeconds: existingSecs,
-        timerSeconds: existingSecs,
+        timerSeconds: existingTodaySecs,
         todayWorkSeconds: existingTodaySecs,
         dailySessions: updatedDailySessions,
         status: targetTask.status === 'incomplete' ? 'in_progress' : targetTask.status,
         sessionDate: today,
+        lastUpdated: now,
         activeUserId: targetUserKey,
         activeUserName: assignedEmpName
       }).catch(err => console.warn('Sync task timer start to backend notice:', err));
 
       if (previousTaskId) {
+        const prevObj = allTasks.find(t => String(t._id || t.id) === String(previousTaskId));
+        const pausedPrev = prevObj ? syncTaskPauseState(prevObj, { nowMs: now, todayStr: today }) : null;
         workService.updateTask(previousTaskId, {
           timerRunning: false,
           startedAt: null,
-          accumulatedSeconds: previousTaskElapsed,
-          timerSeconds: previousTaskElapsed,
+          accumulatedSeconds: pausedPrev ? pausedPrev.accumulatedSeconds : previousTaskElapsed,
+          timerSeconds: pausedPrev ? pausedPrev.todayWorkSeconds : previousTaskElapsed,
+          todayWorkSeconds: pausedPrev ? pausedPrev.todayWorkSeconds : previousTaskElapsed,
+          dailySessions: pausedPrev ? pausedPrev.dailySessions : undefined,
           sessionDate: today
         }).catch(() => {});
       }
@@ -2123,10 +2179,11 @@ export const WorkProvider = ({ children }) => {
         timerRunning: false,
         startedAt: null,
         accumulatedSeconds: currentSecs,
-        timerSeconds: currentSecs,
+        timerSeconds: updatedTodaySecs,
         todayWorkSeconds: updatedTodaySecs,
         dailySessions: dailySessionsMap,
         sessionDate: today,
+        lastUpdated: now,
         hoursLogged: +(currentSecs / 3600).toFixed(2),
         hoursLoggedText: formatSeconds(currentSecs)
       });
