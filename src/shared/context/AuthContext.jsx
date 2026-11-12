@@ -1,6 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getCollection, saveCollection, KEYS, syncDatabaseToStorage } from '../services/storageService';
-import { ROLES, ROLE_CONFIGS, getUserRole, isAdmin, isHR, isTeamMember, isHRorAdmin, isLeaderOrAbove, getRoleConfig } from '../utils/permissionUtils';
+import {
+  ROLES,
+  ROLE_CONFIGS,
+  getUserRole,
+  isAdmin,
+  isHR,
+  isTeamMember,
+  isHRorAdmin,
+  isLeaderOrAbove,
+  getRoleConfig,
+  classifyBaseRole,
+  isPrimaryAdmin
+} from '../utils/permissionUtils';
 import { API_BASE } from '../config/apiConfig';
 import { subscribeToSyncEvents } from '../services/realtimeSyncService';
 import { performShiftClockOut, hydrateUserCloudState } from '../utils/timerUtils';
@@ -133,7 +145,10 @@ export const AuthProvider = ({ children }) => {
         const query = parsed?.email || parsed?.employeeCode;
         if (!query) return;
 
-        const res = await fetch(`${API_BASE}/employees?search=${encodeURIComponent(query)}`, { signal: AbortSignal.timeout(3500) });
+        const res = await fetch(`${API_BASE}/employees?search=${encodeURIComponent(query)}&_t=${Date.now()}`, {
+          headers: { 'Cache-Control': 'no-cache, no-store' },
+          signal: AbortSignal.timeout(3500)
+        });
         if (res.ok && isMounted) {
           const json = await res.json();
           const list = json.data || [];
@@ -143,21 +158,44 @@ export const AuthProvider = ({ children }) => {
             (parsed._id && String(e._id) === String(parsed._id))
           );
           if (matched && isMounted) {
+            const isTargetPrimary = isPrimaryAdmin(matched);
+            const isDelegated = Boolean(matched.isDelegatedAdmin || matched.permissions?.allAccess);
+            const underlyingBaseRole = matched.baseRole || classifyBaseRole(matched) || 'team_member';
+            const cleanSystemRole = isTargetPrimary || isDelegated ? 'admin' : (matched.systemRole !== 'admin' ? matched.systemRole : underlyingBaseRole);
+            const cleanIsAdmin = Boolean(isTargetPrimary || isDelegated);
+
             const hasPermsChanged = JSON.stringify(matched.permissions || {}) !== JSON.stringify(parsed.permissions || {}) ||
               Boolean(matched.isDelegatedAdmin) !== Boolean(parsed.isDelegatedAdmin) ||
-              // FIX: also detect systemRole changes (e.g. team_member → hr after Admin saves)
+              cleanIsAdmin !== Boolean(parsed.isAdmin) ||
+              cleanSystemRole !== parsed.systemRole ||
               (matched.systemRole && matched.systemRole !== parsed.systemRole);
 
-            // FIX: Always keep EMS_USER_PERMISSIONS cache up-to-date from server truth,
-            // regardless of whether React state needs to change. This ensures Sidebar re-renders
-            // even when the auth session object hasn't structurally changed yet.
+            // Keep EMS_USER_PERMISSIONS cache strictly up-to-date from server truth
             if (matched.permissions && typeof matched.permissions === 'object') {
               try {
                 const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
                 const parsedMap = rawMap ? JSON.parse(rawMap) : {};
-                if (matched._id) parsedMap[String(matched._id)] = matched.permissions;
-                if (matched.employeeCode) parsedMap[String(matched.employeeCode)] = matched.permissions;
-                if (matched.email) parsedMap[String(matched.email).toLowerCase()] = matched.permissions;
+                const safePerms = { ...matched.permissions };
+
+                if (!isDelegated) {
+                  delete safePerms.allAccess;
+                  delete safePerms.isDelegatedAdmin;
+                  delete safePerms.delegationExpiresAt;
+                }
+
+                if (matched._id) parsedMap[String(matched._id)] = safePerms;
+                if (matched.employeeCode) parsedMap[String(matched.employeeCode)] = safePerms;
+                if (matched.email) parsedMap[String(matched.email).toLowerCase()] = safePerms;
+
+                if (!isDelegated) {
+                  [String(matched._id), String(matched.employeeCode), String(matched.email).toLowerCase()].forEach(k => {
+                    if (parsedMap[k]) {
+                      delete parsedMap[k].allAccess;
+                      delete parsedMap[k].isDelegatedAdmin;
+                      delete parsedMap[k].delegationExpiresAt;
+                    }
+                  });
+                }
                 localStorage.setItem('EMS_USER_PERMISSIONS', JSON.stringify(parsedMap));
               } catch (_) {}
             }
@@ -166,9 +204,11 @@ export const AuthProvider = ({ children }) => {
               const updatedUser = {
                 ...parsed,
                 ...matched,
+                systemRole: cleanSystemRole,
+                isAdmin: cleanIsAdmin,
                 permissions: matched.permissions || {},
-                isDelegatedAdmin: Boolean(matched.isDelegatedAdmin),
-                delegationExpiresAt: matched.delegationExpiresAt || null
+                isDelegatedAdmin: isDelegated,
+                delegationExpiresAt: isDelegated ? (matched.delegationExpiresAt || null) : null
               };
               setCurrentUser(updatedUser);
               localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));

@@ -111,60 +111,35 @@ export const ROLE_CONFIGS = {
 };
 
 /**
- * Standardize and resolve an employee's role into one of the 4 standard roles.
+ * Check if the user is the immutable primary root system administrator.
+ * Primary Administrators cannot be demoted, modified, or have their rights revoked.
  */
-export const getUserRole = (user) => {
-  if (!user) return ROLES.TEAM_MEMBER;
-  
-  // 0. Primary Administrator Immutable Rule (Cannot be demoted, root system protection)
-  if (
+export const isPrimaryAdmin = (user) => {
+  if (!user) return false;
+  return Boolean(
     user.employeeCode === 'ADM-001' ||
     user.isSuperAdmin ||
     user.email === 'admin@inforag.com' ||
-    user.isAdmin
-  ) {
-    return ROLES.ADMIN;
-  }
+    user.email === 'avinash@inforag.com'
+  );
+};
 
-  // 1. Check direct system role attribute if explicitly set
-  if (user.systemRole && Object.values(ROLES).includes(user.systemRole)) {
-    return user.systemRole;
-  }
-
-  // 2. Direct flags
-  if (user.isDelegatedAdmin) {
-    return ROLES.ADMIN;
-  }
-
-  // Check stored delegation in EMS_USER_PERMISSIONS
-  try {
-    const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
-    if (rawMap) {
-      const parsed = JSON.parse(rawMap);
-      const userKey = user._id || user.employeeCode || user.email;
-      if (userKey && (parsed[userKey]?.allAccess || parsed[userKey]?.isDelegatedAdmin)) {
-        return ROLES.ADMIN;
-      }
-    }
-  } catch (_) {}
+/**
+ * Classify the true underlying base role of an employee based on company designation, title, or department.
+ * This guarantees that when an employee's delegated Admin or Full Access is revoked, their account
+ * cleanly reverts to their genuine baseline operational role (e.g. 'team_member', 'hr', or 'team_leader')
+ * instead of remaining trapped in Admin state or improperly defaulting.
+ */
+export const classifyBaseRole = (user) => {
+  if (!user) return ROLES.TEAM_MEMBER;
+  if (isPrimaryAdmin(user)) return ROLES.ADMIN;
 
   const roleStr = (user.role || '').toLowerCase().trim();
   const titleStr = (user.title || user.designation || '').toLowerCase().trim();
+  const deptStr = (user.department || '').toLowerCase().trim();
   const emailStr = (user.email || '').toLowerCase().trim();
 
-  // 3. Admin classification
-  if (
-    roleStr === 'admin' ||
-    roleStr === 'super_admin' ||
-    roleStr.includes('director') ||
-    roleStr.includes('administrator') ||
-    roleStr.includes('executive management') ||
-    emailStr.startsWith('admin@')
-  ) {
-    return ROLES.ADMIN;
-  }
-
-  // 4. HR classification
+  // 1. HR classification
   if (
     roleStr === 'hr' ||
     roleStr === 'hr_manager' ||
@@ -172,12 +147,14 @@ export const getUserRole = (user) => {
     roleStr.includes('hr manager') ||
     roleStr.includes('people ops') ||
     roleStr.includes('hr operations') ||
-    emailStr.startsWith('hr@')
+    deptStr === 'human resources' ||
+    emailStr.startsWith('hr@') ||
+    emailStr === 'janvi@inforag.com'
   ) {
     return ROLES.HR;
   }
 
-  // 5. Team Leader classification
+  // 2. Team Leader classification
   if (
     roleStr === 'team_leader' ||
     roleStr === 'team_lead' ||
@@ -192,8 +169,50 @@ export const getUserRole = (user) => {
     return ROLES.TEAM_LEADER;
   }
 
-  // 6. Default fallback: Team Member
+  // 3. Fallback: Team Member
   return ROLES.TEAM_MEMBER;
+};
+
+/**
+ * Standardize and resolve an employee's role into one of the 4 standard roles.
+ */
+export const getUserRole = (user) => {
+  if (!user) return ROLES.TEAM_MEMBER;
+  
+  // 0. Primary Administrator Immutable Rule (Root system protection)
+  if (isPrimaryAdmin(user)) {
+    return ROLES.ADMIN;
+  }
+
+  // 1. If delegation is actively valid, grant temporary Admin privileges
+  if (isDelegationActive(user)) {
+    return ROLES.ADMIN;
+  }
+
+  // 2. If the user's delegation was explicitly revoked or non-existent,
+  // do NOT allow stale systemRole: 'admin' or isAdmin: true to keep them as Admin!
+  const hasNoDelegation = user.isDelegatedAdmin === false || 
+    (user.permissions && user.permissions.allAccess === false) ||
+    (!user.isDelegatedAdmin && !user.permissions?.allAccess && !user.allAccess);
+
+  if (hasNoDelegation) {
+    if (user.systemRole && user.systemRole !== 'admin' && Object.values(ROLES).includes(user.systemRole)) {
+      return user.systemRole;
+    }
+    return user.baseRole || classifyBaseRole(user) || ROLES.TEAM_MEMBER;
+  }
+
+  // 3. Check direct system role attribute if explicitly set to valid non-admin role
+  if (user.systemRole && Object.values(ROLES).includes(user.systemRole)) {
+    if (user.systemRole === ROLES.ADMIN) {
+      if (isDelegationActive(user)) return ROLES.ADMIN;
+      return user.baseRole || classifyBaseRole(user) || ROLES.TEAM_MEMBER;
+    }
+    return user.systemRole;
+  }
+
+  // 4. Default fallback: Classify from role/designation
+  return user.baseRole || classifyBaseRole(user) || ROLES.TEAM_MEMBER;
 };
 
 // ── Role Boolean Checkers ──
@@ -248,6 +267,13 @@ export const canApproveLeaves = (user) => {
   if (r === ROLES.ADMIN || r === ROLES.HR || r === ROLES.TEAM_LEADER) return true;
   const perms = getUserModulePermissions(user);
   return !!(perms?.approveLeaves || perms?.viewAllLeaves || perms?.allLeaves);
+};
+
+export const canViewAllLeaves = (user) => {
+  if (!user) return false;
+  if (isAdmin(user) || isHR(user) || isTeamLeader(user) || isDelegationActive(user)) return true;
+  const perms = getUserModulePermissions(user);
+  return Boolean(perms?.allAccess === true || perms?.viewAllLeaves === true || perms?.approveLeaves === true);
 };
 
 /**
@@ -1284,22 +1310,30 @@ export const sanitizePermissionDependencies = (permissions = {}) => {
  */
 export const isDelegationActive = (user) => {
   if (!user) return false;
-  if (user.isAdmin || user.isSuperAdmin || user.employeeCode === 'ADM-001' || user.email === 'admin@inforag.com') return true;
+  if (isPrimaryAdmin(user)) return true;
   
-  let expiresAt = user.delegationExpiresAt;
-  let isDelegated = user.isDelegatedAdmin || user.allAccess;
+  // If explicitly revoked on user object, delegation is inactive
+  if (user.isDelegatedAdmin === false && user.permissions?.allAccess !== true && user.allAccess !== true) {
+    return false;
+  }
 
-  try {
-    const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
-    if (rawMap) {
-      const parsed = JSON.parse(rawMap);
-      const userKey = user._id || user.employeeCode || user.email;
-      if (userKey && parsed[userKey]) {
-        if (parsed[userKey].delegationExpiresAt) expiresAt = parsed[userKey].delegationExpiresAt;
-        if (parsed[userKey].isDelegatedAdmin || parsed[userKey].allAccess) isDelegated = true;
+  let expiresAt = user.delegationExpiresAt || user.permissions?.delegationExpiresAt;
+  let isDelegated = Boolean(user.isDelegatedAdmin || user.allAccess || user.permissions?.allAccess);
+
+  // Check localStorage only if user object didn't have explicit authoritative delegation flags
+  if (user.isDelegatedAdmin === undefined && user.allAccess === undefined) {
+    try {
+      const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
+      if (rawMap) {
+        const parsed = JSON.parse(rawMap);
+        const userKey = user._id || user.employeeCode || user.email;
+        if (userKey && parsed[userKey]) {
+          if (parsed[userKey].delegationExpiresAt) expiresAt = parsed[userKey].delegationExpiresAt;
+          if (parsed[userKey].isDelegatedAdmin || parsed[userKey].allAccess) isDelegated = true;
+        }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
 
   if (!isDelegated) return false;
   if (!expiresAt) return true; // Permanent delegation
@@ -1390,13 +1424,12 @@ export const getUserModulePermissions = (user) => {
     basePerms.viewReports = true;
   }
 
-  if (basePerms.allAccess || basePerms.isDelegatedAdmin) {
-    if (delegationValid) {
-      return { ...DEFAULT_MODULE_PERMISSIONS.admin, allAccess: true, isDelegatedAdmin: true, ...basePerms };
-    }
-    // Expired delegation: clean out admin flags
+  if (!delegationValid) {
     delete basePerms.allAccess;
     delete basePerms.isDelegatedAdmin;
+    delete basePerms.delegationExpiresAt;
+  } else if (basePerms.allAccess || basePerms.isDelegatedAdmin) {
+    return { ...DEFAULT_MODULE_PERMISSIONS.admin, allAccess: true, isDelegatedAdmin: true, ...basePerms };
   }
 
   return sanitizePermissionDependencies(basePerms);

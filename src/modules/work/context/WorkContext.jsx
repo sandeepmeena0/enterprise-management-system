@@ -15,7 +15,16 @@ import { hrService } from '../../hr/services/hrService';
 import { API_BASE } from '../../../shared/config/apiConfig';
 import { OverdueTaskModal } from '../components/tasks/OverdueTaskModal';
 import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
-import { isHRorAdmin, canDeleteTask, canDeleteProject, isAdmin } from '../../../shared/utils/permissionUtils';
+import {
+  isHRorAdmin,
+  canDeleteTask,
+  canDeleteProject,
+  isAdmin,
+  canCreateTasks,
+  canEditAnyTask,
+  canManageProjects,
+  canViewAllTasks
+} from '../../../shared/utils/permissionUtils';
 import { readTimerStorage, getTaskTodaySeconds, syncTaskPauseState, calculateShiftWorkSeconds, sanitizeTaskDailySessions } from '../../../shared/utils/timerUtils';
 
 const defaultWorkContext = {
@@ -151,7 +160,7 @@ export const WorkProvider = ({ children }) => {
     return false;
   }, [userKey, currentUser]);
 
-  // Permission authorization helper: only Admin, HR, Assigner/Creator, or Assigned Member can control tasks
+  // Permission authorization helper: only Admin, HR, Assigner/Creator, or Authorized Manager/Assignee can control tasks
   const canUserControlTask = useCallback((targetTask) => {
     if (!targetTask || !currentUser) return false;
     const isUserAdminOrHR = currentUser?.isAdmin ||
@@ -159,7 +168,10 @@ export const WorkProvider = ({ children }) => {
       currentUser?.systemRole === 'hr' ||
       currentUser?.role === 'Administrator' ||
       currentUser?.role === 'HR Manager' ||
-      isHRorAdmin(currentUser);
+      isHRorAdmin(currentUser) ||
+      canEditAnyTask(currentUser) ||
+      canCreateTasks(currentUser) ||
+      canManageProjects(currentUser);
     if (isUserAdminOrHR) return true;
 
     // Check assigner / creator
@@ -1715,7 +1727,7 @@ export const WorkProvider = ({ children }) => {
     const assignedEmpName = targetTask.assignedToName ||
       (Array.isArray(targetTask.assignees) && targetTask.assignees[0]?.name) ||
       'Employee';
-    const isUserAdminOrHR = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'Administrator' || currentUser?.role === 'HR Manager' || isHRorAdmin(currentUser);
+    const isUserAdminOrHR = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'Administrator' || currentUser?.role === 'HR Manager' || isHRorAdmin(currentUser) || canEditAnyTask(currentUser);
     const isForOtherEmployee = (isUserAdminOrHR || targetTask.assignedById === currentUser?._id) &&
       !isTaskAssignedToMe(targetTask) &&
       assignedEmpId &&
@@ -2063,7 +2075,7 @@ export const WorkProvider = ({ children }) => {
       (Array.isArray(targetTask.assignedToIds) && targetTask.assignedToIds[0]) ||
       (Array.isArray(targetTask.assignees) && (targetTask.assignees[0]?._id || targetTask.assignees[0]?.employeeCode)) ||
       userKey;
-    const isUserAdminOrHR = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'Administrator' || currentUser?.role === 'HR Manager' || isHRorAdmin(currentUser);
+    const isUserAdminOrHR = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'Administrator' || currentUser?.role === 'HR Manager' || isHRorAdmin(currentUser) || canEditAnyTask(currentUser);
     const isForOtherEmployee = (isUserAdminOrHR || targetTask.assignedById === currentUser?._id) &&
       !isTaskAssignedToMe(targetTask) &&
       assignedEmpId &&
@@ -2347,7 +2359,7 @@ export const WorkProvider = ({ children }) => {
         (Array.isArray(targetTask.assignees) && targetTask.assignees[0]?.name) ||
         currentUser?.name ||
         'User';
-      const isUserAdminOrHR = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'Administrator' || currentUser?.role === 'HR Manager' || isHRorAdmin(currentUser);
+      const isUserAdminOrHR = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'Administrator' || currentUser?.role === 'HR Manager' || isHRorAdmin(currentUser) || canEditAnyTask(currentUser);
       const isForOtherEmployee = (isUserAdminOrHR || targetTask.assignedById === currentUser?._id) &&
         !isTaskAssignedToMe(targetTask) &&
         assignedEmpId &&

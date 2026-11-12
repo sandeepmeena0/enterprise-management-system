@@ -24,7 +24,16 @@ exports.getTasks = async (req, res, next) => {
     let query = {};
 
     const user = req.user;
-    const isPrivileged = user && (user.isAdmin || user.systemRole === 'admin' || user.systemRole === 'hr' || user.role === 'Administrator' || user.role === 'HR Manager');
+    const isPrivileged = user && (
+      user.isAdmin ||
+      user.systemRole === 'admin' ||
+      user.systemRole === 'hr' ||
+      user.role === 'Administrator' ||
+      user.role === 'HR Manager' ||
+      user.isDelegatedAdmin === true ||
+      user.permissions?.allAccess === true ||
+      user.permissions?.viewAllTasks === true
+    );
 
     if (projectId && projectId !== 'all') {
       const isValid = mongoose.Types.ObjectId.isValid(projectId);

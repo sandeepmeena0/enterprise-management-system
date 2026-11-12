@@ -48,7 +48,9 @@ import {
   getDependentChildPermissions,
   sanitizePermissionDependencies,
   canUserGrantPermissions,
-  isAdmin
+  isAdmin,
+  classifyBaseRole,
+  isPrimaryAdmin
 } from '../../../shared/utils/permissionUtils';
 
 const BASE_ROLES = [
@@ -533,6 +535,8 @@ export const EmployeePermissionsTab = () => {
       const userKey = selectedEmp.employeeCode || selectedEmp._id;
       const safePerms = sanitizePermissionDependencies({ ...permissions });
 
+      const isTargetPrimary = isPrimaryAdmin(selectedEmp) || isSelectedEmpPrimaryAdmin;
+
       if (isDelegatedAdmin) {
         safePerms.allAccess = true;
         safePerms.isDelegatedAdmin = true;
@@ -541,37 +545,51 @@ export const EmployeePermissionsTab = () => {
         delete safePerms.isDelegatedAdmin;
       }
 
-      if (delegationExpiresAt) {
+      if (delegationExpiresAt && isDelegatedAdmin) {
         safePerms.delegationExpiresAt = delegationExpiresAt;
       } else {
         delete safePerms.delegationExpiresAt;
       }
 
       // 1. Authoritative Save directly to MongoDB Atlas Cloud Database
-      // FIX: Preserve existing systemRole — use localSystemRole if preset was applied, else keep what's already on the employee record.
-      // Never silently overwrite 'hr' or 'team_leader' with 'team_member'.
+      // FIX: Clean Revocation - If Full Access (isDelegatedAdmin) is false, NEVER allow resolvedSystemRole
+      // to remain 'admin' for non-primary accounts. Revert cleanly to their genuine baseline role!
+      const underlyingBaseRole = selectedEmp.baseRole || classifyBaseRole(selectedEmp) || 'team_member';
       const resolvedSystemRole = isDelegatedAdmin
         ? 'admin'
-        : (localSystemRole || selectedEmp.systemRole || getUserRole(selectedEmp) || 'team_member');
+        : (localSystemRole || (selectedEmp.systemRole !== 'admin' ? selectedEmp.systemRole : null) || underlyingBaseRole);
+
+      const targetIsAdmin = Boolean(isTargetPrimary || isDelegatedAdmin);
 
       if (updateEmployeePermissions) {
         await updateEmployeePermissions(selectedEmp._id, {
           permissions: safePerms,
           isDelegatedAdmin: Boolean(isDelegatedAdmin),
-          delegationExpiresAt: delegationExpiresAt || null,
+          isAdmin: targetIsAdmin,
+          delegationExpiresAt: isDelegatedAdmin ? (delegationExpiresAt || null) : null,
           systemRole: resolvedSystemRole
         });
       } else if (updateEmployee) {
         await updateEmployee(selectedEmp._id, {
           isDelegatedAdmin: Boolean(isDelegatedAdmin),
-          delegationExpiresAt: delegationExpiresAt || null,
-          permissions: safePerms
+          isAdmin: targetIsAdmin,
+          delegationExpiresAt: isDelegatedAdmin ? (delegationExpiresAt || null) : null,
+          permissions: safePerms,
+          systemRole: resolvedSystemRole
         });
       }
 
       // 2. Synchronize Local Cache (EMS_USER_PERMISSIONS)
       const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
       const map = rawMap ? JSON.parse(rawMap) : {};
+      
+      // Clean stale admin delegation flags if revoked
+      if (!isDelegatedAdmin) {
+        delete safePerms.allAccess;
+        delete safePerms.isDelegatedAdmin;
+        delete safePerms.delegationExpiresAt;
+      }
+
       map[userKey] = safePerms;
       if (selectedEmp._id) map[String(selectedEmp._id)] = safePerms;
       if (selectedEmp.employeeCode) map[String(selectedEmp.employeeCode)] = safePerms;

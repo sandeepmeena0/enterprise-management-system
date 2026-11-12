@@ -60,8 +60,15 @@ exports.authenticateUser = async (req, res, next) => {
         }
       }
 
-      const isSystemAdmin = !!(user.isAdmin || user.role === 'Administrator' || user.employeeCode === 'ADM-001' || userRoleHeader === 'admin' || isDelegatedAdmin);
-      const isSystemHR = !!(user.department === 'Human Resources' || user.role?.toLowerCase().includes('hr') || userRoleHeader === 'hr');
+      const isPrimary = Boolean(
+        user.employeeCode === 'ADM-001' ||
+        user.isSuperAdmin ||
+        user.email === 'admin@inforag.com' ||
+        user.email === 'avinash@inforag.com' ||
+        user.role === 'Administrator'
+      );
+      const isSystemAdmin = Boolean(isPrimary || isDelegatedAdmin || (user.isAdmin && user.systemRole === 'admin'));
+      const isSystemHR = !isSystemAdmin && Boolean(user.department === 'Human Resources' || user.role?.toLowerCase().includes('hr') || user.systemRole === 'hr');
 
       req.user = {
         _id: user._id.toString(),
@@ -71,7 +78,7 @@ exports.authenticateUser = async (req, res, next) => {
         email: user.email,
         role: user.role,
         department: user.department,
-        systemRole: isSystemAdmin ? 'admin' : (isSystemHR ? 'hr' : 'team_member'),
+        systemRole: isSystemAdmin ? 'admin' : (isSystemHR ? 'hr' : (user.systemRole && user.systemRole !== 'admin' ? user.systemRole : 'team_member')),
         isAdmin: isSystemAdmin,
         isDelegatedAdmin,
         permissions: user.permissions || {}

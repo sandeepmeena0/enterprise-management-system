@@ -18,6 +18,8 @@ const getLeaves = asyncHandler(async (req, res) => {
     user.role === 'HR Manager' ||
     user.isDelegatedAdmin ||
     user.permissions?.approveLeaves ||
+    user.permissions?.viewAllLeaves ||
+    user.permissions?.allLeaves ||
     user.permissions?.cancelLeaves ||
     user.permissions?.allAccess
   );
@@ -260,6 +262,8 @@ const updateLeaveStatus = asyncHandler(async (req, res) => {
     user.role === 'HR Manager' ||
     user.isDelegatedAdmin ||
     user.permissions?.approveLeaves ||
+    user.permissions?.viewAllLeaves ||
+    user.permissions?.allLeaves ||
     user.permissions?.cancelLeaves ||
     user.permissions?.allAccess
   );
@@ -501,6 +505,8 @@ const deleteLeave = asyncHandler(async (req, res) => {
     user.role === 'HR Manager' ||
     user.isDelegatedAdmin ||
     user.permissions?.approveLeaves ||
+    user.permissions?.viewAllLeaves ||
+    user.permissions?.allLeaves ||
     user.permissions?.cancelLeaves ||
     user.permissions?.allAccess
   );

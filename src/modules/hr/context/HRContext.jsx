@@ -5,7 +5,12 @@ import { getCollection, saveCollection, KEYS } from '../../../shared/services/st
 import {
   canGiveAppreciation,
   canDeleteAppreciation,
-  canDeleteEmployee
+  canDeleteEmployee,
+  canViewAllAttendance,
+  canApproveLeaves,
+  canViewAllLeaves,
+  isHRorAdmin,
+  isAdmin
 } from '../../../shared/utils/permissionUtils';
 
 const defaultHRContext = {
@@ -114,22 +119,27 @@ export const HRProvider = ({ children }) => {
         } catch (_) {}
         return null;
       })();
-      const isPrivileged = authUserObj?.isAdmin || ['admin', 'hr'].includes(authUserObj?.role?.toLowerCase()) || ['admin', 'hr'].includes(authUserObj?.systemRole?.toLowerCase());
-      const effectiveEmpId = isPrivileged ? selectedEmployeeId : (authUserObj?._id || authUserObj?.employeeCode || 'self');
+      const userCanViewAllAtt = canViewAllAttendance(authUserObj) || isHRorAdmin(authUserObj) || isAdmin(authUserObj);
+      const userCanViewAllLeaves = canViewAllLeaves(authUserObj) || canApproveLeaves(authUserObj) || isHRorAdmin(authUserObj) || isAdmin(authUserObj);
+
+      const effectiveAttEmpId = userCanViewAllAtt ? selectedEmployeeId : (authUserObj?._id || authUserObj?.employeeCode || 'self');
+      const effectiveLeaveEmpId = userCanViewAllLeaves ? (selectedEmployeeId === 'all' ? undefined : selectedEmployeeId) : (authUserObj?._id || authUserObj?.employeeCode || 'self');
+
+      const isPrivileged = userCanViewAllAtt || userCanViewAllLeaves;
 
       const results = await Promise.allSettled([
         hrService.getEmployees(),
         hrService.getCurrentUser(),
         hrService.getLeaves({
-          employeeId: effectiveEmpId,
+          employeeId: effectiveLeaveEmpId,
           search: searchQuery,
           startDate: dateRange.startDate,
           endDate: dateRange.endDate
         }),
-        hrService.getMonthlyAttendance(selectedMonth, selectedYear, effectiveEmpId),
+        hrService.getMonthlyAttendance(selectedMonth, selectedYear, effectiveAttEmpId),
         hrService.getHolidays(selectedYear, searchQuery),
-        hrService.getAppreciations({ employeeId: effectiveEmpId, search: searchQuery }),
-        hrService.getAttendanceAuditLogs({ employeeId: effectiveEmpId, month: selectedMonth, year: selectedYear }),
+        hrService.getAppreciations({ employeeId: effectiveAttEmpId, search: searchQuery }),
+        hrService.getAttendanceAuditLogs({ employeeId: effectiveAttEmpId, month: selectedMonth, year: selectedYear }),
         hrService.getResignations()
       ]);
 
@@ -196,7 +206,7 @@ export const HRProvider = ({ children }) => {
       setAttendance(atts || []);
       try {
         if (Array.isArray(atts) && atts.length > 0) {
-          if (isPrivileged) {
+          if (userCanViewAllAtt || isPrivileged) {
             localStorage.setItem(KEYS.ATTENDANCE, JSON.stringify(atts));
           } else {
             const existing = getCollection(KEYS.ATTENDANCE) || [];

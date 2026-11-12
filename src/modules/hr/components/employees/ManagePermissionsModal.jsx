@@ -7,7 +7,9 @@ import {
   PERMISSION_CATEGORIES,
   getUserModulePermissions,
   setUserPermissions,
-  canUserGrantPermissions
+  canUserGrantPermissions,
+  classifyBaseRole,
+  isPrimaryAdmin as checkIsPrimaryAdmin
 } from '../../../../shared/utils/permissionUtils';
 import { useHR } from '../../context/HRContext';
 import { broadcastSyncEvent } from '../../../../shared/services/realtimeSyncService';
@@ -119,27 +121,74 @@ export const ManagePermissionsModal = ({ isOpen, onClose, employee }) => {
     setIsSaving(true);
     try {
       const userKey = employee.employeeCode || employee._id;
+      const isTargetPrimary = checkIsPrimaryAdmin(employee) || isPrimaryAdmin;
+      const isAllAccess = Boolean(permissions.allAccess);
+      const isDelegated = Boolean(isAllAccess || (employee.isDelegatedAdmin && isAllAccess));
+      const cleanPerms = { ...permissions };
+
+      if (!isDelegated) {
+        delete cleanPerms.allAccess;
+        delete cleanPerms.isDelegatedAdmin;
+        delete cleanPerms.delegationExpiresAt;
+      }
+
+      const underlyingBaseRole = employee.baseRole || classifyBaseRole(employee) || 'team_member';
+      const resolvedSystemRole = isDelegated
+        ? 'admin'
+        : ((employee.systemRole && employee.systemRole !== 'admin') ? employee.systemRole : underlyingBaseRole);
+
+      const targetIsAdmin = Boolean(isTargetPrimary || isDelegated);
+
       // 1. Save to global permissions map
-      setUserPermissions(userKey, permissions);
-      if (employee._id) setUserPermissions(employee._id, permissions);
-      if (employee.email) setUserPermissions(employee.email, permissions);
+      setUserPermissions(userKey, cleanPerms);
+      if (employee._id) setUserPermissions(employee._id, cleanPerms);
+      if (employee.email) setUserPermissions(employee.email, cleanPerms);
+
+      // Clean local cache of any stale admin flags if not delegated
+      if (!isDelegated) {
+        try {
+          const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
+          if (rawMap) {
+            const parsed = JSON.parse(rawMap);
+            [userKey, employee._id, employee.email, employee.employeeCode].filter(Boolean).forEach(k => {
+              if (parsed[String(k)]) {
+                delete parsed[String(k)].allAccess;
+                delete parsed[String(k)].isDelegatedAdmin;
+                delete parsed[String(k)].delegationExpiresAt;
+              }
+            });
+            localStorage.setItem('EMS_USER_PERMISSIONS', JSON.stringify(parsed));
+          }
+        } catch (_) {}
+      }
 
       // 2. Persist directly onto the employee profile in database
       if (updateEmployeePermissions) {
         await updateEmployeePermissions(employee._id, {
-          permissions,
-          isDelegatedAdmin: employee.isDelegatedAdmin,
-          delegationExpiresAt: employee.delegationExpiresAt,
-          systemRole: employee.systemRole
+          permissions: cleanPerms,
+          isDelegatedAdmin: isDelegated,
+          isAdmin: targetIsAdmin,
+          delegationExpiresAt: isDelegated ? employee.delegationExpiresAt : null,
+          systemRole: resolvedSystemRole
         });
       } else {
         await updateEmployee(employee._id, {
           ...employee,
-          permissions
+          permissions: cleanPerms,
+          isDelegatedAdmin: isDelegated,
+          isAdmin: targetIsAdmin,
+          delegationExpiresAt: isDelegated ? employee.delegationExpiresAt : null,
+          systemRole: resolvedSystemRole
         });
       }
 
-      broadcastSyncEvent('PERMISSIONS_UPDATED', { userKey, employeeId: employee._id, employeeCode: employee.employeeCode, permissions });
+      broadcastSyncEvent('PERMISSIONS_UPDATED', {
+        userKey,
+        employeeId: employee._id,
+        employeeCode: employee.employeeCode,
+        permissions: cleanPerms,
+        isDelegatedAdmin: isDelegated
+      });
       addToast(`Access permissions updated for ${employee.name}!`, 'success');
       onClose();
     } catch (err) {

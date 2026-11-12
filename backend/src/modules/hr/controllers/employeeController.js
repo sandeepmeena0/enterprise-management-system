@@ -187,6 +187,41 @@ const updateEmployee = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
 
+  const isPrimaryEmp = Boolean(
+    existingEmployee.employeeCode === 'ADM-001' ||
+    existingEmployee.isSuperAdmin ||
+    existingEmployee.email === 'admin@inforag.com' ||
+    existingEmployee.email === 'avinash@inforag.com'
+  );
+
+  const getBaseRoleHelper = (roleStr, deptStr) => {
+    const r = (roleStr || '').toLowerCase();
+    const d = (deptStr || '').toLowerCase();
+    if (r.includes('hr') || r.includes('human resource') || d.includes('human resource')) return 'hr';
+    if (r.includes('lead') || r.includes('manager') || r.includes('scrum master')) return 'team_leader';
+    return 'team_member';
+  };
+
+  // Protect primary admin from losing admin rights
+  if (isPrimaryEmp) {
+    payload.isAdmin = true;
+    payload.systemRole = 'admin';
+  } else if (payload.isDelegatedAdmin === false || (payload.permissions && !payload.permissions.allAccess && !payload.isDelegatedAdmin)) {
+    // Clean revocation: non-primary employee must lose admin privileges
+    payload.isAdmin = false;
+    payload.isDelegatedAdmin = false;
+    payload.delegationExpiresAt = null;
+    if (payload.permissions) {
+      delete payload.permissions.allAccess;
+      delete payload.permissions.isDelegatedAdmin;
+      delete payload.permissions.delegationExpiresAt;
+    }
+    const baselineRole = existingEmployee.baseRole || getBaseRoleHelper(payload.role || existingEmployee.role, payload.department || existingEmployee.department);
+    if (!payload.systemRole || payload.systemRole === 'admin') {
+      payload.systemRole = (existingEmployee.systemRole && existingEmployee.systemRole !== 'admin') ? existingEmployee.systemRole : baselineRole;
+    }
+  }
+
   // Password History Audit for Super Admin (Save previous passwords whenever updated)
   if (payload.password && payload.password !== existingEmployee.password) {
     const historyEntry = {
@@ -231,14 +266,63 @@ const updateEmployeePermissions = asyncHandler(async (req, res) => {
 
   const { permissions, isDelegatedAdmin, delegationExpiresAt, systemRole } = req.body;
 
-  const updateFields = {};
-  if (permissions !== undefined) updateFields.permissions = permissions;
-  if (isDelegatedAdmin !== undefined) updateFields.isDelegatedAdmin = Boolean(isDelegatedAdmin);
-  if (delegationExpiresAt !== undefined) updateFields.delegationExpiresAt = delegationExpiresAt || null;
-  if (systemRole) updateFields.systemRole = systemRole;
+  const existing = await Employee.findOne(query);
+  if (!existing) {
+    return res.status(404).json({ success: false, message: 'Employee not found' });
+  }
 
-  const employee = await Employee.findOneAndUpdate(
-    query,
+  const isPrimary = Boolean(
+    existing.employeeCode === 'ADM-001' ||
+    existing.isSuperAdmin ||
+    existing.email === 'admin@inforag.com' ||
+    existing.email === 'avinash@inforag.com'
+  );
+
+  const getBaseRole = (roleStr, deptStr) => {
+    const r = (roleStr || '').toLowerCase();
+    const d = (deptStr || '').toLowerCase();
+    if (r.includes('hr') || r.includes('human resource') || d.includes('human resource')) return 'hr';
+    if (r.includes('lead') || r.includes('manager') || r.includes('scrum master')) return 'team_leader';
+    return 'team_member';
+  };
+
+  const updateFields = {};
+  if (permissions !== undefined) {
+    updateFields.permissions = typeof permissions === 'object' ? { ...permissions } : {};
+  }
+
+  const isDelegated = Boolean(isDelegatedAdmin || permissions?.allAccess);
+
+  if (isPrimary) {
+    updateFields.isAdmin = true;
+    updateFields.systemRole = 'admin';
+    updateFields.isDelegatedAdmin = false;
+  } else {
+    updateFields.isDelegatedAdmin = isDelegated;
+    updateFields.isAdmin = isDelegated;
+    updateFields.delegationExpiresAt = isDelegated ? (delegationExpiresAt || null) : null;
+
+    if (!isDelegated) {
+      if (updateFields.permissions) {
+        delete updateFields.permissions.allAccess;
+        delete updateFields.permissions.isDelegatedAdmin;
+        delete updateFields.permissions.delegationExpiresAt;
+      }
+      const baselineRole = existing.baseRole || getBaseRole(existing.role, existing.department);
+      if (systemRole && systemRole !== 'admin') {
+        updateFields.systemRole = systemRole;
+      } else if (existing.systemRole && existing.systemRole !== 'admin') {
+        updateFields.systemRole = existing.systemRole;
+      } else {
+        updateFields.systemRole = baselineRole;
+      }
+    } else {
+      updateFields.systemRole = 'admin';
+    }
+  }
+
+  const employee = await Employee.findByIdAndUpdate(
+    existing._id,
     { $set: updateFields },
     { new: true, runValidators: false }
   );

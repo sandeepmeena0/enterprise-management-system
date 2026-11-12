@@ -521,21 +521,21 @@ export const workService = {
     const initialHistory = Array.isArray(taskData.history) && taskData.history.length > 0
       ? taskData.history
       : [{
-          id: `hist_${Date.now()}_create`,
-          action: 'created',
-          title: 'Task Created & Assigned',
-          timestamp: nowIso,
-          performedBy: taskData.assignedBy || authUser?.name || 'Administrator',
-          performedById: taskData.assignedById || authUser?._id || 'admin',
-          assignedTo: taskData.assignedToName || 'Unassigned',
-          details: `Task #${code} created and assigned to ${taskData.assignedToName || 'team members'} by ${taskData.assignedBy || authUser?.name || 'Administrator'}. (Due: ${taskData.hasNoDueDate ? 'No Due Date' : (taskData.dueDate || 'Open')})`,
-          metadata: {
-            priority: taskData.priority || 'medium',
-            category: taskData.category || 'General',
-            projectName: taskData.projectName || 'General Work',
-            isPersonal: !!taskData.isPersonal
-          }
-        }];
+        id: `hist_${Date.now()}_create`,
+        action: 'created',
+        title: 'Task Created & Assigned',
+        timestamp: nowIso,
+        performedBy: taskData.assignedBy || authUser?.name || 'Administrator',
+        performedById: taskData.assignedById || authUser?._id || 'admin',
+        assignedTo: taskData.assignedToName || 'Unassigned',
+        details: `Task #${code} created and assigned to ${taskData.assignedToName || 'team members'} by ${taskData.assignedBy || authUser?.name || 'Administrator'}. (Due: ${taskData.hasNoDueDate ? 'No Due Date' : (taskData.dueDate || 'Open')})`,
+        metadata: {
+          priority: taskData.priority || 'medium',
+          category: taskData.category || 'General',
+          projectName: taskData.projectName || 'General Work',
+          isPersonal: !!taskData.isPersonal
+        }
+      }];
 
     const newTask = {
       _id: `tsk_${Date.now()}`,
@@ -888,7 +888,7 @@ export const workService = {
             (t.date === json.data.date &&
               (String(t.taskId) === String(json.data.taskId) || (json.data.taskCode && t.taskCode === json.data.taskCode)) &&
               (String(t.employeeId || t.employee) === String(json.data.employeeId || json.data.employee) ||
-               (t.employeeCode && json.data.employeeCode && String(t.employeeCode) === String(json.data.employeeCode))))
+                (t.employeeCode && json.data.employeeCode && String(t.employeeCode) === String(json.data.employeeCode))))
           );
           if (idx !== -1) timesheets[idx] = json.data;
           else timesheets.unshift(json.data);
@@ -981,7 +981,7 @@ export const workService = {
             (t.date === json.data.date &&
               String(t.taskId) === String(json.data.taskId) &&
               (String(t.employeeId || t.employee) === String(json.data.employeeId || json.data.employee) ||
-               (t.employeeCode && json.data.employeeCode && String(t.employeeCode) === String(json.data.employeeCode))))
+                (t.employeeCode && json.data.employeeCode && String(t.employeeCode) === String(json.data.employeeCode))))
           );
           if (idx !== -1) timesheets[idx] = json.data;
           else timesheets.unshift(json.data);
