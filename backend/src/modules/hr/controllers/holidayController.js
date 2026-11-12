@@ -51,7 +51,7 @@ const getHolidayById = asyncHandler(async (req, res) => {
 const createHoliday = asyncHandler(async (req, res) => {
   const u = req.user;
   if (u) {
-    const canManage = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || u.permissions?.holidays || u.permissions?.allAccess;
+    const canManage = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || u.permissions?.holidays || u.permissions?.manageCompanyHolidays || u.permissions?.allAccess;
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Access denied: Only HR & Administrators can declare company holidays.' });
     }
@@ -74,7 +74,7 @@ const createHoliday = asyncHandler(async (req, res) => {
 const updateHoliday = asyncHandler(async (req, res) => {
   const u = req.user;
   if (u) {
-    const canManage = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || u.permissions?.holidays || u.permissions?.allAccess;
+    const canManage = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || u.permissions?.holidays || u.permissions?.manageCompanyHolidays || u.permissions?.allAccess;
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Access denied: Only HR & Administrators can update company holidays.' });
     }
@@ -98,7 +98,7 @@ const updateHoliday = asyncHandler(async (req, res) => {
 const deleteHoliday = asyncHandler(async (req, res) => {
   const u = req.user;
   if (u) {
-    const canManage = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || u.permissions?.holidays || u.permissions?.allAccess;
+    const canManage = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || u.permissions?.holidays || u.permissions?.manageCompanyHolidays || u.permissions?.allAccess;
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Access denied: Only HR & Administrators can cancel or delete company holidays.' });
     }

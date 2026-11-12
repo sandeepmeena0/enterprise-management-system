@@ -42,8 +42,9 @@ export const ProjectsPage = () => {
       currentUser.systemRole === 'hr' ||
       currentUser.role === 'Administrator' ||
       currentUser.role === 'HR Manager' ||
-      currentUser.permissions?.canApproveProjects ||
-      currentUser.permissions?.manageProjects
+      perms?.canApproveProjects ||
+      perms?.manageProjects ||
+      perms?.allAccess
     );
   }, [currentUser]);
 

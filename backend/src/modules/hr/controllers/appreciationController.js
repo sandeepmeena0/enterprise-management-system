@@ -145,7 +145,7 @@ const createAppreciation = asyncHandler(async (req, res) => {
 const deleteAppreciation = asyncHandler(async (req, res) => {
   const u = req.user;
   if (u) {
-    const canDelete = u.isAdmin || u.systemRole === 'admin' || (u.systemRole === 'hr' && u.permissions?.deleteAppreciations) || u.permissions?.allAccess;
+    const canDelete = u.isAdmin || u.systemRole === 'admin' || u.isDelegatedAdmin || u.permissions?.deleteAppreciations || (u.systemRole === 'hr' && u.permissions?.deleteAppreciations !== false) || u.permissions?.allAccess;
     if (!canDelete) {
       return res.status(403).json({ success: false, message: 'Access denied: Only Administrators can remove appreciation records.' });
     }

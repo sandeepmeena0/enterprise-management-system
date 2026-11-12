@@ -62,7 +62,8 @@ export const TeamOperationsPage = () => {
     return () => window.removeEventListener('company-settings-updated', handleSettingsUpdate);
   }, []);
 
-  const isPrivileged = isHRorAdmin || checkIsHRorAdmin(currentUser) || checkIsAdmin(currentUser) || currentUser?.isDelegatedAdmin;
+  const userPerms = useMemo(() => getUserModulePermissions(currentUser), [currentUser]);
+  const isPrivileged = isHRorAdmin || checkIsHRorAdmin(currentUser) || checkIsAdmin(currentUser) || currentUser?.isDelegatedAdmin || userPerms?.liveOperations || userPerms?.forceClockOut || userPerms?.editAttendance;
 
   const [syncTick, setSyncTick] = useState(0);
   const [viewMode, setViewMode] = useState(() => {

@@ -313,9 +313,11 @@ export const isLeaveDesignatedApprover = (leave, user) => {
  */
 export const canCancelLeave = (leave, user) => {
   if (!leave || !user) return false;
-  if (isHRorAdmin(user)) return true;
+  if (isHRorAdmin(user) || user.isDelegatedAdmin) return true;
   if (isLeaveApplicant(leave, user)) return true;
   if (isLeaveDesignatedApprover(leave, user)) return true;
+  const perms = getUserModulePermissions(user);
+  if (perms?.cancelLeaves || perms?.approveLeaves || perms?.allAccess) return true;
   return false;
 };
 
@@ -332,27 +334,26 @@ export const canReviewLeave = (leave, user) => {
   if (isHRorAdmin(user)) return true;
   if (isLeaveDesignatedApprover(leave, user)) return true;
   const perms = getUserModulePermissions(user);
-  if (perms?.approveLeaves) return true;
+  if (perms?.approveLeaves || perms?.allAccess) return true;
   return false;
 };
 export const canManageCompanyHolidays = (user) => {
   if (!user) return false;
   if (isHRorAdmin(user) || user.isDelegatedAdmin) return true;
   const perms = getUserModulePermissions(user);
-  return !!(perms?.events || perms?.holidays);
+  return !!(perms?.manageCompanyHolidays || perms?.holidays || perms?.events || perms?.allAccess);
 };
 export const canManagePayroll = (user) => {
   if (!user) return false;
   if (isHRorAdmin(user) || user.isDelegatedAdmin) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.manageSalaries && !perms?.payroll && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.manageSalaries || perms?.payroll);
 };
 export const canManageProjects = (user) => {
   if (!user) return false;
   if (isLeaderOrAbove(user) || user.isDelegatedAdmin) return true;
   const perms = getUserModulePermissions(user);
-  return !!(perms?.manageProjects || perms?.createProjects);
+  return !!(perms?.allAccess || perms?.manageProjects || perms?.createProjects);
 };
 export const canAssignRoles = (user) => isAdmin(user) || user?.isDelegatedAdmin;
 
@@ -360,7 +361,7 @@ export const canCreateTasks = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isTeamLeader(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  return Boolean(perms?.allAccess || perms?.createTasks || perms?.manageProjects);
+  return Boolean(perms?.allAccess || perms?.createTasks || perms?.manageProjects || perms?.tasks);
 };
 
 export const canViewAllTasks = (user) => {
@@ -374,7 +375,7 @@ export const canManageTickets = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  return Boolean(perms?.allAccess || perms?.manageTickets);
+  return Boolean(perms?.allAccess || perms?.manageTickets || perms?.tickets);
 };
 
 export const canAccessCRM = (user) => {
@@ -425,9 +426,8 @@ export const canDeleteTask = (user, task = null) => {
   if (isAdmin(user) || user.isSuperAdmin || isDelegationActive(user) || user.role === 'Administrator' || user.systemRole === 'admin') {
     return true;
   }
-  // 2. Strict permission check: user must explicitly have deleteTasks or allAccess granted
+  // 2. Permission check: user must have deleteTasks or allAccess granted
   const perms = getUserModulePermissions(user);
-  if (!perms?.createTasks && !perms?.tasks && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess === true || perms?.deleteTasks === true || perms?.canDeleteTasks === true);
 };
 
@@ -437,9 +437,8 @@ export const canDeleteProject = (user, project = null) => {
   if (isAdmin(user) || user.isSuperAdmin || isDelegationActive(user) || user.role === 'Administrator' || user.systemRole === 'admin') {
     return true;
   }
-  // 2. Strict permission check: user must explicitly have deleteProjects or allAccess granted
+  // 2. Permission check: user must have deleteProjects or allAccess granted
   const perms = getUserModulePermissions(user);
-  if (!perms?.manageProjects && !perms?.projects && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess === true || perms?.deleteProjects === true || perms?.canDeleteProjects === true);
 };
 
@@ -447,7 +446,6 @@ export const canDeleteEmployee = (user) => {
   if (!user) return false;
   if (isAdmin(user) || user.isSuperAdmin || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.manageEmployees && !perms?.employees && !perms?.allAccess) return false;
   return !!(perms?.allAccess || perms?.deleteEmployees);
 };
 
@@ -455,7 +453,6 @@ export const canDeleteLead = (user, lead = null) => {
   if (!user) return false;
   if (isAdmin(user) || user.isSuperAdmin || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.accessCRM && !perms?.leads && !perms?.allAccess) return false;
   if (perms?.allAccess || perms?.deleteLeads || perms?.manageLeads) return true;
   if (lead) {
     const uId = String(user._id || user.id || '').toLowerCase().trim();
@@ -472,7 +469,6 @@ export const canDeleteNotice = (user, notice = null) => {
   if (!user) return false;
   if (isAdmin(user) || user.isSuperAdmin || isDelegationActive(user) || isHR(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.postNotices && !perms?.notices && !perms?.allAccess) return false;
   if (perms?.allAccess || perms?.deleteNotices) return true;
   if (notice) {
     const uId = String(user._id || user.id || '').toLowerCase().trim();
@@ -489,7 +485,6 @@ export const canEditAnyTask = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.viewAllTasks && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.editAnyTask);
 };
 
@@ -497,14 +492,13 @@ export const canViewAllProjects = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  return Boolean(perms?.allAccess || perms?.viewAllProjects);
+  return Boolean(perms?.allAccess || perms?.viewAllProjects || perms?.manageProjects);
 };
 
 export const canViewEmployeeDetails = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.manageEmployees && !perms?.employees && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.viewEmployeeDetails || perms?.manageEmployees);
 };
 
@@ -512,7 +506,6 @@ export const canApproveOvertime = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.viewAllAttendance && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.approveOvertime || perms?.editAttendance);
 };
 
@@ -526,7 +519,6 @@ export const canReviewResignations = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.manageEmployees && !perms?.employees && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.reviewResignations || perms?.manageEmployees);
 };
 
@@ -534,16 +526,14 @@ export const canCreateLeads = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isDelegationActive(user) || isTeamLeader(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.accessCRM && !perms?.leads && !perms?.allAccess) return false;
-  return Boolean(perms?.allAccess || perms?.createLeads);
+  return Boolean(perms?.allAccess || perms?.createLeads || perms?.accessCRM);
 };
 
 export const canEditLeads = (user, lead = null) => {
   if (!user) return false;
   if (isAdmin(user) || isDelegationActive(user) || isTeamLeader(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.accessCRM && !perms?.leads && !perms?.allAccess) return false;
-  if (perms?.allAccess || perms?.editLeads) return true;
+  if (perms?.allAccess || perms?.editLeads || perms?.accessCRM) return true;
   if (lead) {
     const uId = String(user._id || user.id || '').toLowerCase().trim();
     const uCode = String(user.employeeCode || '').toLowerCase().trim();
@@ -566,7 +556,6 @@ export const canApproveExpenses = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.accessFinance && !perms?.finance && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.approveExpenses || perms?.accessFinance);
 };
 
@@ -581,7 +570,6 @@ export const canDeleteTicket = (user, ticket = null) => {
   if (!user) return false;
   if (isAdmin(user) || user.isSuperAdmin || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.manageTickets && !perms?.tickets && !perms?.allAccess) return false;
   if (perms?.allAccess || perms?.deleteTickets || perms?.manageTickets) return true;
   if (ticket) {
     const uId = String(user._id || user.id || '').toLowerCase().trim();
@@ -965,7 +953,7 @@ export const DEFAULT_MODULE_PERMISSIONS = {
     accessFinance: false,
     manageEmployees: false,
     grantPermissions: false,
-    liveOperations: true,
+    liveOperations: false,
     allAccess: false
   }
 };
@@ -1194,104 +1182,98 @@ export const sanitizePermissionDependencies = (permissions = {}) => {
   const sanitized = { ...permissions };
   let changed = true;
 
-  // Multi-pass resolution in case of nested dependencies
+  // 1. Multi-pass upward auto-elevation:
+  // If a child capability is granted, automatically enable its prerequisite parent(s)
   while (changed) {
     changed = false;
     for (const [childKey, dep] of Object.entries(PERMISSION_DEPENDENCIES)) {
       if (sanitized[childKey] && !sanitized[dep.parentKey]) {
-        sanitized[childKey] = false;
+        sanitized[dep.parentKey] = true;
         changed = true;
       }
     }
   }
 
-  // Synchronize parent module mirrors
-  if (sanitized.accessCRM) {
+  // 2. Synchronize module master toggles & mirrors (Auto-elevate upwards)
+  if (sanitized.accessCRM || sanitized.createLeads || sanitized.editLeads || sanitized.deleteLeads || sanitized.viewAllLeads || sanitized.export_leads) {
+    sanitized.accessCRM = true;
     sanitized.leads = true;
-  } else {
-    sanitized.leads = false;
-    sanitized.createLeads = false;
-    sanitized.editLeads = false;
-    sanitized.deleteLeads = false;
-    sanitized.export_leads = false;
   }
 
-  if (sanitized.viewAllAttendance) {
+  if (sanitized.viewAllAttendance || sanitized.editAttendance || sanitized.approveOvertime || sanitized.export_attendance) {
+    sanitized.viewAllAttendance = true;
     sanitized.attendance = true;
-  } else {
-    sanitized.editAttendance = false;
-    sanitized.approveOvertime = false;
-    sanitized.export_attendance = false;
   }
 
-  if (sanitized.liveOperations) {
+  if (sanitized.liveOperations || sanitized.forceClockOut) {
+    sanitized.liveOperations = true;
     sanitized.teamoperations = true;
-  } else {
-    sanitized.forceClockOut = false;
   }
 
-  if (sanitized.manageEmployees) {
+  if (sanitized.manageEmployees || sanitized.viewEmployeeDetails || sanitized.deleteEmployees || sanitized.reviewResignations) {
+    sanitized.manageEmployees = true;
     sanitized.employees = true;
-  } else {
-    sanitized.viewEmployeeDetails = false;
-    sanitized.deleteEmployees = false;
-    sanitized.reviewResignations = false;
   }
 
-  if (sanitized.approveLeaves) {
+  if (sanitized.approveLeaves || sanitized.cancelLeaves || sanitized.viewAllLeaves) {
+    sanitized.approveLeaves = true;
     sanitized.leaves = true;
-  } else {
-    sanitized.cancelLeaves = false;
   }
 
-  if (sanitized.manageSalaries) {
+  if (sanitized.manageSalaries || sanitized.export_payroll) {
+    sanitized.manageSalaries = true;
     sanitized.payroll = true;
-  } else {
-    sanitized.payroll = false;
-    sanitized.export_payroll = false;
-  }
-
-  if (sanitized.accessFinance) {
     sanitized.finance = true;
-  } else {
-    sanitized.finance = false;
-    sanitized.approveExpenses = false;
   }
 
-  if (sanitized.manageProjects) {
+  if (sanitized.accessFinance || sanitized.approveExpenses) {
+    sanitized.accessFinance = true;
+    sanitized.finance = true;
+  }
+
+  if (sanitized.manageProjects || sanitized.deleteProjects || sanitized.viewAllProjects || sanitized.createProjects) {
+    sanitized.manageProjects = true;
     sanitized.projects = true;
-  } else {
-    sanitized.deleteProjects = false;
   }
 
-  if (sanitized.createTasks) {
+  if (sanitized.createTasks || sanitized.deleteTasks || sanitized.editAnyTask || sanitized.viewAllTasks) {
     sanitized.tasks = true;
-  } else {
-    sanitized.deleteTasks = false;
   }
 
-  if (sanitized.viewAllTasks) {
-    sanitized.tasks = true;
-  } else {
-    sanitized.editAnyTask = false;
-  }
-
-  if (sanitized.postNotices) {
+  if (sanitized.postNotices || sanitized.deleteNotices) {
+    sanitized.postNotices = true;
     sanitized.notices = true;
-  } else {
-    sanitized.deleteNotices = false;
   }
 
-  if (sanitized.manageTickets) {
+  if (sanitized.manageTickets || sanitized.deleteTickets || sanitized.viewAllTickets) {
+    sanitized.manageTickets = true;
     sanitized.tickets = true;
-  } else {
-    sanitized.deleteTickets = false;
   }
 
-  if (sanitized.giveAppreciation) {
+  if (sanitized.giveAppreciation || sanitized.deleteAppreciations) {
+    sanitized.giveAppreciation = true;
     sanitized.appreciation = true;
-  } else {
-    sanitized.deleteAppreciations = false;
+  }
+
+  if (sanitized.manageCompanyHolidays) {
+    sanitized.holidays = true;
+    sanitized.holiday = true;
+  }
+
+  if (sanitized.manageEvents) {
+    sanitized.events = true;
+  }
+
+  if (sanitized.documentation) {
+    sanitized.documents = true;
+  }
+
+  if (sanitized.reports) {
+    sanitized.viewReports = true;
+  }
+
+  if (sanitized.manageSettings) {
+    sanitized.settings = true;
   }
 
   return sanitized;
@@ -1534,6 +1516,8 @@ export const canAccessModule = (user, moduleId) => {
     task: 'tasks',
     leads: 'leads',
     lead: 'leads',
+    leadcontact: 'leads',
+    crm: 'leads',
     attendance: 'attendance',
     leaves: 'leaves',
     leave: 'leaves',
@@ -1544,6 +1528,7 @@ export const canAccessModule = (user, moduleId) => {
     calendar: 'events',
     employees: 'employees',
     employee: 'employees',
+    team: 'employees',
     employeeinformation: 'employees',
     reports: 'reports',
     timesheet: 'tasks',
@@ -1563,6 +1548,12 @@ export const canAccessModule = (user, moduleId) => {
     appreciations: 'appreciation',
     award: 'appreciation',
     awards: 'appreciation',
+    holiday: 'holiday',
+    holidays: 'holiday',
+    notices: 'notices',
+    noticeboard: 'notices',
+    messages: 'messages',
+    chat: 'messages',
     teamoperations: 'liveOperations',
     liveoperations: 'liveOperations',
     operations: 'liveOperations'
@@ -1570,81 +1561,55 @@ export const canAccessModule = (user, moduleId) => {
 
   const permKey = keyMap[normalizedKey] || moduleId;
 
-  // 1. Strict explicit rule for liveOperations
+  // 1. Master SuperAdmin / Delegated authority override
+  if (perms?.allAccess === true || user?.allAccess === true) {
+    return true;
+  }
+
+  // 2. Positive granular capability & module checks
   if (permKey === 'liveOperations') {
-    if (perms?.liveOperations === false || user?.permissions?.liveOperations === false) {
-      return false;
-    }
-    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.liveOperations === true || perms?.teamoperations === true);
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.liveOperations === true || perms?.teamoperations === true || perms?.forceClockOut === true);
+  }
+  if (permKey === 'payroll') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.payroll === true || perms?.manageSalaries === true || perms?.export_payroll === true);
+  }
+  if (permKey === 'finance') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.finance === true || perms?.accessFinance === true || perms?.approveExpenses === true || perms?.manageSalaries === true);
+  }
+  if (permKey === 'expenses') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.expenses !== false || perms?.accessFinance === true || perms?.approveExpenses === true);
+  }
+  if (permKey === 'employees') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.employees === true || perms?.manageEmployees === true || perms?.viewEmployeeDetails === true || perms?.deleteEmployees === true || perms?.reviewResignations === true);
+  }
+  if (permKey === 'leads') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.leads === true || perms?.accessCRM === true || perms?.viewAllLeads === true || perms?.createLeads === true || perms?.editLeads === true || perms?.deleteLeads === true || perms?.export_leads === true);
+  }
+  if (permKey === 'projects') {
+    return Boolean(isAdmin(user) || isHR(user) || isLeaderOrAbove(user) || isDelegationActive(user) || perms?.projects === true || perms?.manageProjects === true || perms?.createProjects === true || perms?.viewAllProjects === true || perms?.deleteProjects === true);
+  }
+  if (permKey === 'documentation') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.documentation === true || perms?.documents === true);
+  }
+  if (permKey === 'reports') {
+    return Boolean(isAdmin(user) || isHR(user) || isDelegationActive(user) || perms?.reports === true || perms?.viewReports === true);
+  }
+  if (permKey === 'settings') {
+    return Boolean(isAdmin(user) || isDelegationActive(user) || perms?.settings === true || perms?.manageSettings === true || perms?.grantPermissions === true);
+  }
+  if (permKey === 'holiday') {
+    return Boolean(perms?.holidays !== false && perms?.holiday !== false);
+  }
+  if (permKey === 'appreciation') {
+    return Boolean(perms?.appreciation !== false);
   }
 
-  // 2. Strict explicit false checks (Explicit Revocation MUST override all fallbacks)
-  if (perms?.[permKey] === false || (user?.permissions && user.permissions[permKey] === false)) {
-    return false;
-  }
-  if (permKey === 'appreciation' && (perms?.appreciation === false || user?.permissions?.appreciation === false)) {
-    return false;
-  }
-  if (permKey === 'payroll' && (perms?.payroll === false || user?.permissions?.payroll === false)) {
-    return false;
-  }
-  if (permKey === 'employees' && (perms?.employees === false || user?.permissions?.employees === false)) {
-    return false;
-  }
-  if (permKey === 'leads' && (perms?.leads === false || user?.permissions?.leads === false)) {
-    return false;
-  }
-  if (permKey === 'documentation' && (perms?.documentation === false || user?.permissions?.documentation === false)) {
-    return false;
+  // 3. Standard employee modules: accessible unless explicitly set to false
+  if (['dashboard', 'tasks', 'leaves', 'attendance', 'tickets', 'events', 'notices', 'messages'].includes(permKey)) {
+    return perms[permKey] !== false;
   }
 
-  // 3. Direct explicit true on module key or normalized key
-  if (perms && (perms[permKey] === true || perms[moduleId] === true)) {
-    return true;
-  }
-  if ((permKey === 'payroll' || permKey === 'finance') && (perms?.payroll || perms?.accessFinance || perms?.finance || perms?.manageSalaries || perms?.export_payroll)) {
-    return true;
-  }
-  if (permKey === 'employees' && (perms?.employees || perms?.manageEmployees || perms?.deleteEmployees)) {
-    return true;
-  }
-  if (permKey === 'leads' && (perms?.leads || perms?.accessCRM || perms?.viewAllLeads || perms?.createLeads || perms?.editLeads || perms?.deleteLeads || perms?.export_leads)) {
-    return true;
-  }
-  if (permKey === 'projects' && (perms?.projects || perms?.manageProjects || perms?.createProjects || perms?.viewAllProjects || perms?.deleteProjects)) {
-    return true;
-  }
-  if (permKey === 'leaves' && (perms?.leaves || perms?.approveLeaves || perms?.viewAllLeaves)) {
-    return true;
-  }
-  if (permKey === 'attendance' && (perms?.attendance || perms?.viewAllAttendance || perms?.editAttendance || perms?.export_attendance)) {
-    return true;
-  }
-  if (permKey === 'tickets' && (perms?.tickets || perms?.viewAllTickets || perms?.deleteTickets)) {
-    return true;
-  }
-  if (permKey === 'documentation' && (perms?.documentation || perms?.documents)) {
-    return true;
-  }
-  if (permKey === 'reports' && (perms?.reports || perms?.viewReports)) {
-    return true;
-  }
-
-  // 4. Strict guard: Regular employees (Team Members) cannot access privileged modules unless explicitly granted above
-  if (role === ROLES.TEAM_MEMBER) {
-    if (permKey === 'liveOperations' && (perms?.liveOperations || perms?.teamoperations)) return true;
-    if (permKey === 'employees' && (perms?.employees || perms?.manageEmployees || perms?.deleteEmployees)) return true;
-    if (permKey === 'payroll' && (perms?.payroll || perms?.manageSalaries || perms?.export_payroll)) return true;
-    if (permKey === 'finance' && (perms?.finance || perms?.accessFinance || perms?.manageExpenses)) return true;
-    if (permKey === 'leads' && (perms?.leads || perms?.accessCRM || perms?.viewAllLeads || perms?.createLeads || perms?.editLeads || perms?.deleteLeads)) return true;
-    if (permKey === 'documentation' && (perms?.documentation || perms?.documents)) return true;
-    if (permKey === 'reports' && (perms?.reports || perms?.viewReports)) return true;
-    if (permKey === 'settings' && (perms?.settings || perms?.grantPermissions)) return true;
-    const privilegedModules = ['employees', 'teamoperations', 'liveOperations', 'payroll', 'finance', 'settings', 'documentation', 'leads', 'reports'];
-    if (privilegedModules.includes(permKey)) return false;
-    return true; // allowed default modules: dashboard, tasks, timesheet, attendance, leaves, tickets, events, expenses, projects
-  }
-
-  return perms[permKey] !== false;
+  // 4. Default fallback check
+  return Boolean(perms[permKey] || perms[moduleId]);
 };
 
