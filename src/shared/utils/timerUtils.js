@@ -485,37 +485,37 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
       const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
       liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
     }
-    return Math.min(baseSecs + liveSecs, 14 * 3600);
+    return Math.min(baseSecs + liveSecs, 24 * 3600);
   }
 
-  // 2. If sessionDate is targetDate, or if task is actively ticking today:
-  if (task.sessionDate === targetDate) {
+  // 2. If sessionDate is targetDate, and todayWorkSeconds is recorded:
+  if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined && Number(task.todayWorkSeconds) >= 0) {
+    const baseSecs = Math.max(0, Number(task.todayWorkSeconds) || 0);
+    let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
       const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-      const base = Number(task.accumulatedSeconds ?? task.todayWorkSeconds ?? 0);
-      const elapsed = Math.max(0, Math.floor((nowMs - startTs) / 1000));
-      const liveSecs = base + elapsed;
-      const storedTimer = Number(task.timerSeconds) || 0;
-      return Math.min(Math.max(liveSecs, storedTimer), 14 * 3600);
+      liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
     }
-    const todaySecs = Number(task.todayWorkSeconds ?? task.accumulatedSeconds ?? task.timerSeconds ?? 0);
-    if (todaySecs > 0) return Math.min(todaySecs, 14 * 3600);
+    return Math.min(baseSecs + liveSecs, 24 * 3600);
   }
 
-  // 3. Actively running task today:
+  // 3. Actively running task today with no prior recorded today session:
   if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
     const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-    const base = Number(task.accumulatedSeconds ?? task.todayWorkSeconds ?? 0);
-    const elapsed = Math.max(0, Math.floor((nowMs - startTs) / 1000));
-    const liveSecs = base + elapsed;
-    const storedTimer = Number(task.timerSeconds) || 0;
-    return Math.min(Math.max(liveSecs, storedTimer), 14 * 3600);
+    const isCreatedToday = task.startDate === actualToday || String(task.createdAt || '').startsWith(actualToday);
+    const base = isCreatedToday ? Number(task.todayWorkSeconds || 0) : 0;
+    const liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
+    return Math.min(base + liveSecs, 24 * 3600);
   }
 
-  // 4. Task was created today:
+  // 4. Task was strictly created today (and has not recorded dailySessions or todayWorkSeconds yet):
   if (targetDate === actualToday && (task.startDate === actualToday || String(task.createdAt || '').startsWith(actualToday))) {
-    const secs = Number(task.todayWorkSeconds ?? task.accumulatedSeconds ?? task.timerSeconds ?? 0);
-    return Math.min(secs, 14 * 3600);
+    const secs = Number(task.todayWorkSeconds ?? task.timerSeconds ?? 0);
+    return Math.min(secs, 24 * 3600);
   }
 
   return 0;
@@ -596,13 +596,13 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
     timerRunning: false,
     startedAt: null,
     accumulatedSeconds: totalSecs,
-    timerSeconds: totalSecs,
+    timerSeconds: totalTodaySecs,
     todayWorkSeconds: totalTodaySecs,
     dailySessions: dailySessionsMap,
     sessionDate: today,
     wasPausedForClockOut: Boolean(wasPausedForClockOut),
     wasPausedForBreak: Boolean(wasPausedForBreak),
-    liveDurationText: formatSecondsToDigital(totalSecs),
+    liveDurationText: formatSecondsToDigital(totalTodaySecs),
     hoursLoggedText: formatSecondsToHoursMins(totalSecs)
   };
 };

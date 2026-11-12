@@ -69,7 +69,7 @@ import { getCollection, saveCollection, KEYS } from '../../../shared/services/st
 import { hrService } from '../services/hrService';
 import { workService } from '../../work/services/workService';
 import { broadcastSyncEvent, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
-import { getCanonicalTimerKey, getTimerMirrorKeys, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
+import { getCanonicalTimerKey, getTimerMirrorKeys, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, syncTaskPauseState, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
 
 // Modals
 import { BreakModal } from '../../../shared/components/modals/BreakModal';
@@ -799,6 +799,7 @@ export const DashboardPage = () => {
         startedAt: startedAtMs,
         accumulatedSeconds: totalAccum,
         todayWorkSeconds: todayTaskBase,
+        timerSeconds: liveTaskSecs,
         liveTaskSecs,
         liveTaskFormatted: formatSeconds(liveTaskSecs),
         liveDurationText: formatSeconds(liveTaskSecs)
@@ -913,30 +914,25 @@ export const DashboardPage = () => {
         const isTargetTask = (t.assignedToId === empId || t.assignedTo === empKey || t.assignedToName?.toLowerCase() === empName?.toLowerCase() || (Array.isArray(t.assignedToIds) && t.assignedToIds.includes(empId)));
         if (isTargetTask && t.timerRunning) {
           taskChanged = true;
-          let currentSecs = (t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null)
-            ? Number(t.accumulatedSeconds)
-            : (Number(t.timerSeconds) || 0);
-          if (t.startedAt) {
-            currentSecs += Math.max(0, Math.floor((Date.now() - Number(t.startedAt)) / 1000));
-          }
+          const pausedT = syncTaskPauseState(t, { nowMs: Date.now(), todayStr, wasPausedForClockOut: true });
           // Persist paused state to MongoDB Atlas
           workService.updateTask(t._id || t.id, {
             timerRunning: false,
             startedAt: null,
-            accumulatedSeconds: currentSecs,
-            timerSeconds: currentSecs,
+            accumulatedSeconds: pausedT.accumulatedSeconds,
+            timerSeconds: pausedT.timerSeconds,
+            todayWorkSeconds: pausedT.todayWorkSeconds,
+            dailySessions: pausedT.dailySessions,
             sessionDate: todayStr,
-            hoursLogged: +(currentSecs / 3600).toFixed(2),
-            hoursLoggedText: formatSeconds(currentSecs)
+            hoursLogged: +(pausedT.accumulatedSeconds / 3600).toFixed(2),
+            hoursLoggedText: formatSeconds(pausedT.accumulatedSeconds)
           }).catch(err => console.warn('Sync force clock-out task pause to DB:', err));
 
           return {
             ...t,
-            timerRunning: false,
-            startedAt: null,
-            accumulatedSeconds: currentSecs,
-            timerSeconds: currentSecs,
-            liveDurationText: formatSeconds(currentSecs)
+            ...pausedT,
+            _id: t._id,
+            id: t.id
           };
         }
         return t;
@@ -988,21 +984,13 @@ export const DashboardPage = () => {
           (empKey && (t.assignedToId === empKey || t.assignedTo === empKey || (Array.isArray(t.assignedToIds) && t.assignedToIds.includes(empKey))) && t.timerRunning);
         if (isMatch) {
           matchedTaskId = t._id || t.id;
-          currentSecs = (t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null)
-            ? Number(t.accumulatedSeconds)
-            : (Number(t.timerSeconds) || 0);
-          if (t.timerRunning && t.startedAt) {
-            const elapsed = Math.max(0, Math.floor((now - Number(t.startedAt)) / 1000));
-            currentSecs = currentSecs + elapsed;
-          }
+          const pausedT = syncTaskPauseState(t, { nowMs: now, todayStr });
+          currentSecs = pausedT.accumulatedSeconds;
           return {
             ...t,
-            timerRunning: false,
-            startedAt: null,
-            timerSeconds: currentSecs,
-            accumulatedSeconds: currentSecs,
-            sessionDate: todayStr,
-            liveDurationText: formatSeconds(currentSecs)
+            ...pausedT,
+            _id: t._id,
+            id: t.id
           };
         }
         return t;
@@ -1015,11 +1003,8 @@ export const DashboardPage = () => {
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
-            const sSecs = (Number(parsed.accumulatedSeconds) || 0) + (parsed.startedAt ? Math.max(0, Math.floor((now - Number(parsed.startedAt)) / 1000)) : 0);
-            parsed.timerRunning = false;
-            parsed.startedAt = null;
-            parsed.accumulatedSeconds = sSecs;
-            localStorage.setItem(timerKey, JSON.stringify(parsed));
+            const pausedSnap = syncTaskPauseState(parsed, { nowMs: now, todayStr });
+            localStorage.setItem(timerKey, JSON.stringify(pausedSnap));
           } catch { }
         }
       }
@@ -1339,7 +1324,8 @@ export const DashboardPage = () => {
         const runningElapsed = empActiveTimer.startedAt
           ? Math.max(0, Math.floor((Date.now() - empActiveTimer.startedAt) / 1000))
           : 0;
-        const liveSecs = (Number(empActiveTimer.accumulatedSeconds) || 0) + runningElapsed;
+        const liveTodayBase = Number(empActiveTimer.todayWorkSeconds !== undefined ? empActiveTimer.todayWorkSeconds : (empActiveTimer.dailySessions?.[todayStr] || 0));
+        const liveSecs = liveTodayBase + runningElapsed;
 
         tasksWorked = tasksWorked.filter(t => String(t.taskId) !== runningTaskId && t.taskCode !== empActiveTimer.taskCode);
         const targetTaskObj = empTasks.find(t => String(t._id || t.id) === runningTaskId);
@@ -1812,9 +1798,23 @@ export const DashboardPage = () => {
     }
 
     if (task && !displayedIsClockedIn) {
+      const pausedTodaySecs = Number(task.todayWorkSeconds ?? task.dailySessions?.[todayStr] ?? task.timerSeconds ?? 0);
       return {
         ...task,
-        timerRunning: false
+        timerRunning: false,
+        timerSeconds: pausedTodaySecs,
+        todayWorkSeconds: pausedTodaySecs,
+        liveDurationText: formatSeconds(pausedTodaySecs)
+      };
+    }
+
+    if (task && !task.timerRunning) {
+      const pausedTodaySecs = Number(task.todayWorkSeconds ?? task.dailySessions?.[todayStr] ?? task.timerSeconds ?? 0);
+      return {
+        ...task,
+        timerSeconds: pausedTodaySecs,
+        todayWorkSeconds: pausedTodaySecs,
+        liveDurationText: formatSeconds(pausedTodaySecs)
       };
     }
     return task;
@@ -1879,7 +1879,10 @@ export const DashboardPage = () => {
 
     // Check if task was worked today:
     const isRunningNow = Boolean(t.timerRunning) || Boolean(activeRunningTask && (String(activeRunningTask._id || activeRunningTask.id || activeRunningTask.taskId) === tId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode)));
-    const isWorkedToday = isRunningNow || (t.dailySessions && Number(t.dailySessions[todayStr]) > 0) || (t.sessionDate === todayStr && (Number(t.todayWorkSeconds) > 0 || Number(t.accumulatedSeconds) > 0 || Number(t.timerSeconds) > 0));
+    const isWorkedToday = isRunningNow ||
+      (t.dailySessions && Number(t.dailySessions[todayStr]) > 0) ||
+      (t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0) ||
+      ((t.startDate === todayStr || String(t.createdAt || '').startsWith(todayStr)) && Number(t.todayWorkSeconds ?? t.timerSeconds) > 0);
     if (!isWorkedToday) return acc;
 
     const activeTaskObj = isRunningNow

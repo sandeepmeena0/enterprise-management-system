@@ -456,28 +456,54 @@ export const WorkProvider = ({ children }) => {
           const elapsed = Math.max(0, Math.floor((Date.now() - Number(startedAtTs)) / 1000));
           const currentSecs = baseSecs + elapsed;
 
+          const today = getTodayStr();
+          let todayBaseSecs = 0;
+          if (isActive && activeTimer?.date === today && activeTimer?.todayWorkSeconds !== undefined) {
+            todayBaseSecs = Number(activeTimer.todayWorkSeconds) || 0;
+          } else if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[today] !== undefined) {
+            todayBaseSecs = Number(t.dailySessions[today]) || 0;
+          } else if (t.sessionDate === today && t.todayWorkSeconds !== undefined) {
+            todayBaseSecs = Number(t.todayWorkSeconds) || 0;
+          } else if (t.startDate === today || String(t.createdAt || '').startsWith(today)) {
+            todayBaseSecs = Number(t.todayWorkSeconds ?? t.timerSeconds ?? 0);
+          }
+          const todaySecs = todayBaseSecs + elapsed;
+
           return {
             ...t,
             timerRunning: true,
-            timerSeconds: currentSecs,
-            accumulatedSeconds: baseSecs,
+            timerSeconds: todaySecs,
+            todayWorkSeconds: todaySecs,
+            accumulatedSeconds: currentSecs,
             startedAt: startedAtTs,
-            liveDurationText: formatSeconds(currentSecs),
+            liveDurationText: formatSeconds(todaySecs),
             hoursLoggedText: t.hoursLogged ? `${t.hoursLogged}h` : formatSeconds(currentSecs)
           };
         }
 
-        const staticSecs = (t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null)
+        const today = getTodayStr();
+        let todayStaticSecs = 0;
+        if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[today] !== undefined) {
+          todayStaticSecs = Number(t.dailySessions[today]) || 0;
+        } else if (t.sessionDate === today && t.todayWorkSeconds !== undefined) {
+          todayStaticSecs = Number(t.todayWorkSeconds) || 0;
+        } else if (t.startDate === today || String(t.createdAt || '').startsWith(today)) {
+          todayStaticSecs = Number(t.todayWorkSeconds ?? t.timerSeconds ?? 0);
+        }
+
+        const staticTotalSecs = (t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null)
           ? Number(t.accumulatedSeconds)
           : (Number(t.timerSeconds) || 0);
+
         return {
           ...t,
           timerRunning: false,
           startedAt: null,
-          timerSeconds: staticSecs,
-          accumulatedSeconds: staticSecs,
-          liveDurationText: formatSeconds(staticSecs),
-          hoursLoggedText: t.hoursLogged ? `${t.hoursLogged}h` : (t.hoursLoggedText || formatSeconds(staticSecs))
+          timerSeconds: todayStaticSecs,
+          todayWorkSeconds: todayStaticSecs,
+          accumulatedSeconds: staticTotalSecs,
+          liveDurationText: formatSeconds(todayStaticSecs),
+          hoursLoggedText: t.hoursLogged ? `${t.hoursLogged}h` : (t.hoursLoggedText || formatSeconds(staticTotalSecs))
         };
       });
 
@@ -586,12 +612,6 @@ export const WorkProvider = ({ children }) => {
       (userKey && localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true') ||
       (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true');
     if (!isShiftClockedIn) return null;
-
-    const hadClockedOut = Boolean(
-      readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-      readTimerStorage(currentUser, 'had_clocked_out') === true
-    );
-    if (hadClockedOut) return null;
 
     return tasks.find(t => t.timerRunning && t.status !== 'completed' && !t.completedAt && isTaskAssignedToMe(t)) || null;
   }, [tasks, currentUser, isTaskAssignedToMe, userKey]);
@@ -1800,7 +1820,11 @@ export const WorkProvider = ({ children }) => {
 
     // Existing seconds for today's session:
     // Read from unified getTaskTodaySeconds to ensure 100% synchronization
-    const existingTodaySecs = getTaskTodaySeconds(targetTask, today, now, false, false);
+    let existingTodaySecs = getTaskTodaySeconds(targetTask, today, now, false, false);
+    if (activeTimer && String(activeTimer.taskId) === String(taskId) && activeTimer.date === today && !isForOtherEmployee) {
+      const activeToday = Number(activeTimer.todayWorkSeconds || 0);
+      existingTodaySecs = Math.max(existingTodaySecs, activeToday);
+    }
     const existingTotalSecs = Number(targetTask.accumulatedSeconds ?? targetTask.timerSeconds ?? existingTodaySecs);
     let existingSecs = existingTotalSecs;
 
@@ -1819,7 +1843,7 @@ export const WorkProvider = ({ children }) => {
       timerRunning: true,
       startedAt: now,
       accumulatedSeconds: existingSecs,
-      timerSeconds: existingSecs,
+      timerSeconds: existingTodaySecs,
       todayWorkSeconds: existingTodaySecs,
       dailySessions: { ...(targetTask.dailySessions || {}), [today]: existingTodaySecs },
       date: today,
@@ -1852,14 +1876,14 @@ export const WorkProvider = ({ children }) => {
           timerRunning: true,
           startedAt: now,
           accumulatedSeconds: existingSecs,
-          timerSeconds: existingSecs,
+          timerSeconds: existingTodaySecs,
           todayWorkSeconds: existingTodaySecs,
           dailySessions: updatedDailySessions,
           activeUserId: targetUserKey,
           activeUserName: assignedEmpName,
           startedBy: currentUser?.name || 'User',
           sessionDate: today,
-          liveDurationText: formatSeconds(existingSecs),
+          liveDurationText: formatSeconds(existingTodaySecs),
           status: t.status === 'incomplete' ? 'in_progress' : t.status
         };
       }
@@ -1946,14 +1970,14 @@ export const WorkProvider = ({ children }) => {
           timerRunning: true,
           startedAt: now,
           accumulatedSeconds: existingSecs,
-          timerSeconds: existingSecs,
+          timerSeconds: existingTodaySecs,
           todayWorkSeconds: existingTodaySecs,
           dailySessions: updatedDailySessions,
           activeUserId: targetUserKey,
           activeUserName: assignedEmpName,
           startedBy: currentUser?.name || 'User',
           sessionDate: today,
-          liveDurationText: formatSeconds(existingSecs),
+          liveDurationText: formatSeconds(existingTodaySecs),
           status: t.status === 'incomplete' ? 'in_progress' : t.status
         };
       }

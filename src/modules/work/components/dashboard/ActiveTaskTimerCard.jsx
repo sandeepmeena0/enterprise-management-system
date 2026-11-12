@@ -131,9 +131,9 @@ export const ActiveTaskTimerCard = ({
                           : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800'
                       }`}>
                         ⏱️ Task: {displayActiveTask.timerRunning
-                          ? (displayActiveTask.liveDurationText || formatTimeDurationSafe(displayActiveTask.timerSeconds || 0))
-                          : (displayActiveTask.timerSeconds > 0
-                            ? `${formatTimeDurationSafe(displayActiveTask.timerSeconds)} (paused)`
+                          ? (displayActiveTask.liveDurationText || formatTimeDurationSafe(displayActiveTask.todayWorkSeconds ?? displayActiveTask.timerSeconds ?? 0))
+                          : ((Number(displayActiveTask.todayWorkSeconds ?? displayActiveTask.timerSeconds) > 0)
+                            ? `${formatTimeDurationSafe(displayActiveTask.todayWorkSeconds ?? displayActiveTask.timerSeconds)} (paused)`
                             : '00:00:00')}
                       </span>
                     </div>

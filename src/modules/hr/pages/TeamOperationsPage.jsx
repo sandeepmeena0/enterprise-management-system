@@ -618,6 +618,7 @@ export const TeamOperationsPage = () => {
         startedAt: startedAtMs,
         accumulatedSeconds: totalAccum,
         todayWorkSeconds: todayTaskBase,
+        timerSeconds: liveTaskSecs,
         liveTaskSecs,
         liveDurationText: formatSeconds(liveTaskSecs)
       };

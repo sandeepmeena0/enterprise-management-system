@@ -93,13 +93,20 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
   const liveTaskSecs = useMemo(() => {
     if (!activeRunningTask) return 0;
     if (!activeRunningTask.timerRunning) {
-      return Number(activeRunningTask.accumulatedSeconds) || Number(activeRunningTask.timerSeconds) || 0;
+      return Number(activeRunningTask.todayWorkSeconds ?? activeRunningTask.timerSeconds ?? 0);
     }
     const started = Number(activeRunningTask.startedAt);
-    const base = Number(activeRunningTask.accumulatedSeconds || 0);
+    const today = new Date().toISOString().split('T')[0];
+    let base = 0;
+    if (activeRunningTask.todayWorkSeconds !== undefined) {
+      base = Number(activeRunningTask.todayWorkSeconds) || 0;
+    } else if (activeRunningTask.dailySessions?.[today] !== undefined) {
+      base = Number(activeRunningTask.dailySessions[today]) || 0;
+    } else if (activeRunningTask.startDate === today || String(activeRunningTask.createdAt || '').startsWith(today)) {
+      base = Number(activeRunningTask.timerSeconds || 0);
+    }
     const elapsed = started > 0 ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
-    const computed = base + elapsed;
-    return Math.max(Number(activeRunningTask.timerSeconds) || 0, computed);
+    return base + elapsed;
   }, [activeRunningTask, taskTick]);
 
   // Dropdown States
