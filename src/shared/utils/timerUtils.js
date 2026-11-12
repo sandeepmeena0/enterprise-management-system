@@ -315,9 +315,8 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
     }
   }
 
-  // The true physical upper bound is time elapsed since FIRST clock in of today's shift (never from yesterday)
-  const shiftBoundTs = (firstClockInTs && firstClockInTs >= todayMidnightMs) ? firstClockInTs : todayMidnightMs;
-  const maxPhysicalElapsedToday = Math.max(0, Math.floor((nowMs - shiftBoundTs) / 1000));
+  // The true physical upper bound is time elapsed since midnight today (safely accommodates clock skew across laptops)
+  const maxPhysicalElapsedToday = maxPossibleGrossToday;
 
   // Punch sessions strictly for today's active shift (filter out sessions older than today midnight)
   let rawSessions = [];
@@ -366,42 +365,40 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
   const liveWallClockSecs = pastSessionsSecs + Math.max(0, curSessionGross - curSessionBreaks);
 
   // Multi-User Live Telemetry Support (cross-browser / incognito realtime sync)
+  const empKey = getCanonicalTimerKey(userOrEmp) || String(userOrEmp?._id || userOrEmp?.id || userOrEmp?.employeeCode || '');
+  const prevMonotonic = empKey ? (monotonicTelemetryWorkSecsMap.get(empKey) || 0) : 0;
+
   if (options.telemetry && (options.telemetry.isClockedIn || options.telemetry.clockOutTime || Number(options.telemetry.workSeconds) > 0)) {
     const telem = options.telemetry;
-    const empKey = getCanonicalTimerKey(userOrEmp) || String(userOrEmp?._id || userOrEmp?.id || userOrEmp?.employeeCode || '');
     if (telem.isClockedIn) {
       if (telem.isOnBreak) {
-        if (empKey) monotonicTelemetryWorkSecsMap.delete(empKey);
-        return Math.min(Number(telem.workSeconds) || 0, maxPhysicalElapsedToday);
+        const breakFrozen = Math.min(Math.max(Number(telem.workSeconds) || 0, prevMonotonic), maxPossibleGrossToday);
+        if (empKey && breakFrozen > 0) monotonicTelemetryWorkSecsMap.set(empKey, breakFrozen);
+        return breakFrozen;
       }
       // Smoothly tick forward every second between backend telemetry polls without resetting
       const heartbeatTs = Number(telem.timestamp || telem.fetchedAt || telem.lastHeartbeatAt || nowMs);
-      const elapsedSinceHeartbeat = Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000));
+      const elapsedSinceHeartbeat = (heartbeatTs > 0 && heartbeatTs <= nowMs) ? Math.max(0, Math.floor((nowMs - heartbeatTs) / 1000)) : 0;
       const rawTelemSecs = (Number(telem.workSeconds) || 0) + elapsedSinceHeartbeat;
 
-      // Monotonic Shield: Telemetry work seconds for an active employee ticks smoothly and never drops unexpectedly.
-      // If a new session began or user reset, allow reset if diff > 20s.
-      const prevMonotonic = monotonicTelemetryWorkSecsMap.get(empKey) || 0;
-      let liveTelemSecs = (prevMonotonic > 0 && rawTelemSecs < prevMonotonic - 20)
-        ? rawTelemSecs
-        : Math.max(prevMonotonic, rawTelemSecs);
+      // Monotonic Shield: Telemetry work seconds for an active employee ticks smoothly and NEVER drops or flickers backwards
+      let liveTelemSecs = Math.max(prevMonotonic, rawTelemSecs);
 
-      let finalLiveSecs = Math.min(liveTelemSecs, maxPhysicalElapsedToday);
-      if (finalLiveSecs >= maxPhysicalElapsedToday) {
-        monotonicTelemetryWorkSecsMap.delete(empKey);
-      } else {
+      let finalLiveSecs = Math.min(liveTelemSecs, maxPossibleGrossToday);
+      if (empKey && finalLiveSecs > 0) {
         monotonicTelemetryWorkSecsMap.set(empKey, finalLiveSecs);
       }
 
       return finalLiveSecs;
     } else if (telem.clockOutTime || options.isClockedOut) {
-      if (empKey) monotonicTelemetryWorkSecsMap.delete(empKey);
       let outSecs = Number(telem.workSeconds) || 0;
       if (outSecs <= 0 && firstClockInTs > 0 && telem.clockOutTimestamp) {
         outSecs = Math.max(0, Math.floor((Number(telem.clockOutTimestamp) - firstClockInTs) / 1000));
       }
-      outSecs = Math.max(outSecs, pastSessionsSecs, storedWorkSecs);
-      return Math.min(outSecs, maxPhysicalElapsedToday);
+      outSecs = Math.max(outSecs, pastSessionsSecs, storedWorkSecs, prevMonotonic);
+      const finalOut = Math.min(outSecs, maxPossibleGrossToday);
+      if (empKey && finalOut > 0) monotonicTelemetryWorkSecsMap.set(empKey, finalOut);
+      return finalOut;
     }
   }
 
@@ -432,17 +429,28 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       const atBreakSecs = Number(readTimerStorage(userOrEmp, 'work_seconds_at_break')) || 0;
       const frozenSecs = atBreakSecs > 0
         ? atBreakSecs
-        : ((storedWorkSecs > 0) ? storedWorkSecs : (pastSessionsSecs > 0 ? pastSessionsSecs : (Number(attRec?.workSeconds) || 0)));
-      return Math.min(frozenSecs, maxPhysicalElapsedToday);
+        : ((storedWorkSecs > 0) ? storedWorkSecs : (pastSessionsSecs > 0 ? pastSessionsSecs : (prevMonotonic > 0 ? prevMonotonic : (Number(attRec?.workSeconds) || 0))));
+      return Math.min(frozenSecs, maxPossibleGrossToday);
     }
 
-    // FLICKER FIX: Never bounce with stale storedWorkSecs. Use monotonic physical liveWallClockSecs.
-    return Math.min(liveWallClockSecs, maxPhysicalElapsedToday);
+    // Remote multi-user fallback: If this employee has active monotonic telemetry memory (remote employee on another device),
+    // smoothly tick forward from prevMonotonic rather than falling through to local wall-clock (which evaluates to 0 on another laptop)!
+    if (prevMonotonic > 0 && liveWallClockSecs === 0) {
+      const smoothRemoteSecs = Math.min(prevMonotonic + 1, maxPossibleGrossToday);
+      if (empKey) monotonicTelemetryWorkSecsMap.set(empKey, smoothRemoteSecs);
+      return smoothRemoteSecs;
+    }
+
+    // For local user or when liveWallClockSecs is active:
+    const safeLive = Math.max(liveWallClockSecs, prevMonotonic);
+    const finalSecs = Math.min(safeLive, maxPossibleGrossToday);
+    if (empKey && finalSecs > 0) monotonicTelemetryWorkSecsMap.set(empKey, finalSecs);
+    return finalSecs;
   } else if (isEffectivelyClockedOut) {
     // CLOCKED OUT: Strictly return verified frozen seconds. NEVER calculate live elapsed time or downgrade!
     let finalSecs = (storedWorkSecs > 0)
       ? storedWorkSecs
-      : (pastSessionsSecs > 0 ? pastSessionsSecs : (Number(attRec?.workSeconds) || 0));
+      : (pastSessionsSecs > 0 ? pastSessionsSecs : (prevMonotonic > 0 ? prevMonotonic : (Number(attRec?.workSeconds) || 0)));
     if (!finalSecs && attRec?.totalWorkingHours) {
       finalSecs = Math.round(Number(attRec.totalWorkingHours) * 3600);
     }
@@ -450,7 +458,7 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
       const outTs = Number(attRec?.clockOutTimestamp || readTimerStorage(userOrEmp, 'clock_out_timestamp'));
       finalSecs = Math.max(0, Math.floor((outTs - firstClockInTs) / 1000) - storedBreakSecs);
     }
-    return Math.min(finalSecs, maxPhysicalElapsedToday);
+    return Math.min(Math.max(finalSecs, prevMonotonic), maxPossibleGrossToday);
   }
 
   return 0;

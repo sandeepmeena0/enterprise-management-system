@@ -1165,7 +1165,7 @@ export const hrService = {
 
   async getLiveTelemetry(dateStr) {
     const today = dateStr || new Date().toISOString().split('T')[0];
-    return fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}`, {
+    const res = await fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}`, {
       method: 'GET'
     }, async () => {
       // LocalStorage fallback for offline / mock
@@ -1199,8 +1199,9 @@ export const hrService = {
         if (id) telemetryMap[id] = telemetryMap[key];
       });
 
-      return { success: true, data: telemetryMap };
+      return telemetryMap;
     });
+    return (res && res.data && typeof res.data === 'object') ? res.data : res;
   },
 
   // 📋 ATTENDANCE AUDIT TRAIL & ADMIN OVERRIDES

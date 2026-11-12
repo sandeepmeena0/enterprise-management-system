@@ -190,19 +190,40 @@ export const DashboardPage = () => {
   // ── Multi-User Live Telemetry Poller (Every 3.5s for real-time remote/incognito sync) ──
   useEffect(() => {
     let isMounted = true;
+    let isFetching = false;
     const fetchTelemetry = async () => {
+      if (isFetching) return;
+      isFetching = true;
       try {
         const res = await hrService.getLiveTelemetry(todayStr);
         if (isMounted && res) {
           const map = (res.data && typeof res.data === 'object') ? res.data : res;
-          const now = Date.now();
-          const enriched = {};
-          Object.keys(map).forEach(k => {
-            enriched[k] = { ...map[k], fetchedAt: map[k].fetchedAt || now };
-          });
-          setLiveTelemetryMap(enriched);
+          if (map && typeof map === 'object' && Object.keys(map).length > 0) {
+            const now = Date.now();
+            setLiveTelemetryMap(prev => {
+              const next = { ...prev };
+              Object.keys(map).forEach(k => {
+                const incoming = map[k];
+                if (!incoming) return;
+                const existing = next[k];
+                const safeWorkSecs = Math.max(Number(incoming.workSeconds || 0), Number(existing?.workSeconds || 0));
+                const merged = {
+                  ...existing,
+                  ...incoming,
+                  workSeconds: safeWorkSecs,
+                  fetchedAt: incoming.fetchedAt || now
+                };
+                next[k] = merged;
+                if (k.toLowerCase() !== k) next[k.toLowerCase()] = merged;
+                if (k.toUpperCase() !== k) next[k.toUpperCase()] = merged;
+              });
+              return next;
+            });
+          }
         }
-      } catch (_) {}
+      } catch (_) {} finally {
+        isFetching = false;
+      }
     };
 
     fetchTelemetry();
@@ -613,8 +634,10 @@ export const DashboardPage = () => {
     );
 
     const telem = liveTelemetryMap[String(empId)] ||
-                  (emp.employeeCode && liveTelemetryMap[String(emp.employeeCode)]) ||
-                  (empKey && liveTelemetryMap[String(empKey)]) || null;
+                  (emp.employeeCode && (liveTelemetryMap[String(emp.employeeCode)] || liveTelemetryMap[String(emp.employeeCode).toUpperCase()] || liveTelemetryMap[String(emp.employeeCode).toLowerCase()])) ||
+                  (empKey && (liveTelemetryMap[String(empKey)] || liveTelemetryMap[String(empKey).toUpperCase()] || liveTelemetryMap[String(empKey).toLowerCase()])) ||
+                  (emp.email && liveTelemetryMap[String(emp.email).toLowerCase()]) ||
+                  null;
 
     const isSelf = Boolean(currentUser && (
       String(empId) === String(currentUser._id) ||

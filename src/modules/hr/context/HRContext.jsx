@@ -197,7 +197,7 @@ export const HRProvider = ({ children }) => {
       try {
         if (Array.isArray(atts) && atts.length > 0) {
           if (isPrivileged) {
-            saveCollection(KEYS.ATTENDANCE, atts);
+            localStorage.setItem(KEYS.ATTENDANCE, JSON.stringify(atts));
           } else {
             const existing = getCollection(KEYS.ATTENDANCE) || [];
             const attMap = new Map();
@@ -209,7 +209,7 @@ export const HRProvider = ({ children }) => {
               const k = `${a.employeeId || a.employeeCode || (a.employee?._id || a.employee)}_${a.date}`;
               attMap.set(k, a);
             });
-            saveCollection(KEYS.ATTENDANCE, Array.from(attMap.values()));
+            localStorage.setItem(KEYS.ATTENDANCE, JSON.stringify(Array.from(attMap.values())));
           }
         }
       } catch (_) {}

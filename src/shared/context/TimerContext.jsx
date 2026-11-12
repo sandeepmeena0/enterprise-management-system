@@ -2214,11 +2214,18 @@ export const TimerProvider = ({ children }) => {
         } catch (_) {}
 
         const bStartMs = Number(localStorage.getItem(`ems_timer_${uKey}_break_start_timestamp`)) || undefined;
+        const firstClockInTs = Number(localStorage.getItem(`ems_timer_${uKey}_first_clock_in_timestamp`)) ||
+                               Number(localStorage.getItem(`ems_timer_${uKey}_clock_in_timestamp`)) || undefined;
+        const firstClockInStr = localStorage.getItem(`ems_timer_${uKey}_first_clock_in_time`) ||
+                                localStorage.getItem(`ems_timer_${uKey}_login_time`) || state.loginTime || loginTime;
+
         hrService.sendHeartbeat({
           employeeId: state.targetEmpId || uKey,
           employeeCode: state.targetEmpCode || uKey,
           isClockedIn: true,
-          clockInTime: state.loginTime || loginTime,
+          clockInTime: firstClockInStr,
+          firstClockInTime: firstClockInStr,
+          clockInTimestamp: firstClockInTs,
           currentSessionStartTimestamp: sessStart,
           isOnBreak: Boolean(state.isOnBreak),
           breakType: state.isOnBreak ? state.breakType : null,

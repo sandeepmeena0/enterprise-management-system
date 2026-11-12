@@ -1164,7 +1164,9 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         }
         const curSessionElapsed = (sessStart > 0 && sessStart <= now) ? Math.max(0, Math.floor((now - sessStart) / 1000)) : 0;
         const sessionBased = pastSessionsSecs + curSessionElapsed;
-        liveWorkSecs = Math.min(sessionBased, maxAllowedSinceClockIn);
+        const dbWorkSecs = Number(r.workSeconds || 0);
+        const bestWorkSecs = Math.max(sessionBased, dbWorkSecs);
+        liveWorkSecs = Math.min(bestWorkSecs, maxAllowedSinceClockIn);
       }
     } else if (isClockedOut) {
       let finalSecs = pastSessionsSecs > 0 ? pastSessionsSecs : (Number(r.workSeconds) || 0);
@@ -1289,10 +1291,10 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     }
   });
 
-  // Merge ultra-fresh entries from in-memory heartbeat cache (0ms instant live reflection)
+  // Merge ultra-fresh entries from in-memory heartbeat cache (0ms instant live reflection, up to 3 mins tolerance for background tab throttling)
   liveTelemetryCache.forEach((cachedVal, cacheKey) => {
     if (!cachedVal) return;
-    if (cachedVal.date === today && (now - (cachedVal.lastHeartbeatAt || 0)) < 30000) {
+    if (cachedVal.date === today && (now - (cachedVal.lastHeartbeatAt || 0)) < 180000) {
       const code = String(cachedVal.employeeCode || '').trim().toUpperCase();
       const id = String(cachedVal.employeeId || '');
       const existingTelem = telemetryMap[code] || telemetryMap[id] || null;
