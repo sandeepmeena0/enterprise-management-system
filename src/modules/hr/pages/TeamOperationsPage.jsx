@@ -212,7 +212,20 @@ export const TeamOperationsPage = () => {
                 type === SYNC_EVENTS.TASK_TIMER_STOPPED ||
                 type === SYNC_EVENTS.TASK_COMPLETED
               ) {
-                next[k] = { ...cur, activeTask: null };
+                if (type === SYNC_EVENTS.TASK_TIMER_PAUSED && cur.activeTask) {
+                  next[k] = {
+                    ...cur,
+                    activeTask: {
+                      ...cur.activeTask,
+                      timerRunning: false,
+                      startedAt: null,
+                      todayWorkSeconds: payload.todayWorkSeconds || payload.accumulatedSeconds || cur.activeTask.todayWorkSeconds || 0,
+                      accumulatedSeconds: payload.accumulatedSeconds || cur.activeTask.accumulatedSeconds || 0
+                    }
+                  };
+                } else {
+                  next[k] = { ...cur, activeTask: null };
+                }
               } else if (type === SYNC_EVENTS.SHIFT_BREAK_STARTED) {
                 next[k] = {
                   ...cur,
@@ -558,18 +571,29 @@ export const TeamOperationsPage = () => {
       ? activeTimer
       : (empTasks.find(t => t.timerRunning) || null);
 
-    const telemRunningTask = (!isTimerExplicitlyPaused && telem?.activeTask && (telem.activeTask.timerRunning !== false || telem.activeTask.startedAt))
+    const telemRunningTask = telem?.activeTask && (telem.activeTask.timerRunning !== false || telem.activeTask.startedAt)
       ? telem.activeTask
       : null;
 
-    const candidateTask = localRunningTask || (isTimerExplicitlyPaused ? null : telemRunningTask);
+    let candidateTask = null;
+    if (localRunningTask) {
+      candidateTask = localRunningTask;
+    } else if (isTimerExplicitlyPaused && activeTimer) {
+      candidateTask = activeTimer;
+    } else if (telemRunningTask) {
+      candidateTask = telemRunningTask;
+    } else if (telem?.activeTask) {
+      candidateTask = telem.activeTask;
+    } else {
+      candidateTask = empTasks.find(t => t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0 && t.status !== 'completed') || null;
+    }
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave) {
-      const isTimerRunning = Boolean(candidateTask.timerRunning !== false && !effectiveOnBreak);
+      const isTimerRunning = Boolean(candidateTask.timerRunning && !effectiveOnBreak);
       const taskIdentityKey = String(candidateTask.taskId || candidateTask._id || candidateTask.id || candidateTask.taskCode || empKey);
 
       let startedAtMs = Number(candidateTask.startedAt) || (typeof candidateTask.startedAt === 'string' ? new Date(candidateTask.startedAt).getTime() : 0);
-      if (!startedAtMs || isNaN(startedAtMs)) {
+      if (isTimerRunning && (!startedAtMs || isNaN(startedAtMs))) {
         const cached = liveTaskMemoryRef.current.get(taskIdentityKey);
         if (cached?.startedAt) {
           startedAtMs = cached.startedAt;
@@ -592,19 +616,21 @@ export const TeamOperationsPage = () => {
         todayTaskBase = Number(candidateTask.todayWorkSeconds);
       } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
         todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
+      } else if (candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
+        todayTaskBase = Number(candidateTask.todayWorkSeconds);
       } else {
-        todayTaskBase = 0;
+        todayTaskBase = Number(candidateTask.timerSeconds || 0);
       }
 
-      const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
+      const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || todayTaskBase));
       const rawLiveSecs = todayTaskBase + elapsed;
 
       // Monotonic Shield: timer seconds can NEVER jump backwards or reset to 1-2-3s!
       const prevSecs = liveTaskMemoryRef.current.get(taskIdentityKey)?.lastLiveSecs || 0;
-      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : rawLiveSecs;
+      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : Math.max(prevSecs, todayTaskBase);
 
       liveTaskMemoryRef.current.set(taskIdentityKey, {
-        startedAt: startedAtMs,
+        startedAt: isTimerRunning ? startedAtMs : null,
         lastLiveSecs: liveTaskSecs
       });
 
@@ -616,7 +642,7 @@ export const TeamOperationsPage = () => {
         title: candidateTask.title || 'Live Task',
         projectName: candidateTask.projectName || 'General Work',
         timerRunning: isTimerRunning,
-        startedAt: startedAtMs,
+        startedAt: isTimerRunning ? startedAtMs : null,
         accumulatedSeconds: totalAccum,
         todayWorkSeconds: todayTaskBase,
         timerSeconds: liveTaskSecs,
@@ -878,24 +904,51 @@ export const TeamOperationsPage = () => {
       const empId = String(emp._id || emp.id || '');
       const empCode = String(emp.employeeCode || '');
       const empKey = empCode || empId;
+      const now = Date.now();
 
-      // 1. Optimistic live telemetry update (0ms instant UI reflection)
+      const targetTask = (tasks || []).find(t => String(t._id || t.id) === String(taskId)) || task;
+      const pausedT = syncTaskPauseState(targetTask, { nowMs: now, todayStr });
+
+      const pausedActiveTask = {
+        taskId,
+        taskCode: task.taskCode || targetTask.taskCode || 'TSK',
+        title: task.title || targetTask.title || 'Task',
+        projectName: task.projectName || targetTask.projectName || 'General Work',
+        timerRunning: false,
+        startedAt: null,
+        accumulatedSeconds: pausedT.accumulatedSeconds,
+        todayWorkSeconds: pausedT.todayWorkSeconds,
+        timerSeconds: pausedT.todayWorkSeconds,
+        date: todayStr,
+        sessionDate: todayStr,
+        lastUpdated: now
+      };
+
+      // 1. Optimistic live telemetry update (0ms instant UI reflection with preserved paused seconds)
       setLiveTelemetryMap(prev => {
         const next = { ...prev };
         [empId, empCode, empKey].filter(Boolean).forEach(k => {
           if (next[k]) {
-            next[k] = { ...next[k], activeTask: null };
+            next[k] = { ...next[k], activeTask: pausedActiveTask };
           }
         });
         return next;
       });
 
-      // 2. Clear memory cache for this task
+      // 2. DO NOT delete memory cache! Update memory with latest paused seconds
       const taskKey = String(taskId);
-      liveTaskMemoryRef.current.delete(taskKey);
-      [empId, empCode, empKey].filter(Boolean).forEach(k => liveTaskMemoryRef.current.delete(k));
+      liveTaskMemoryRef.current.set(taskKey, {
+        startedAt: null,
+        lastLiveSecs: pausedT.todayWorkSeconds
+      });
+      [empId, empCode, empKey].filter(Boolean).forEach(k => {
+        liveTaskMemoryRef.current.set(k, {
+          startedAt: null,
+          lastLiveSecs: pausedT.todayWorkSeconds
+        });
+      });
 
-      // 3. Update localStorage for employee
+      // 3. Update localStorage for employee with FULL paused state
       const timerKeys = [
         `ems_active_task_timer_${empKey}`,
         empId ? `ems_active_task_timer_${empId}` : null,
@@ -903,24 +956,16 @@ export const TeamOperationsPage = () => {
       ].filter(Boolean);
       timerKeys.forEach(k => {
         try {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            parsed.timerRunning = false;
-            parsed.startedAt = null;
-            localStorage.setItem(k, JSON.stringify(parsed));
-          } else {
-            localStorage.setItem(k, JSON.stringify({ timerRunning: false, taskId, startedAt: null }));
-          }
+          localStorage.setItem(k, JSON.stringify(pausedActiveTask));
         } catch (_) {}
       });
 
-      // 4. Send backend heartbeat with activeTask: null
+      // 4. Send backend heartbeat with activeTask object (timerRunning: false) so Atlas has full data
       try {
         hrService.sendHeartbeat({
           employeeId: empId || empKey,
           employeeCode: empCode || empKey,
-          activeTask: null
+          activeTask: pausedActiveTask
         }).catch(() => {});
       } catch (_) {}
 
@@ -950,20 +995,33 @@ export const TeamOperationsPage = () => {
   // 4. Admin Instant 0ms Task Start / Resume
   const handleAdminStartTask = async (task, emp) => {
     try {
-      const taskId = task._id || task.id;
+      const taskId = task._id || task.id || task.taskId;
       const empId = String(emp._id || emp.id || '');
       const empCode = String(emp.employeeCode || '');
       const empKey = empCode || empId;
       const now = Date.now();
 
+      // Get exact today seconds from task
+      const targetTask = (tasks || []).find(t => String(t._id || t.id) === String(taskId)) || task;
+      const cached = liveTaskMemoryRef.current.get(String(taskId)) || liveTaskMemoryRef.current.get(empKey);
+      const existingTodaySecs = getTaskTodaySeconds(targetTask, todayStr, now, false, false) ||
+        Number(cached?.lastLiveSecs) ||
+        Number(targetTask.todayWorkSeconds ?? targetTask.dailySessions?.[todayStr] ?? 0);
+      const existingAccumSecs = Math.max(Number(targetTask.accumulatedSeconds || 0), existingTodaySecs);
+
       const runningObj = {
         taskId,
-        taskCode: task.taskCode || 'TSK',
-        title: task.title,
-        projectName: task.projectName || 'General Work',
+        taskCode: targetTask.taskCode || 'TSK',
+        title: targetTask.title,
+        projectName: targetTask.projectName || 'General Work',
         timerRunning: true,
         startedAt: now,
-        accumulatedSeconds: Number(task.accumulatedSeconds || task.timerSeconds || 0)
+        accumulatedSeconds: existingAccumSecs,
+        todayWorkSeconds: existingTodaySecs,
+        timerSeconds: existingTodaySecs,
+        date: todayStr,
+        sessionDate: todayStr,
+        lastUpdated: now
       };
 
       // 1. Optimistic live telemetry update (0ms instant UI reflection)
@@ -977,13 +1035,31 @@ export const TeamOperationsPage = () => {
         return next;
       });
 
-      // 2. Set memory cache
+      // 2. Set memory cache starting from existing today seconds
       liveTaskMemoryRef.current.set(String(taskId), {
         startedAt: now,
-        lastLiveSecs: Number(task.accumulatedSeconds || task.timerSeconds || 0)
+        lastLiveSecs: existingTodaySecs
+      });
+      [empId, empCode, empKey].filter(Boolean).forEach(k => {
+        liveTaskMemoryRef.current.set(k, {
+          startedAt: now,
+          lastLiveSecs: existingTodaySecs
+        });
       });
 
-      // 3. WorkContext start
+      // 3. Save to localStorage
+      const timerKeys = [
+        `ems_active_task_timer_${empKey}`,
+        empId ? `ems_active_task_timer_${empId}` : null,
+        empCode ? `ems_active_task_timer_${empCode}` : null
+      ].filter(Boolean);
+      timerKeys.forEach(k => {
+        try {
+          localStorage.setItem(k, JSON.stringify(runningObj));
+        } catch (_) {}
+      });
+
+      // 4. WorkContext start
       startTaskTimer(taskId, { skipClockInCheck: true });
 
       setSyncTick(t => t + 1);
@@ -1983,21 +2059,31 @@ export const TeamOperationsPage = () => {
                         {item.runningTask ? (
                           <div className="max-w-[240px]">
                             <div className="flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.runningTask.timerRunning ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
                               <strong className="text-[11.5px] text-slate-900 dark:text-slate-100 truncate">
                                 #{item.runningTask.taskCode || 'TSK'}: {item.runningTask.title}
                               </strong>
                             </div>
                             <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
-                              <span>⏱️ <strong className="text-sky-600 dark:text-sky-400">{item.runningTask.liveDurationText}</strong></span>
+                              <span>⏱️ <strong className="text-sky-600 dark:text-sky-400">{item.runningTask.liveDurationText}</strong> {item.runningTask.timerRunning ? '' : '(Paused)'}</span>
                               {isPrivileged && (
-                                <button
-                                  onClick={() => handleAdminPauseTask(item.runningTask, emp)}
-                                  className="border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                                  title="Instant pause task timer for employee"
-                                >
-                                  Pause ⏸️
-                                </button>
+                                item.runningTask.timerRunning ? (
+                                  <button
+                                    onClick={() => handleAdminPauseTask(item.runningTask, emp)}
+                                    className="border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                                    title="Instant pause task timer for employee"
+                                  >
+                                    Pause ⏸️
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleAdminStartTask(item.runningTask, emp)}
+                                    className="border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors inline-flex items-center gap-0.5"
+                                    title="Resume task timer for employee"
+                                  >
+                                    <Play size={9} className="fill-emerald-600" /> Resume
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>

@@ -750,14 +750,25 @@ export const DashboardPage = () => {
       ? telem.activeTask
       : null;
 
-    const candidateTask = localRunningTask || telemRunningTask;
+    let candidateTask = null;
+    if (localRunningTask) {
+      candidateTask = localRunningTask;
+    } else if (isExplicitlyPausedLocally && activeTimer) {
+      candidateTask = activeTimer;
+    } else if (telemRunningTask) {
+      candidateTask = telemRunningTask;
+    } else if (!isSelf && telem?.activeTask) {
+      candidateTask = telem.activeTask;
+    } else {
+      candidateTask = empTasks.find(t => t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0 && !isTaskActuallyCompleted(t)) || null;
+    }
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave && !isTaskActuallyCompleted(candidateTask)) {
-      const isTimerRunning = Boolean(candidateTask.timerRunning !== false && !effectiveOnBreak);
+      const isTimerRunning = Boolean(candidateTask.timerRunning && !effectiveOnBreak);
       const taskIdentityKey = String(candidateTask.taskId || candidateTask._id || candidateTask.id || candidateTask.taskCode || empKey);
 
       let startedAtMs = Number(candidateTask.startedAt) || (typeof candidateTask.startedAt === 'string' ? new Date(candidateTask.startedAt).getTime() : 0);
-      if (!startedAtMs || isNaN(startedAtMs)) {
+      if (isTimerRunning && (!startedAtMs || isNaN(startedAtMs))) {
         const cached = liveTaskMemoryRef.current.get(taskIdentityKey);
         if (cached?.startedAt) {
           startedAtMs = cached.startedAt;
@@ -780,19 +791,21 @@ export const DashboardPage = () => {
         todayTaskBase = Number(candidateTask.todayWorkSeconds);
       } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
         todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
+      } else if (candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
+        todayTaskBase = Number(candidateTask.todayWorkSeconds);
       } else {
-        todayTaskBase = 0;
+        todayTaskBase = Number(candidateTask.timerSeconds || 0);
       }
 
-      const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || 0));
+      const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || todayTaskBase));
       const rawLiveSecs = todayTaskBase + elapsed;
 
       // Monotonic Shield: timer seconds can NEVER jump backwards or reset to 1-2-3s!
       const prevSecs = liveTaskMemoryRef.current.get(taskIdentityKey)?.lastLiveSecs || 0;
-      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : rawLiveSecs;
+      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : Math.max(prevSecs, todayTaskBase);
 
       liveTaskMemoryRef.current.set(taskIdentityKey, {
-        startedAt: startedAtMs,
+        startedAt: isTimerRunning ? startedAtMs : null,
         lastLiveSecs: liveTaskSecs
       });
 
@@ -804,7 +817,7 @@ export const DashboardPage = () => {
         title: candidateTask.title || 'Live Task',
         projectName: candidateTask.projectName || 'General Work',
         timerRunning: isTimerRunning,
-        startedAt: startedAtMs,
+        startedAt: isTimerRunning ? startedAtMs : null,
         accumulatedSeconds: totalAccum,
         todayWorkSeconds: todayTaskBase,
         timerSeconds: liveTaskSecs,
