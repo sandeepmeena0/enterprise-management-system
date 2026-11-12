@@ -233,11 +233,10 @@ export const WeeklyTimeLogsCard = ({
                     const tId = String(t._id || t.id);
 
                     const isRunning = Boolean(
-                        t.timerRunning ||
-                        (activeRunningTask && (
+                        (t.timerRunning || (activeRunningTask?.timerRunning && (
                             String(activeRunningTask.taskId || activeRunningTask._id) === tId ||
                             (activeRunningTask.taskCode && t.taskCode && activeRunningTask.taskCode === t.taskCode)
-                        ))
+                        ))) && isClockedIn
                     );
 
                     const isWorkedToday = isRunning ||
@@ -248,7 +247,7 @@ export const WeeklyTimeLogsCard = ({
 
                     const activeTaskObj = isRunning
                         ? { ...t, ...(activeRunningTask || {}), timerRunning: true }
-                        : t;
+                        : { ...t, timerRunning: false, startedAt: null };
 
                     const taskTodaySecs = getTaskTodaySeconds(activeTaskObj, dateStr, nowMs, true, false);
                     if (taskTodaySecs <= 0) return;

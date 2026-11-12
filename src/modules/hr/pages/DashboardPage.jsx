@@ -985,6 +985,8 @@ export const DashboardPage = () => {
       const now = Date.now();
       const allTasks = getCollection(KEYS.TASKS) || [];
       let currentSecs = 0;
+      let pausedTodaySecs = 0;
+      let pausedDailySessions = undefined;
       let matchedTaskId = taskId;
 
       const updatedTasks = allTasks.map(t => {
@@ -994,6 +996,8 @@ export const DashboardPage = () => {
           matchedTaskId = t._id || t.id;
           const pausedT = syncTaskPauseState(t, { nowMs: now, todayStr });
           currentSecs = pausedT.accumulatedSeconds;
+          pausedTodaySecs = pausedT.todayWorkSeconds;
+          pausedDailySessions = pausedT.dailySessions;
           return {
             ...t,
             ...pausedT,
@@ -1030,8 +1034,11 @@ export const DashboardPage = () => {
           timerRunning: false,
           startedAt: null,
           accumulatedSeconds: currentSecs,
-          timerSeconds: currentSecs,
+          timerSeconds: pausedTodaySecs,
+          todayWorkSeconds: pausedTodaySecs,
+          dailySessions: pausedDailySessions,
           sessionDate: todayStr,
+          lastUpdated: now,
           hoursLogged: +(currentSecs / 3600).toFixed(2),
           hoursLoggedText: formatSeconds(currentSecs)
         }).catch(err => console.warn('Sync admin pause to DB:', err));

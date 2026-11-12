@@ -336,8 +336,16 @@ const markAttendance = asyncHandler(async (req, res) => {
     notes: notes || (auditNote ? `Adjusted by ${adminActorName}: ${auditNote}` : ''),
     markedBy: adminActorName,
     overtimeHours,
-    overtimeSeconds
+    overtimeSeconds,
+    hasOvertime: overtimeHours > 0
   };
+
+  if (overtimeHours > 0) {
+    updateFields.overtimeStatus = req.body.overtimeStatus || 'approved';
+    updateFields.overtimeReason = req.body.overtimeReason || 'Worked beyond standard shift hours';
+    updateFields.overtimeApprovedBy = 'System (Auto)';
+    updateFields.overtimeApprovedAt = new Date();
+  }
 
   const existingRecord = await Attendance.findOne({
     date,
@@ -703,6 +711,11 @@ const forceClockOut = asyncHandler(async (req, res) => {
     if (finalWorkHours > standardWorkHours) {
       attRecord.overtimeHours = +(finalWorkHours - standardWorkHours).toFixed(2);
       attRecord.overtimeSeconds = Math.round(attRecord.overtimeHours * 3600);
+      attRecord.hasOvertime = true;
+      attRecord.overtimeStatus = attRecord.overtimeStatus && attRecord.overtimeStatus !== 'none' ? attRecord.overtimeStatus : 'approved';
+      attRecord.overtimeReason = attRecord.overtimeReason || 'Worked beyond standard shift hours';
+      attRecord.overtimeApprovedBy = 'System (Auto)';
+      attRecord.overtimeApprovedAt = new Date();
     }
     attRecord.notes = `Manual Clock-Out by Admin ${adminName}: "${noteText}"`;
     attRecord.markedBy = adminName;
@@ -795,7 +808,14 @@ const forceClockOut = asyncHandler(async (req, res) => {
 
 // ─── GET /api/attendance/overtime ─────────────────────────────────────────────
 const getOvertimeRequests = asyncHandler(async (req, res) => {
-  const query = { overtimeStatus: { $in: ['pending', 'approved', 'rejected'] } };
+  const query = {
+    $or: [
+      { overtimeStatus: { $in: ['pending', 'approved', 'rejected'] } },
+      { overtimeSeconds: { $gt: 0 } },
+      { overtimeHours: { $gt: 0 } },
+      { hasOvertime: true }
+    ]
+  };
   const records = await Attendance.find(query).sort({ date: -1, updatedAt: -1 });
   res.json({ success: true, count: records.length, data: records });
 });
@@ -1013,6 +1033,12 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
           activeTask: payload.activeTask,
           lastHeartbeatAt: payload.lastHeartbeatAt
         };
+        if (overtimeSecs > 0) {
+          updateObj.overtimeStatus = existing?.overtimeStatus && existing.overtimeStatus !== 'none' ? existing.overtimeStatus : 'approved';
+          updateObj.overtimeReason = existing?.overtimeReason || 'Worked beyond standard shift hours';
+          updateObj.overtimeApprovedBy = 'System (Auto)';
+          updateObj.overtimeApprovedAt = existing?.overtimeApprovedAt || new Date();
+        }
         if (payload.clockInTime) updateObj.clockInTime = payload.clockInTime;
         if (payload.clockInTimestamp) updateObj.clockInTimestamp = payload.clockInTimestamp;
         if (payload.currentSessionStartTimestamp) updateObj.currentSessionStartTimestamp = payload.currentSessionStartTimestamp;

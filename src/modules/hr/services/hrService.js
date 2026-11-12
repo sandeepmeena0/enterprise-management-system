@@ -1080,6 +1080,7 @@ export const hrService = {
         overtimeHours,
         overtimeSeconds,
         hasOvertime: overtimeHours > 0,
+        overtimeStatus: overtimeHours > 0 ? (attendanceData.overtimeStatus || (existingIndex >= 0 ? attendance[existingIndex].overtimeStatus : 'approved') || 'approved') : null,
         isLate: isLateCalc,
         lateByMinutes,
         notes: notes || '',
@@ -1102,6 +1103,31 @@ export const hrService = {
       }
 
       saveCollection(KEYS.ATTENDANCE, attendance);
+
+      if (overtimeHours > 0) {
+        let overtimes = getCollection(KEYS.ATTENDANCE_OVERTIME) || [];
+        const otIdx = overtimes.findIndex(o => o.date === date && (String(o.employeeId) === String(record.employeeId) || o.employeeCode === record.employeeCode));
+        const otPayload = {
+          _id: record._id,
+          employeeId: record.employeeId,
+          employeeCode: record.employeeCode,
+          employeeName: record.employeeName,
+          date,
+          overtimeHours,
+          overtimeSeconds,
+          overtimeStatus: 'approved',
+          status: 'approved',
+          overtimeReason: 'Worked beyond standard shift hours',
+          updatedAt: new Date().toISOString()
+        };
+        if (otIdx >= 0) {
+          overtimes[otIdx] = { ...overtimes[otIdx], ...otPayload };
+        } else {
+          overtimes.unshift(otPayload);
+        }
+        saveCollection(KEYS.ATTENDANCE_OVERTIME, overtimes);
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE_OVERTIME } }));
+      }
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
       return record;
     });
@@ -1415,6 +1441,24 @@ export const hrService = {
       headers: getAuthHeaders()
     }, async () => {
       let overtimes = getCollection(KEYS.ATTENDANCE_OVERTIME) || [];
+      const attendance = getCollection(KEYS.ATTENDANCE) || [];
+      attendance.forEach(a => {
+        if ((a.overtimeHours > 0 || a.overtimeSeconds > 0 || a.hasOvertime) && !overtimes.some(o => (o._id && String(o._id) === String(a._id)) || (o.date === a.date && o.employeeId === a.employeeId))) {
+          overtimes.push({
+            _id: a._id || `ot_${a.date}_${a.employeeId}`,
+            date: a.date,
+            employeeId: a.employeeId,
+            employeeCode: a.employeeCode,
+            employeeName: a.employeeName,
+            overtimeHours: a.overtimeHours,
+            overtimeSeconds: a.overtimeSeconds,
+            overtimeStatus: a.overtimeStatus || 'approved',
+            status: a.overtimeStatus || 'approved',
+            overtimeReason: a.overtimeReason || 'Worked beyond standard shift hours',
+            createdAt: a.updatedAt || a.createdAt || new Date().toISOString()
+          });
+        }
+      });
       return overtimes;
     });
   },
