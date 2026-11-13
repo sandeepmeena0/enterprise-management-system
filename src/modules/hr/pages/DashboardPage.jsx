@@ -681,7 +681,7 @@ export const DashboardPage = () => {
       isClockedOut,
       isOnBreak: effectiveOnBreak,
       attRec,
-      telemetry: isSelf ? null : telem
+      telemetry: telem
     });
 
     let finalBreakSecs = storedBreakSecs;
@@ -736,8 +736,9 @@ export const DashboardPage = () => {
     }
 
     const isExplicitlyPausedLocally = Boolean(
-      (activeTimer && activeTimer.timerRunning === false) ||
-      (isSelf && empTasks.length > 0 && empTasks.every(t => !t.timerRunning))
+      activeTimer && activeTimer.timerRunning === false &&
+      (!activeTimer.date || activeTimer.date === todayStr) &&
+      Number(activeTimer.lastUpdated || 0) >= Number(telem?.activeTask?.startedAt || 0)
     );
 
     let localRunningTask = null;
@@ -747,7 +748,7 @@ export const DashboardPage = () => {
       localRunningTask = empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)) || null;
     }
 
-    const telemRunningTask = (!isSelf && !isExplicitlyPausedLocally && telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
+    const telemRunningTask = (!isExplicitlyPausedLocally && telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
       ? telem.activeTask
       : null;
 
@@ -758,7 +759,7 @@ export const DashboardPage = () => {
       candidateTask = activeTimer;
     } else if (telemRunningTask) {
       candidateTask = telemRunningTask;
-    } else if (!isSelf && telem?.activeTask) {
+    } else if (telem?.activeTask) {
       candidateTask = telem.activeTask;
     } else {
       candidateTask = empTasks.find(t => (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.timerSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) && !isTaskActuallyCompleted(t)) || null;

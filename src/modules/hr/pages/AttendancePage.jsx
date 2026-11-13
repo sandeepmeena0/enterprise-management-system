@@ -65,9 +65,9 @@ export const AttendancePage = () => {
   } = useHR();
 
   const currentUser = authUser || hrUser;
-  const isPrivileged = React.useMemo(() => isHRorAdmin(currentUser), [currentUser]);
   const userRole = React.useMemo(() => getUserRole(currentUser), [currentUser]);
   const perms = React.useMemo(() => getUserModulePermissions(currentUser), [currentUser]);
+  const isPrivileged = React.useMemo(() => isHRorAdmin(currentUser) || perms?.viewAllAttendance === true || perms?.allAccess === true, [currentUser, perms]);
   // Can view team attendance if privileged, or explicitly granted viewAllAttendance / allAccess
   const canViewAllAttendance = isPrivileged || perms?.viewAllAttendance === true || perms?.allAccess === true;
   const canExport = React.useMemo(() => canExportData(currentUser, 'attendance'), [currentUser]);

@@ -132,10 +132,44 @@ export const ManagePermissionsModal = ({ isOpen, onClose, employee }) => {
         delete cleanPerms.delegationExpiresAt;
       }
 
+      // Auto-grant parent module dependencies for granular permissions
+      if (cleanPerms.createLeads || cleanPerms.editLeads || cleanPerms.deleteLeads) {
+        cleanPerms.accessCRM = true;
+        cleanPerms.leads = true;
+      }
+      if (cleanPerms.createTasks || cleanPerms.editTasks || cleanPerms.deleteTasks) {
+        cleanPerms.tasks = true;
+        cleanPerms.accessTasks = true;
+      }
+      if (cleanPerms.viewAllAttendance || cleanPerms.markAttendance || cleanPerms.editAttendance || cleanPerms.forceClockOut) {
+        cleanPerms.attendance = true;
+        cleanPerms.accessAttendance = true;
+      }
+      if (cleanPerms.approveLeaves || cleanPerms.manageLeaves) {
+        cleanPerms.leaves = true;
+        cleanPerms.accessLeaves = true;
+      }
+      if (cleanPerms.createTickets || cleanPerms.manageTickets) {
+        cleanPerms.tickets = true;
+        cleanPerms.accessCRM = true;
+      }
+      if (cleanPerms.createExpenses || cleanPerms.approveExpenses) {
+        cleanPerms.finance = true;
+        cleanPerms.expenses = true;
+      }
+      if (cleanPerms.manageEmployees) {
+        cleanPerms.employees = true;
+        cleanPerms.accessHR = true;
+      }
+
       const underlyingBaseRole = employee.baseRole || classifyBaseRole(employee) || 'team_member';
       const resolvedSystemRole = isDelegated
         ? 'admin'
         : ((employee.systemRole && employee.systemRole !== 'admin') ? employee.systemRole : underlyingBaseRole);
+
+      const cleanRole = isDelegated
+        ? 'Administrator'
+        : (underlyingBaseRole === 'hr' ? 'HR Manager' : (underlyingBaseRole === 'team_leader' ? 'Team Leader' : (employee.designation || 'Team Member')));
 
       const targetIsAdmin = Boolean(isTargetPrimary || isDelegated);
 
@@ -169,7 +203,8 @@ export const ManagePermissionsModal = ({ isOpen, onClose, employee }) => {
           isDelegatedAdmin: isDelegated,
           isAdmin: targetIsAdmin,
           delegationExpiresAt: isDelegated ? employee.delegationExpiresAt : null,
-          systemRole: resolvedSystemRole
+          systemRole: resolvedSystemRole,
+          role: cleanRole
         });
       } else {
         await updateEmployee(employee._id, {
@@ -178,7 +213,8 @@ export const ManagePermissionsModal = ({ isOpen, onClose, employee }) => {
           isDelegatedAdmin: isDelegated,
           isAdmin: targetIsAdmin,
           delegationExpiresAt: isDelegated ? employee.delegationExpiresAt : null,
-          systemRole: resolvedSystemRole
+          systemRole: resolvedSystemRole,
+          role: cleanRole
         });
       }
 

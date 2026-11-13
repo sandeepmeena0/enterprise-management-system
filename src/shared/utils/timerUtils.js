@@ -491,6 +491,7 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
   if (!task) return 0;
   const targetDate = dateStr || getLocalDateStr();
   const actualToday = getLocalDateStr();
+  const isCreatedOnTargetDate = String(task.createdAt || '').startsWith(targetDate) || task.startDate === targetDate;
 
   // 1. If dailySessions explicitly records this date:
   if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
@@ -505,9 +506,12 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     return Math.min(baseSecs + liveSecs, 24 * 3600);
   }
 
-  // 2. If sessionDate is targetDate, and todayWorkSeconds or timerSeconds is recorded:
-  if (task.sessionDate === targetDate && (Number(task.todayWorkSeconds || 0) > 0 || Number(task.timerSeconds || 0) > 0)) {
-    const baseSecs = Math.max(0, Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
+  // 2. If sessionDate is targetDate, use todayWorkSeconds:
+  if (task.sessionDate === targetDate) {
+    let baseSecs = Math.max(0, Number(task.todayWorkSeconds || 0));
+    if (baseSecs === 0 && isCreatedOnTargetDate) {
+      baseSecs = Math.max(0, Number(task.timerSeconds || 0));
+    }
     let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
       const todayMidnight = new Date();
@@ -524,15 +528,20 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     todayMidnight.setHours(0, 0, 0, 0);
     const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
     const isCreatedToday = String(task.createdAt || '').startsWith(actualToday) || task.startDate === actualToday;
-    const base = isCreatedToday ? Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0)) : 0;
+    const base = isCreatedToday ? Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0)) : Math.max(0, Number(task.todayWorkSeconds || 0));
     const liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
     return Math.min(base + liveSecs, 24 * 3600);
   }
 
-  // 4. Task was strictly created today, started today, or completed today:
-  if (targetDate === actualToday && (String(task.createdAt || '').startsWith(actualToday) || task.startDate === actualToday || task.completedOn === actualToday)) {
+  // 4. Task was strictly created today with work recorded:
+  if (targetDate === actualToday && isCreatedOnTargetDate) {
     const secs = Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
     return Math.min(secs, 24 * 3600);
+  }
+
+  // 5. If task was completed on targetDate, strictly return todayWorkSeconds (never all-time timerSeconds!)
+  if (task.completedOn === targetDate) {
+    return Math.min(Math.max(0, Number(task.todayWorkSeconds || 0)), 24 * 3600);
   }
 
   return 0;

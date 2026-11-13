@@ -1246,7 +1246,10 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         projectName: matchedTask.projectName,
         accumulatedSeconds: totalAccum,
         todayWorkSeconds: todayTaskBase,
+        timerSeconds: liveTaskTodaySecs,
         liveTaskSecs: liveTaskTodaySecs,
+        dailySessions: matchedTask.dailySessions || {},
+        sessionDate: matchedTask.sessionDate || today,
         startedAt: matchedTask.startedAt,
         timerRunning: true
       };

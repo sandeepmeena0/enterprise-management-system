@@ -1174,8 +1174,10 @@ export const CRMProvider = ({ children }) => {
             secs = Number(curr.dailySessions[dateStr]) || 0;
           } else if (curr.sessionDate === dateStr && curr.todayWorkSeconds !== undefined) {
             secs = Number(curr.todayWorkSeconds) || 0;
-          } else if (curr.startDate === dateStr || curr.createdAt?.startsWith(dateStr)) {
-            secs = Number(curr.timerSeconds) || Number(curr.durationSeconds) || 0;
+          } else if (curr.startDate === dateStr || String(curr.createdAt || '').startsWith(dateStr)) {
+            secs = Number(curr.todayWorkSeconds || curr.timerSeconds || curr.durationSeconds || 0);
+          } else {
+            secs = Number(curr.todayWorkSeconds || 0);
           }
           return acc + secs;
         }, 0);

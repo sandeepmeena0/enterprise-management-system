@@ -846,12 +846,20 @@ export const TimerProvider = ({ children }) => {
       // 🌟 Remote MongoDB is authoritative over stale local cache:
       // If remote record shows isClockedIn is true for today, employee is actively working regardless of local stale clock-out flag!
       const hasClockIn = Boolean(rec && (rec.clockInTime || rec.clockIn || rec.firstClockInTime) && rec.clockInTime !== '--' && rec.clockIn !== '--');
-      const hasClockOut = Boolean(rec && (rec.clockOutTime || rec.clockOut || rec.lastClockOutTime) && rec.clockOutTime !== '--' && rec.clockOut !== '--');
+      const hasExplicitClockOut = Boolean(
+        rec && (
+          (rec.clockOutTime && rec.clockOutTime !== '--' && rec.clockOutTime !== '—') ||
+          (rec.clockOut && rec.clockOut !== '--' && rec.clockOut !== '—') ||
+          rec.isClockedOut === true ||
+          rec.isClockedIn === false ||
+          rec.isClockedIn === 'false'
+        )
+      );
       const remoteIsClockedIn = Boolean(
         rec &&
         rec.date === today &&
-        !hasClockOut &&
-        (rec.isClockedIn === true || rec.isClockedIn === 'true' || (hasClockIn && rec.isClockedIn !== false && rec.isClockedIn !== 'false')) &&
+        !hasExplicitClockOut &&
+        (rec.isClockedIn === true || rec.isClockedIn === 'true' || (hasClockIn && !hasExplicitClockOut)) &&
         rec.status !== 'on_leave' &&
         rec.status !== 'absent'
       );
@@ -874,10 +882,9 @@ export const TimerProvider = ({ children }) => {
         setTodayLeaveRecord(null);
       }
 
-
       const isActuallyClockedIn = remoteIsClockedIn || (!localHadClockedOut && localIsClockedIn && (!localSessionDate || localSessionDate === today));
       const isActuallyClockedOut = !isActuallyClockedIn && (
-        Boolean(rec && rec.date === today && (hasClockOut || rec.isClockedIn === false || rec.isClockedIn === 'false')) ||
+        Boolean(rec && rec.date === today && hasExplicitClockOut) ||
         (localHadClockedOut && localSessionDate === today)
       );
 
@@ -985,6 +992,11 @@ export const TimerProvider = ({ children }) => {
           }
           localStorage.removeItem(`ems_timer_${uk}_clockout_time`);
           localStorage.removeItem(`ems_timer_${uk}_clock_out_timestamp`);
+        }
+
+        if (!localIsClockedIn) {
+          window.dispatchEvent(new CustomEvent('ems_clocked_in', { detail: { empKey: userKey, userKey } }));
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: `ems_timer_${userKey}_is_clocked_in` } }));
         }
       } else if (isActuallyClockedOut) {
         const outTime = rec?.clockOutTime || rec?.clockOut || localStorage.getItem(`ems_timer_${userKey}_clockout_time`) || null;

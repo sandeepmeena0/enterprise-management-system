@@ -447,6 +447,23 @@ export const WorkProvider = ({ children }) => {
         }
       });
 
+      // Background-sync offline tasks to Atlas if backend is accessible
+      if (Array.isArray(rawTsks) && rawTsks.length > 0) {
+        localTasks.forEach(lt => {
+          const id = String(lt._id || lt.id);
+          if (id.startsWith('tsk_') && !remoteIds.has(id) && !isLegacyTask(lt)) {
+            workService.createTask(lt).then(created => {
+              if (created && created._id && created._id !== id) {
+                const cur = getCollection(KEYS.TASKS) || [];
+                const swapped = cur.map(t => (t._id === id || t.id === id ? { ...t, ...created, _id: created._id, id: created._id } : t));
+                saveCollection(KEYS.TASKS, swapped);
+                window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+              }
+            }).catch(() => {});
+          }
+        });
+      }
+
       // 3. Apply active timer state if running (strictly 1 active running task per user)
       const todayMidnight = new Date();
       todayMidnight.setHours(0, 0, 0, 0);
@@ -485,15 +502,16 @@ export const WorkProvider = ({ children }) => {
         if (isAssignedToMe) {
           // If local snapshot explicitly matches this task and is paused, respect local pause!
           const isExplicitlyPausedLocally = Boolean(
-            (isTaskIdMatch && activeTimer && activeTimer.timerRunning === false) ||
-            (t.timerRunning === false && Number(t.lastUpdated || 0) >= Number(t.startedAt || 0))
+            isTaskIdMatch && activeTimer && activeTimer.timerRunning === false &&
+            (!activeTimer.date || activeTimer.date === today) &&
+            Number(activeTimer.lastUpdated || 0) >= Number(t.startedAt || 0)
           );
           if (isExplicitlyPausedLocally) {
             isRunning = false;
           } else if (isActive) {
             isRunning = true;
-          } else if (isRemoteActive && (!activeTimer || (!activeTimer.taskId && !activeTimer._id)) && Number(t.startedAt || 0) > Number(t.lastUpdated || 0)) {
-            // Only hydrate from remote Atlas on a completely fresh browser session with no existing local timer
+          } else if (isRemoteActive && (!activeTimer || !activeTimer.timerRunning || Number(t.startedAt || 0) > Number(activeTimer.lastUpdated || 0))) {
+            // Hydrate from remote Atlas across devices
             isRunning = true;
             const restoredTimer = {
               taskId: t._id,
@@ -505,7 +523,9 @@ export const WorkProvider = ({ children }) => {
               timerRunning: true,
               startedAt: t.startedAt,
               accumulatedSeconds: Number(t.accumulatedSeconds || t.timerSeconds || 0),
-              timerSeconds: Number(t.accumulatedSeconds || t.timerSeconds || 0),
+              timerSeconds: Number(t.todayWorkSeconds ?? t.timerSeconds ?? 0),
+              todayWorkSeconds: Number(t.todayWorkSeconds || 0),
+              dailySessions: t.dailySessions || {},
               date: today,
               sessionDate: today
             };
@@ -528,14 +548,15 @@ export const WorkProvider = ({ children }) => {
           const currentSecs = baseSecs + elapsed;
 
           const today = getTodayStr();
+          const isCreatedToday = (t.startDate === today || String(t.createdAt || '').startsWith(today));
           const activeSecs = (isActive && (!activeTimer.date || activeTimer.date === today))
-            ? Math.max(Number(activeTimer.todayWorkSeconds || 0), Number(activeTimer.timerSeconds || 0))
+            ? Number(activeTimer.todayWorkSeconds || 0)
             : 0;
           const todayBaseSecs = Math.max(
             activeSecs,
             Number(t.dailySessions?.[today] || 0),
-            (t.sessionDate === today ? Math.max(Number(t.todayWorkSeconds || 0), Number(t.timerSeconds || 0)) : 0),
-            ((t.startDate === today || String(t.createdAt || '').startsWith(today)) ? Math.max(Number(t.todayWorkSeconds || 0), Number(t.timerSeconds || 0)) : 0),
+            (t.sessionDate === today ? Number(t.todayWorkSeconds || 0) : 0),
+            (isCreatedToday ? Math.max(Number(t.todayWorkSeconds || 0), Number(t.timerSeconds || 0)) : 0),
             Number(t.todayWorkSeconds || 0)
           );
           const todaySecs = todayBaseSecs + elapsed;
@@ -553,14 +574,15 @@ export const WorkProvider = ({ children }) => {
         }
 
         const today = getTodayStr();
+        const isCreatedToday = (t.startDate === today || String(t.createdAt || '').startsWith(today));
         const activeSecs = (isActive && (!activeTimer.date || activeTimer.date === today))
-          ? Math.max(Number(activeTimer.todayWorkSeconds || 0), Number(activeTimer.timerSeconds || 0))
+          ? Number(activeTimer.todayWorkSeconds || 0)
           : 0;
         const todayStaticSecs = Math.max(
           activeSecs,
           Number(t.dailySessions?.[today] || 0),
-          (t.sessionDate === today ? Math.max(Number(t.todayWorkSeconds || 0), Number(t.timerSeconds || 0)) : 0),
-          ((t.startDate === today || String(t.createdAt || '').startsWith(today)) ? Math.max(Number(t.todayWorkSeconds || 0), Number(t.timerSeconds || 0)) : 0),
+          (t.sessionDate === today ? Number(t.todayWorkSeconds || 0) : 0),
+          (isCreatedToday ? Math.max(Number(t.todayWorkSeconds || 0), Number(t.timerSeconds || 0)) : 0),
           Number(t.todayWorkSeconds || 0)
         );
 
@@ -595,13 +617,14 @@ export const WorkProvider = ({ children }) => {
           const isCurrentStub = String(t._id || '').startsWith('tsk_');
           const base = (!isCurrentStub && isExistingStub) ? t : existing;
           const other = (!isCurrentStub && isExistingStub) ? existing : t;
-          const resolvedTimerRunning = Boolean(existing.timerRunning && t.timerRunning);
+          const resolvedTimerRunning = Boolean(existing.timerRunning || t.timerRunning);
           finalTasksMap.set(canonicalKey, {
             ...other,
             ...base,
             timerRunning: resolvedTimerRunning,
             startedAt: resolvedTimerRunning ? (existing.startedAt || t.startedAt) : null,
             timerSeconds: Math.max(Number(existing.timerSeconds) || 0, Number(t.timerSeconds) || 0),
+            todayWorkSeconds: Math.max(Number(existing.todayWorkSeconds || existing.timerSeconds || 0), Number(t.todayWorkSeconds || t.timerSeconds || 0)),
             accumulatedSeconds: Math.max(Number(existing.accumulatedSeconds) || 0, Number(t.accumulatedSeconds) || 0)
           });
         }
@@ -1900,15 +1923,16 @@ export const WorkProvider = ({ children }) => {
 
     // Existing seconds for today's session:
     // Read from unified getTaskTodaySeconds to ensure 100% synchronization
+    const isCreatedToday = (targetTask.startDate === today || String(targetTask.createdAt || '').startsWith(today));
     let existingTodaySecs = Math.max(
       getTaskTodaySeconds(targetTask, today, now, false, false),
       Number(targetTask.dailySessions?.[today] || 0),
-      (targetTask.sessionDate === today ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
-      ((targetTask.startDate === today || String(targetTask.createdAt || '').startsWith(today)) ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
+      (targetTask.sessionDate === today ? Number(targetTask.todayWorkSeconds || 0) : 0),
+      (isCreatedToday ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
       Number(targetTask.todayWorkSeconds || 0)
     );
     if (activeTimer && (String(activeTimer.taskId) === String(taskId) || activeTimer.taskCode === targetTask.taskCode) && (!activeTimer.date || activeTimer.date === today) && !isForOtherEmployee) {
-      const activeToday = Math.max(Number(activeTimer.todayWorkSeconds || 0), Number(activeTimer.timerSeconds || 0));
+      const activeToday = Number(activeTimer.todayWorkSeconds || 0);
       existingTodaySecs = Math.max(existingTodaySecs, activeToday);
     }
     const existingTotalSecs = Math.max(Number(targetTask.accumulatedSeconds || 0), Number(targetTask.timerSeconds || 0), existingTodaySecs);
@@ -2025,7 +2049,11 @@ export const WorkProvider = ({ children }) => {
           projectName: targetTask.projectName,
           timerRunning: true,
           startedAt: now,
-          accumulatedSeconds: existingSecs
+          accumulatedSeconds: existingSecs,
+          timerSeconds: existingTodaySecs,
+          todayWorkSeconds: existingTodaySecs,
+          dailySessions: updatedDailySessions,
+          sessionDate: today
         }
       }).catch(() => {});
     } catch (e) {}

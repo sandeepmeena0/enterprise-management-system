@@ -63,9 +63,9 @@ exports.authenticateUser = async (req, res, next) => {
       const isPrimary = Boolean(
         user.employeeCode === 'ADM-001' ||
         user.isSuperAdmin ||
+        user.isPrimaryAdmin ||
         user.email === 'admin@inforag.com' ||
-        user.email === 'avinash@inforag.com' ||
-        user.role === 'Administrator'
+        user.email === 'avinash@inforag.com'
       );
       const isSystemAdmin = Boolean(isPrimary || isDelegatedAdmin || (user.isAdmin && user.systemRole === 'admin'));
       const isSystemHR = !isSystemAdmin && Boolean(user.department === 'Human Resources' || user.role?.toLowerCase().includes('hr') || user.systemRole === 'hr');
