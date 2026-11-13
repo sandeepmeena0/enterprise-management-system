@@ -656,6 +656,9 @@ export const WorkProvider = ({ children }) => {
             timerRunning: true,
             startedAt: remoteRunningTask.startedAt || Date.now(),
             accumulatedSeconds: remoteRunningTask.accumulatedSeconds !== undefined ? Number(remoteRunningTask.accumulatedSeconds) : (Number(remoteRunningTask.timerSeconds) || 0),
+            todayWorkSeconds: Number(remoteRunningTask.todayWorkSeconds || 0),
+            dailySessions: remoteRunningTask.dailySessions || {},
+            sessionDate: remoteRunningTask.sessionDate || today,
             date: today,
             lastUpdated: Date.now()
           });

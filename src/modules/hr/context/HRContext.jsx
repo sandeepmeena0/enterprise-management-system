@@ -221,6 +221,7 @@ export const HRProvider = ({ children }) => {
             });
             localStorage.setItem(KEYS.ATTENDANCE, JSON.stringify(Array.from(attMap.values())));
           }
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
         }
       } catch (_) {}
       setHolidays(hols || []);

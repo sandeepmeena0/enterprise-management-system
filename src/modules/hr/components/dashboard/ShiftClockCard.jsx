@@ -57,9 +57,9 @@ export const ShiftClockCard = ({
     : Math.max(workSeconds || 0, activeEmpState?.workSecs || 0);
 
   const effectiveIsClockedIn = Boolean(
-    isClockedIn ||
-    displayedIsClockedIn ||
-    activeEmpState?.isClockedIn
+    isViewingOtherEmployee
+      ? activeEmpState?.isClockedIn
+      : (isClockedIn || displayedIsClockedIn || activeEmpState?.isClockedIn)
   );
 
   const hasEverClockedInToday = Boolean(

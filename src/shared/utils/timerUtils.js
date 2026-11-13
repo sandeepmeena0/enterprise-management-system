@@ -1186,6 +1186,37 @@ export const hydrateUserCloudState = async (user) => {
         localStorage.setItem('hrms_attendance', JSON.stringify(attList));
       } catch (_) {}
 
+      if (isClockedIn) {
+        for (const uk of mirrorKeys) {
+          localStorage.setItem(`ems_timer_${uk}_is_clocked_in`, 'true');
+          localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, 'false');
+          localStorage.removeItem(`ems_timer_${uk}_clockout_time`);
+          localStorage.removeItem(`ems_timer_${uk}_clock_out`);
+          localStorage.removeItem(`ems_timer_${uk}_last_clock_out_time`);
+          localStorage.removeItem(`ems_timer_${uk}_last_clock_out_timestamp`);
+        }
+        window.dispatchEvent(new CustomEvent('ems_clocked_in', {
+          detail: {
+            empKey: user.employeeCode || user._id,
+            userKey: user.employeeCode || user._id,
+            telemRec
+          }
+        }));
+      }
+
+      for (const uk of mirrorKeys) {
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', {
+          detail: { key: `ems_timer_${uk}_is_clocked_in` }
+        }));
+      }
+
+      if (telemRec.activeTask && telemRec.activeTask.timerRunning) {
+        window.dispatchEvent(new CustomEvent('ems_task_timer_started', {
+          detail: { taskId: telemRec.activeTask._id || telemRec.activeTask.taskId }
+        }));
+        window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_tasks' } }));
+      }
+
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'hrms_attendance' } }));
       window.dispatchEvent(new CustomEvent('ems_shift_telemetry_synced', { detail: { user, telemRec } }));
       return telemRec;

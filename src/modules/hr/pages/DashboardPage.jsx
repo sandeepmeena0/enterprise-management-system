@@ -1769,8 +1769,9 @@ export const DashboardPage = () => {
   // Resolved live shift state for currently displayed user perspective
   const displayedIsOnLeave = isViewingOtherEmployee ? Boolean(activeEmpState?.isOnLeave) : Boolean(isOnLeaveToday || activeEmpState?.isOnLeave);
   const displayedIsClockedIn = Boolean(
-    isClockedIn ||
-    activeEmpState?.isClockedIn
+    isViewingOtherEmployee
+      ? activeEmpState?.isClockedIn
+      : (isClockedIn || activeEmpState?.isClockedIn)
   );
   const displayedHadClockedOut = !displayedIsClockedIn && Boolean(
     isViewingOtherEmployee ? activeEmpState?.isClockedOut : (hadClockedOutToday || activeEmpState?.isClockedOut)
@@ -3043,6 +3044,47 @@ export const DashboardPage = () => {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* 👁️ Employee Perspective Switcher */}
+            {isUserAdminOrHR && (
+              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-orange-300 dark:border-orange-800 rounded-lg px-2.5 py-1.5 shadow-2xs">
+                <Eye size={13} className="text-orange-600 dark:text-orange-400 shrink-0" />
+                <span className="text-[11.5px] font-bold text-slate-600 dark:text-slate-300 shrink-0">Perspective:</span>
+                <select
+                  id="select-admin-dashboard-perspective"
+                  value={selectedAdminEmpId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedAdminEmpId(val);
+                    if (val !== 'me') {
+                      const emp = (employees || []).find(x => String(x._id) === val || String(x.employeeCode) === val);
+                      addToast(`Viewing dashboard as ${emp?.name || 'Employee'} (${emp?.employeeCode || val})`, 'info');
+                    } else {
+                      addToast('Switched back to your personal perspective', 'info');
+                    }
+                  }}
+                  className="bg-transparent text-[12px] font-bold text-slate-800 dark:text-slate-100 outline-none cursor-pointer pr-1"
+                >
+                  <option value="me" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+                    👑 My View ({currentUser?.name || 'Admin'})
+                  </option>
+                  <optgroup label="── All Employees ──" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold">
+                    {(employees || []).map(emp => {
+                      const isMe = String(emp._id) === String(currentUser?._id) || String(emp.employeeCode) === String(currentUser?.employeeCode);
+                      if (isMe) return null;
+                      const st = getEmployeeTodayState(emp);
+                      const statusEmoji = st?.isClockedIn ? (st?.isOnBreak ? '☕' : '🟢') : (st?.isClockedOut ? '🔴' : '⚪');
+                      const statusText = st?.isClockedIn ? (st?.isOnBreak ? 'Break' : 'Active') : (st?.isClockedOut ? 'Clocked Out' : 'Offline');
+                      return (
+                        <option key={emp._id || emp.employeeCode} value={String(emp._id || emp.employeeCode)} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+                          {statusEmoji} {emp.name} ({emp.employeeCode || 'EMP'}) — {statusText}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                </select>
+              </div>
+            )}
+
             <button
               onClick={() => navigate('/team-operations')}
               className="py-1.5 px-3.5 rounded-lg border-none bg-orange-600 text-white text-[12.5px] font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-[0_2px_6px_rgba(234,88,12,0.25)] hover:bg-orange-700 transition-colors"
@@ -3058,6 +3100,45 @@ export const DashboardPage = () => {
               <span>📊 Team Activity & Historical Audit Hub →</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── 👁️ ACTIVE PERSPECTIVE INSPECTION BANNER (When viewing another employee) ── */}
+      {isViewingOtherEmployee && (
+        <div className="bg-blue-50 dark:bg-blue-950/50 rounded-[10px] border border-blue-200 dark:border-blue-800 py-2.5 px-4 flex items-center justify-between flex-wrap gap-2.5 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+              {activeViewUser?.name?.[0]?.toUpperCase() || 'E'}
+            </div>
+            <div>
+              <div className="text-[13px] font-extrabold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                <span>Inspecting Perspective: <strong>{activeViewUser?.name}</strong></span>
+                <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                  {activeViewUser?.employeeCode || activeViewUser?._id}
+                </span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  activeEmpState?.isClockedIn
+                    ? (activeEmpState?.isOnBreak ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800')
+                    : (activeEmpState?.isClockedOut ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-500')
+                }`}>
+                  {activeEmpState?.isClockedIn ? (activeEmpState?.isOnBreak ? '☕ On Break' : '🟢 Active Shift') : (activeEmpState?.isClockedOut ? '🔴 Clocked Out' : '⚪ Offline')}
+                </span>
+              </div>
+              <div className="text-[11px] text-blue-700 dark:text-blue-300">
+                You are viewing this employee's live dashboard, shift status, active task, and personal queue in read-only mode.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedAdminEmpId('me');
+              addToast('Returned to your personal dashboard perspective', 'info');
+            }}
+            className="py-1 px-3 rounded-md bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 text-xs font-bold cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors inline-flex items-center gap-1.5"
+          >
+            <X size={13} />
+            <span>Return to My View</span>
+          </button>
         </div>
       )}
 

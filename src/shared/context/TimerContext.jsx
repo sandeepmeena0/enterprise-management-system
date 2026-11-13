@@ -723,6 +723,9 @@ export const TimerProvider = ({ children }) => {
 
       const sSec = readTimerStorage(currentUser, 'saved_official_seconds');
       setSavedOfficialWorkSeconds(sSec ? parseInt(sSec, 10) : resolvedWorkSecs);
+
+      // Authoritative remote state check on mount or user switch
+      syncLiveShiftState();
     }
 
     const timer = setTimeout(() => {
@@ -991,7 +994,10 @@ export const TimerProvider = ({ children }) => {
             localStorage.setItem(`ems_timer_${uk}_current_break_seconds`, '0');
           }
           localStorage.removeItem(`ems_timer_${uk}_clockout_time`);
+          localStorage.removeItem(`ems_timer_${uk}_clock_out`);
           localStorage.removeItem(`ems_timer_${uk}_clock_out_timestamp`);
+          localStorage.removeItem(`ems_timer_${uk}_last_clock_out_time`);
+          localStorage.removeItem(`ems_timer_${uk}_last_clock_out_timestamp`);
         }
 
         if (!localIsClockedIn) {

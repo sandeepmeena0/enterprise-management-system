@@ -305,9 +305,6 @@ export const AuthProvider = ({ children }) => {
 
   // Terminal-scoped role switcher with authoritative DB record pull
   const switchRole = useCallback(async (roleId) => {
-    if (currentUser) {
-      performShiftClockOut(currentUser, { reason: 'Role Switch' });
-    }
     let targetUser = PRESET_USERS[roleId] || PRESET_USERS.admin;
     const employees = getCollection(KEYS.EMPLOYEES) || [];
     let query = '';
@@ -388,17 +385,15 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (targetUser) {
-      if (currentUser) {
-        performShiftClockOut(currentUser, { reason: 'User Switch' });
-      }
       setCurrentUser(targetUser);
       setIsAuthenticated(true);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(targetUser));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+      hydrateUserCloudState(targetUser).catch(() => {});
       syncDatabaseToStorage().catch(() => {});
     }
     return targetUser;
-  }, [currentUser]);
+  }, []);
 
   // Login handler with real credential verification (Email or Employee Code + Password)
   const login = useCallback(async ({ email, employeeCode, identifier, password, role }) => {
@@ -561,24 +556,17 @@ export const AuthProvider = ({ children }) => {
       } catch (_) {}
     }
 
-    if (currentUser) {
-      performShiftClockOut(currentUser, { reason: 'New Login' });
-    }
-
     setCurrentUser(finalizedUser);
     setIsAuthenticated(true);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalizedUser));
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+    hydrateUserCloudState(finalizedUser).catch(() => {});
     syncDatabaseToStorage().catch(() => {});
     return finalizedUser;
-  }, [currentUser]);
+  }, []);
 
-  // Logout handler: cleanly pauses running task timer, stops shift clock, and logs out
+  // Logout handler: cleanly signs out session without terminating user shift workday
   const logout = useCallback(() => {
-    if (currentUser) {
-      performShiftClockOut(currentUser, { reason: 'User Logout' });
-    }
-
     // Clean up temporary unscoped keys so shared computers have clean slate
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
