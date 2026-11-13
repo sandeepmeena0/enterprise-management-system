@@ -236,13 +236,13 @@ export const WeeklyTimeLogsCard = ({
                         (t.timerRunning || (activeRunningTask?.timerRunning && (
                             String(activeRunningTask.taskId || activeRunningTask._id) === tId ||
                             (activeRunningTask.taskCode && t.taskCode && activeRunningTask.taskCode === t.taskCode)
-                        ))) && isClockedIn
+                        ))) && isEffectiveClockedIn
                     );
 
                     const isWorkedToday = isRunning ||
                         (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) ||
                         (t.sessionDate === dateStr && Number(t.todayWorkSeconds) > 0) ||
-                        ((t.startDate === dateStr || String(t.createdAt || '').startsWith(dateStr)) && Number(t.todayWorkSeconds ?? t.timerSeconds) > 0);
+                        (String(t.createdAt || '').startsWith(dateStr) && Number(t.todayWorkSeconds) > 0);
                     if (!isWorkedToday) return;
 
                     const activeTaskObj = isRunning
@@ -283,6 +283,32 @@ export const WeeklyTimeLogsCard = ({
                             } else {
                                 tasksWorked.push(taskEntry);
                             }
+                        }
+                    }
+                });
+            } else if (isPastDay) {
+                // Include any tasks worked on this past date that have recorded dailySessions
+                (tasks || []).forEach(t => {
+                    if (!isMyTask(t)) return;
+                    const tId = String(t._id || t.id);
+                    const pastSecs = Number(t.dailySessions?.[dateStr]) || (t.sessionDate === dateStr ? Number(t.todayWorkSeconds) : 0);
+                    if (pastSecs > 0) {
+                        const alreadyLogged = dayTs
+                            .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode) || (t.title && ts.taskTitle === t.title))
+                            .reduce((s, ts) => Math.max(s, Number(ts.totalDurationSeconds) || 0), 0);
+                        const unsubmitted = Math.max(0, pastSecs - alreadyLogged);
+                        if (unsubmitted > 0) {
+                            dayTotalSecs += unsubmitted;
+                            tasksWorked.push({
+                                taskId: tId,
+                                taskCode: t.taskCode || 'TSK',
+                                taskTitle: t.title || 'Worked Task',
+                                projectName: t.projectName || 'General Work',
+                                durationText: formatSeconds(pastSecs),
+                                durationSeconds: pastSecs,
+                                status: t.status || 'in_progress',
+                                isCompleted: Boolean(t.status === 'completed' || t.completedAt)
+                            });
                         }
                     }
                 });

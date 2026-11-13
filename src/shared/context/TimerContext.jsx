@@ -614,11 +614,10 @@ export const TimerProvider = ({ children }) => {
       } catch (_) {}
 
       const inVal = readTimerStorage(currentUser, 'is_clocked_in');
-      const hasAttClockIn = Boolean(attRec?.clockInTime || attRec?.clockIn);
-      const hasAttClockOut = Boolean(attRec?.clockOutTime || attRec?.clockOut);
-      const resolvedIsClockedIn = inVal !== null
-        ? (inVal === 'true' || inVal === true)
-        : Boolean(hasAttClockIn && !hasAttClockOut && attRec?.isClockedIn !== false && attRec?.status !== 'on_leave' && attRec?.status !== 'absent');
+      const hasAttClockIn = Boolean(attRec && (attRec.clockInTime || attRec.clockIn) && attRec.clockInTime !== '--' && attRec.clockIn !== '--');
+      const hasAttClockOut = Boolean(attRec && (attRec.clockOutTime || attRec.clockOut) && attRec.clockOutTime !== '--' && attRec.clockOut !== '--');
+      const isAttClockedIn = Boolean(hasAttClockIn && !hasAttClockOut && attRec?.isClockedIn !== false && attRec?.status !== 'on_leave' && attRec?.status !== 'absent');
+      const resolvedIsClockedIn = isAttClockedIn || (inVal === 'true' || inVal === true);
       setIsClockedIn(resolvedIsClockedIn);
 
       const runVal = readTimerStorage(currentUser, 'is_running');
@@ -846,13 +845,15 @@ export const TimerProvider = ({ children }) => {
 
       // 🌟 Remote MongoDB is authoritative over stale local cache:
       // If remote record shows isClockedIn is true for today, employee is actively working regardless of local stale clock-out flag!
+      const hasClockIn = Boolean(rec && (rec.clockInTime || rec.clockIn || rec.firstClockInTime) && rec.clockInTime !== '--' && rec.clockIn !== '--');
+      const hasClockOut = Boolean(rec && (rec.clockOutTime || rec.clockOut || rec.lastClockOutTime) && rec.clockOutTime !== '--' && rec.clockOut !== '--');
       const remoteIsClockedIn = Boolean(
         rec &&
         rec.date === today &&
-        rec.isClockedIn === true &&
-        (rec.clockInTime || rec.clockIn) &&
-        !rec.clockOutTime &&
-        rec.status !== 'on_leave'
+        !hasClockOut &&
+        (rec.isClockedIn === true || rec.isClockedIn === 'true' || (hasClockIn && rec.isClockedIn !== false && rec.isClockedIn !== 'false')) &&
+        rec.status !== 'on_leave' &&
+        rec.status !== 'absent'
       );
       // 🌟 Check if employee is on approved leave today
       const isRecordOnLeave = Boolean(rec && rec.date === today && rec.status === 'on_leave');
@@ -876,13 +877,12 @@ export const TimerProvider = ({ children }) => {
 
       const isActuallyClockedIn = remoteIsClockedIn || (!localHadClockedOut && localIsClockedIn && (!localSessionDate || localSessionDate === today));
       const isActuallyClockedOut = !isActuallyClockedIn && (
-        Boolean(rec && rec.date === today && (rec.clockOutTime || rec.clockOut) && !rec.isClockedIn) ||
+        Boolean(rec && rec.date === today && (hasClockOut || rec.isClockedIn === false || rec.isClockedIn === 'false')) ||
         (localHadClockedOut && localSessionDate === today)
       );
 
       if (isActuallyClockedIn) {
-        const inTime = rec?.clockInTime || rec?.clockIn || loginTime || localStorage.getItem(`ems_timer_${userKey}_login_time`);
-        if (!inTime) return;
+        const inTime = rec?.clockInTime || rec?.clockIn || rec?.firstClockInTime || loginTime || localStorage.getItem(`ems_timer_${userKey}_login_time`) || 'Active';
         let inTs = Number(rec?.clockInTimestamp) || Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
         const todayMidnight = new Date();
         todayMidnight.setHours(0, 0, 0, 0);
@@ -2282,7 +2282,8 @@ export const TimerProvider = ({ children }) => {
    * Clock Out Handler
    */
   const handleClockOut = () => {
-    if (!isClockedIn) {
+    const effectiveIn = isClockedIn || readTimerStorage(currentUser, 'is_clocked_in') === 'true' || readTimerStorage(currentUser, 'is_clocked_in') === true;
+    if (!effectiveIn) {
       addToast({ title: 'Not Clocked In', message: 'You are not currently clocked in. Please clock in first.', type: 'warning' });
       return;
     }

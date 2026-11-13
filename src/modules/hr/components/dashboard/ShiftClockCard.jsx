@@ -54,29 +54,33 @@ export const ShiftClockCard = ({
 
   const effectiveWorkSecs = isViewingOtherEmployee
     ? (activeEmpState?.workSecs || 0)
-    : (workSeconds || 0);
+    : Math.max(workSeconds || 0, activeEmpState?.workSecs || 0);
 
-  const effectiveIsClockedIn = isViewingOtherEmployee
-    ? Boolean(activeEmpState?.isClockedIn)
-    : Boolean(isClockedIn || displayedIsClockedIn);
+  const effectiveIsClockedIn = Boolean(
+    isClockedIn ||
+    displayedIsClockedIn ||
+    activeEmpState?.isClockedIn
+  );
 
   const hasEverClockedInToday = Boolean(
     displayedLoginTime && displayedLoginTime !== '--' && displayedLoginTime !== '—'
   ) || Boolean(activeEmpState?.loginTime && activeEmpState.loginTime !== '--' && activeEmpState.loginTime !== '—');
 
-  const effectiveHadClockedOut = hasEverClockedInToday && (
+  const effectiveHadClockedOut = !effectiveIsClockedIn && hasEverClockedInToday && (
     isViewingOtherEmployee
       ? Boolean(activeEmpState?.isClockedOut)
-      : Boolean(displayedHadClockedOut && displayedClockOutTime && displayedClockOutTime !== '--' && displayedClockOutTime !== '—')
+      : Boolean((displayedHadClockedOut || activeEmpState?.isClockedOut) && (displayedClockOutTime || activeEmpState?.clockOutTime))
   );
 
-  const effectiveIsOnBreak = isViewingOtherEmployee
-    ? Boolean(activeEmpState?.isOnBreak)
-    : Boolean(isOnBreak || displayedIsOnBreak);
+  const effectiveIsOnBreak = Boolean(
+    isViewingOtherEmployee
+      ? activeEmpState?.isOnBreak
+      : (isOnBreak || displayedIsOnBreak || activeEmpState?.isOnBreak)
+  );
 
   const effectiveBreakType = isViewingOtherEmployee
     ? (activeEmpState?.breakType || 'Break')
-    : (breakType || displayedBreakType || 'Break');
+    : (breakType || displayedBreakType || activeEmpState?.breakType || 'Break');
 
   const isOvertime = effectiveWorkSecs > standardWorkHours * 3600;
   const overtimeHrs = Math.floor((effectiveWorkSecs - standardWorkHours * 3600) / 3600);

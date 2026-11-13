@@ -1769,15 +1769,22 @@ export const DashboardPage = () => {
 
   // Resolved live shift state for currently displayed user perspective
   const displayedIsOnLeave = isViewingOtherEmployee ? Boolean(activeEmpState?.isOnLeave) : Boolean(isOnLeaveToday || activeEmpState?.isOnLeave);
-  const displayedIsClockedIn = isViewingOtherEmployee ? activeEmpState?.isClockedIn : isClockedIn;
-  const displayedHadClockedOut = !displayedIsClockedIn && (isViewingOtherEmployee ? activeEmpState?.isClockedOut : hadClockedOutToday);
-  const displayedIsOnBreak = isViewingOtherEmployee ? activeEmpState?.isOnBreak : isOnBreak;
-  const displayedBreakType = isViewingOtherEmployee ? (activeEmpState?.breakType || 'Break') : breakType;
-  const displayedLoginTime = isViewingOtherEmployee ? activeEmpState?.loginTime : loginTime;
-  const displayedClockOutTime = isViewingOtherEmployee ? activeEmpState?.clockOutTime : clockOutTime;
+  const displayedIsClockedIn = Boolean(
+    isClockedIn ||
+    activeEmpState?.isClockedIn
+  );
+  const displayedHadClockedOut = !displayedIsClockedIn && Boolean(
+    isViewingOtherEmployee ? activeEmpState?.isClockedOut : (hadClockedOutToday || activeEmpState?.isClockedOut)
+  );
+  const displayedIsOnBreak = Boolean(
+    isViewingOtherEmployee ? activeEmpState?.isOnBreak : (isOnBreak || activeEmpState?.isOnBreak)
+  );
+  const displayedBreakType = (isViewingOtherEmployee ? activeEmpState?.breakType : (breakType || activeEmpState?.breakType)) || 'Break';
+  const displayedLoginTime = (isViewingOtherEmployee ? activeEmpState?.loginTime : (loginTime || activeEmpState?.loginTime)) || null;
+  const displayedClockOutTime = (isViewingOtherEmployee ? activeEmpState?.clockOutTime : (clockOutTime || activeEmpState?.clockOutTime)) || null;
   const displayedWorkSecs = isViewingOtherEmployee
     ? (activeEmpState?.workSecs || 0)
-    : (workSeconds || activeEmpState?.workSecs || 0);
+    : Math.max(workSeconds || 0, activeEmpState?.workSecs || 0);
   const displayedWorkDuration = displayedWorkSecs > 0
     ? formatTimeDurationSafe(displayedWorkSecs)
     : ((!displayedIsClockedIn && !displayedHadClockedOut) ? '00h 00m' : formatTimeDurationSafe(displayedWorkSecs || workSeconds || 0));
@@ -1805,7 +1812,7 @@ export const DashboardPage = () => {
     let task = null;
     if (!isViewingOtherEmployee && activeRunningTask && !isTaskActuallyCompleted(activeRunningTask) && isTaskAssignedToUser(activeRunningTask, effectiveTargetUser)) {
       task = activeRunningTask;
-    } else if (isViewingOtherEmployee && activeEmpState?.runningTask && !isTaskActuallyCompleted(activeEmpState.runningTask)) {
+    } else if (activeEmpState?.runningTask && !isTaskActuallyCompleted(activeEmpState.runningTask)) {
       const match = cleanTasks.find(t => String(t._id || t.id) === String(activeEmpState.runningTask._id || activeEmpState.runningTask.taskId));
       if (!match || !isTaskActuallyCompleted(match)) {
         const liveSecs = Number(activeEmpState.runningTask.liveTaskSecs) || Number(activeEmpState.runningTask.timerSeconds) || 0;
@@ -1859,6 +1866,27 @@ export const DashboardPage = () => {
     }
     return task;
   }, [isViewingOtherEmployee, activeEmpState?.runningTask, cleanTasks, activeRunningTask, effectiveTargetUser, isTaskAssignedToUser, activeSelectedTaskId, myTasks, myPendingTasks, formatSeconds, displayedIsClockedIn, todayStr]);
+
+  // Instant Cross-Device Sync Bridge: When telemetry shows user is clocked in on another device (e.g. mobile),
+  // automatically update local storage and trigger TimerContext live state sync
+  React.useEffect(() => {
+    if (!isViewingOtherEmployee && activeEmpState?.isClockedIn && !isClockedIn) {
+      const uKey = getCanonicalTimerKey(currentUser);
+      if (uKey) {
+        localStorage.setItem(`ems_timer_${uKey}_is_clocked_in`, 'true');
+        localStorage.setItem(`ems_timer_${uKey}_is_running`, activeEmpState.isOnBreak ? 'false' : 'true');
+        localStorage.setItem(`ems_timer_${uKey}_is_on_break`, activeEmpState.isOnBreak ? 'true' : 'false');
+        localStorage.setItem(`ems_timer_${uKey}_had_clocked_out`, 'false');
+        if (activeEmpState.loginTime) {
+          localStorage.setItem(`ems_timer_${uKey}_login_time`, activeEmpState.loginTime);
+        }
+        if (activeEmpState.workSecs) {
+          localStorage.setItem(`ems_timer_${uKey}_work_seconds`, String(activeEmpState.workSecs));
+        }
+        window.dispatchEvent(new CustomEvent('ems_clocked_in', { detail: { empKey: uKey, userKey: uKey } }));
+      }
+    }
+  }, [isViewingOtherEmployee, activeEmpState?.isClockedIn, isClockedIn, activeEmpState?.isOnBreak, activeEmpState?.loginTime, activeEmpState?.workSecs, currentUser]);
 
   // Upcoming Next tasks in queue (strictly from user's personal pending queue)
   const upcomingQueueTasks = myPendingTasks
@@ -3105,7 +3133,7 @@ export const DashboardPage = () => {
           extendBreak={extendBreak}
           setIsBreakModalOpen={setIsBreakModalOpen}
           resumeFromBreak={resumeFromBreak}
-          isClockedIn={isClockedIn}
+          isClockedIn={displayedIsClockedIn}
           handleClockIn={handleClockIn}
           handleClockOut={handleClockOut}
           startTeaBreak={startTeaBreak}
@@ -3121,7 +3149,7 @@ export const DashboardPage = () => {
         <ActiveTaskTimerCard
           currentDateFormatted={currentDateFormatted}
           displayActiveTask={displayActiveTask}
-          isClockedIn={isClockedIn}
+          isClockedIn={displayedIsClockedIn}
           handleClockIn={handleClockIn}
           displayedIsOnBreak={displayedIsOnBreak}
           displayedBreakType={displayedBreakType}
@@ -3974,7 +4002,7 @@ export const DashboardPage = () => {
           setIsPendingTasksModalOpen(false);
         }}
         onStartTimer={(taskId) => {
-          if (!isClockedIn) {
+          if (!displayedIsClockedIn) {
             addToast('⚠️ Please Clock In before starting task timers!', 'warning');
             return;
           }

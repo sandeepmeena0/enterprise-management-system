@@ -1120,9 +1120,9 @@ export const CRMProvider = ({ children }) => {
           } else if (activeTimer.sessionDate === dateStr && activeTimer.todayWorkSeconds !== undefined) {
             dayPortion = (Number(activeTimer.todayWorkSeconds) || 0) + runningElapsed;
           } else if (activeTimer.timerRunning) {
-            dayPortion = (Number(activeTimer.accumulatedSeconds) || 0) + runningElapsed;
-          } else {
-            dayPortion = Number(activeTimer.todayWorkSeconds || activeTimer.accumulatedSeconds || activeTimer.timerSeconds || 0);
+            dayPortion = runningElapsed;
+          } else if (activeTimer.sessionDate === dateStr || activeTimer.date === dateStr) {
+            dayPortion = Number(activeTimer.todayWorkSeconds || 0);
           }
 
           activeTimerTask = activeTimer;
@@ -1146,7 +1146,7 @@ export const CRMProvider = ({ children }) => {
           if (t.status === 'completed' && !isCompletedToday) return;
 
           // Only consider tasks explicitly worked today or completed today
-          const hasSessionToday = (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) || (t.sessionDate === dateStr && (Number(t.todayWorkSeconds) > 0 || Number(t.accumulatedSeconds) > 0 || Number(t.timerSeconds) > 0));
+          const hasSessionToday = (t.dailySessions && Number(t.dailySessions[dateStr]) > 0) || (t.sessionDate === dateStr && Number(t.todayWorkSeconds) > 0);
           const isWorkedToday = hasSessionToday || isCompletedToday;
           if (!isWorkedToday) return;
 
@@ -1155,11 +1155,10 @@ export const CRMProvider = ({ children }) => {
             dayPortion = Number(t.dailySessions[dateStr]) || 0;
           } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
             dayPortion = Number(t.todayWorkSeconds) || 0;
-          } else if (isCompletedToday && (t.startDate === dateStr || t.createdAt?.startsWith(dateStr))) {
-            dayPortion = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
-          } else {
-            dayPortion = Number(t.timerSeconds) || Number(t.accumulatedSeconds) || 0;
+          } else if (isCompletedToday && (t.completedOn === dateStr || String(t.completedAt || '').startsWith(dateStr))) {
+            dayPortion = Number(t.todayWorkSeconds || 0);
           }
+          if (dayPortion <= 0) return;
 
           const timesheetsForThisTask = matchingTimesheets
             .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode))

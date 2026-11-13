@@ -506,7 +506,7 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
   }
 
   // 2. If sessionDate is targetDate, and todayWorkSeconds is recorded:
-  if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined && Number(task.todayWorkSeconds) >= 0) {
+  if (task.sessionDate === targetDate && task.todayWorkSeconds !== undefined && Number(task.todayWorkSeconds) > 0) {
     const baseSecs = Math.max(0, Number(task.todayWorkSeconds) || 0);
     let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
@@ -523,15 +523,15 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
     const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-    const isCreatedToday = task.startDate === actualToday || String(task.createdAt || '').startsWith(actualToday);
+    const isCreatedToday = String(task.createdAt || '').startsWith(actualToday);
     const base = isCreatedToday ? Number(task.todayWorkSeconds || 0) : 0;
     const liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
     return Math.min(base + liveSecs, 24 * 3600);
   }
 
-  // 4. Task was strictly created today (and has not recorded dailySessions or todayWorkSeconds yet):
-  if (targetDate === actualToday && (task.startDate === actualToday || String(task.createdAt || '').startsWith(actualToday))) {
-    const secs = Number(task.todayWorkSeconds ?? task.timerSeconds ?? 0);
+  // 4. Task was strictly created today (and has not recorded dailySessions yet, but has todayWorkSeconds):
+  if (targetDate === actualToday && String(task.createdAt || '').startsWith(actualToday)) {
+    const secs = Number(task.todayWorkSeconds || 0);
     return Math.min(secs, 24 * 3600);
   }
 
@@ -563,7 +563,7 @@ export const sanitizeTaskDailySessions = (task) => {
     const rawVal = Math.max(0, Number(rawSessions[d]) || 0);
     // Each day's portion cannot exceed remaining totalAccum
     const remaining = Math.max(0, totalAccum - runningSum);
-    const clampedDay = Math.min(rawVal, remaining > 0 ? remaining : totalAccum);
+    const clampedDay = Math.min(rawVal, remaining);
     cleanedSessions[d] = clampedDay;
     runningSum += clampedDay;
   }
@@ -592,7 +592,10 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
 
   let sessionElapsed = 0;
   if (task.timerRunning && task.startedAt && Number(task.startedAt) > 0) {
-    sessionElapsed = Math.max(0, Math.floor((nowMs - Number(task.startedAt)) / 1000));
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const effStart = Math.max(Number(task.startedAt), todayMidnight.getTime());
+    sessionElapsed = Math.max(0, Math.floor((nowMs - effStart) / 1000));
   }
 
   // Base lifetime accumulated seconds before this running session started
@@ -623,7 +626,8 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
       totalTodaySecs = Math.min(priorTodaySecs + sessionElapsed, totalSecs);
     }
   } else {
-    totalTodaySecs = Math.min(priorTodaySecs || baseAccum, totalSecs);
+    // If not actively running in this pause event, strictly retain prior today's recorded work without dumping prior days' baseAccum!
+    totalTodaySecs = Math.min(priorTodaySecs, totalSecs);
   }
 
   dailySessionsMap[today] = totalTodaySecs;
