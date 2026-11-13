@@ -30,6 +30,14 @@ export const ActiveTaskTimerCard = ({
   setIsAddTaskOpen,
   navigate
 }) => {
+  const effectiveTodayStr = todayStr || new Date().toISOString().split('T')[0];
+  const activeTaskTodaySecs = displayActiveTask ? Math.max(
+    Number(displayActiveTask.dailySessions?.[effectiveTodayStr] || 0),
+    Number(displayActiveTask.todayWorkSeconds || 0),
+    (displayActiveTask.sessionDate === effectiveTodayStr ? Number(displayActiveTask.timerSeconds || 0) : 0),
+    Number(displayActiveTask.timerSeconds || 0)
+  ) : 0;
+
   return (
     <div id="active-timer-card" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 sm:px-[18px] flex flex-col justify-between gap-2.5 shadow-xs">
       <div>
@@ -131,9 +139,9 @@ export const ActiveTaskTimerCard = ({
                           : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800'
                       }`}>
                         ⏱️ Task: {displayActiveTask.timerRunning
-                          ? (displayActiveTask.liveDurationText || formatTimeDurationSafe(displayActiveTask.todayWorkSeconds ?? displayActiveTask.timerSeconds ?? 0))
-                          : ((Number(displayActiveTask.todayWorkSeconds ?? displayActiveTask.timerSeconds) > 0)
-                            ? `${formatTimeDurationSafe(displayActiveTask.todayWorkSeconds ?? displayActiveTask.timerSeconds)} (paused)`
+                          ? (displayActiveTask.liveDurationText || formatTimeDurationSafe(activeTaskTodaySecs))
+                          : (activeTaskTodaySecs > 0
+                            ? `${formatTimeDurationSafe(activeTaskTodaySecs)} (paused)`
                             : '00:00:00')}
                       </span>
                     </div>
@@ -218,7 +226,7 @@ export const ActiveTaskTimerCard = ({
               <span>
                 {displayActiveTask?.timerRunning
                   ? 'Pause'
-                  : (displayActiveTask?.timerSeconds > 0 ? 'Resume' : 'Start Timer')}
+                  : (activeTaskTodaySecs > 0 ? 'Resume' : 'Start Timer')}
               </span>
             </button>
 

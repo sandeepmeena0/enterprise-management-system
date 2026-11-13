@@ -586,7 +586,7 @@ export const TeamOperationsPage = () => {
     } else if (telem?.activeTask) {
       candidateTask = telem.activeTask;
     } else {
-      candidateTask = empTasks.find(t => t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0 && t.status !== 'completed') || null;
+      candidateTask = empTasks.find(t => (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.timerSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) && t.status !== 'completed') || null;
     }
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave) {
@@ -613,14 +613,12 @@ export const TeamOperationsPage = () => {
       let todayTaskBase = 0;
       if (candidateTask.dailySessions && typeof candidateTask.dailySessions === 'object' && candidateTask.dailySessions[todayStr] !== undefined) {
         todayTaskBase = Number(candidateTask.dailySessions[todayStr]) || 0;
-      } else if (candidateTask.sessionDate === todayStr && candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
-        todayTaskBase = Number(candidateTask.todayWorkSeconds);
+      } else if (candidateTask.sessionDate === todayStr) {
+        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), Number(candidateTask.timerSeconds || 0));
       } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
         todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
-      } else if (candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
-        todayTaskBase = Number(candidateTask.todayWorkSeconds);
       } else {
-        todayTaskBase = Number(candidateTask.timerSeconds || 0);
+        todayTaskBase = Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0);
       }
 
       const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || todayTaskBase));
@@ -1005,10 +1003,15 @@ export const TeamOperationsPage = () => {
       // Get exact today seconds from task
       const targetTask = (tasks || []).find(t => String(t._id || t.id) === String(taskId)) || task;
       const cached = liveTaskMemoryRef.current.get(String(taskId)) || liveTaskMemoryRef.current.get(empKey);
-      const existingTodaySecs = getTaskTodaySeconds(targetTask, todayStr, now, false, false) ||
-        Number(cached?.lastLiveSecs) ||
-        Number(targetTask.todayWorkSeconds ?? targetTask.dailySessions?.[todayStr] ?? 0);
-      const existingAccumSecs = Math.max(Number(targetTask.accumulatedSeconds || 0), existingTodaySecs);
+      const existingTodaySecs = Math.max(
+        getTaskTodaySeconds(targetTask, todayStr, now, false, false),
+        Number(cached?.lastLiveSecs || 0),
+        Number(targetTask.dailySessions?.[todayStr] || 0),
+        (targetTask.sessionDate === todayStr ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
+        ((targetTask.startDate === todayStr || String(targetTask.createdAt || '').startsWith(todayStr)) ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
+        Number(targetTask.todayWorkSeconds || 0)
+      );
+      const existingAccumSecs = Math.max(Number(targetTask.accumulatedSeconds || 0), Number(targetTask.timerSeconds || 0), existingTodaySecs);
 
       const runningObj = {
         taskId,

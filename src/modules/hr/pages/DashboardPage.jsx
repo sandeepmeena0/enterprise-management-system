@@ -761,7 +761,7 @@ export const DashboardPage = () => {
     } else if (!isSelf && telem?.activeTask) {
       candidateTask = telem.activeTask;
     } else {
-      candidateTask = empTasks.find(t => t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0 && !isTaskActuallyCompleted(t)) || null;
+      candidateTask = empTasks.find(t => (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.timerSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) && !isTaskActuallyCompleted(t)) || null;
     }
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave && !isTaskActuallyCompleted(candidateTask)) {
@@ -788,14 +788,12 @@ export const DashboardPage = () => {
       let todayTaskBase = 0;
       if (candidateTask.dailySessions && typeof candidateTask.dailySessions === 'object' && candidateTask.dailySessions[todayStr] !== undefined) {
         todayTaskBase = Number(candidateTask.dailySessions[todayStr]) || 0;
-      } else if (candidateTask.sessionDate === todayStr && candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
-        todayTaskBase = Number(candidateTask.todayWorkSeconds);
+      } else if (candidateTask.sessionDate === todayStr) {
+        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), Number(candidateTask.timerSeconds || 0));
       } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
         todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
-      } else if (candidateTask.todayWorkSeconds !== undefined && Number(candidateTask.todayWorkSeconds) > 0) {
-        todayTaskBase = Number(candidateTask.todayWorkSeconds);
       } else {
-        todayTaskBase = Number(candidateTask.timerSeconds || 0);
+        todayTaskBase = Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0);
       }
 
       const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || todayTaskBase));
@@ -1843,29 +1841,35 @@ export const DashboardPage = () => {
       task = myPendingTasks.find(t => !t.snoozed && !isTaskActuallyCompleted(t)) || myTasks.find(t => !isTaskActuallyCompleted(t)) || null;
     }
 
-    if (task && !displayedIsClockedIn) {
-      const pausedTodaySecs = Number(task.todayWorkSeconds ?? task.dailySessions?.[todayStr] ?? task.timerSeconds ?? 0);
+    const resolvedTodaySecs = task ? Math.max(
+      Number(task.dailySessions?.[todayStr] || 0),
+      Number(task.todayWorkSeconds || 0),
+      (task.sessionDate === todayStr ? Number(task.timerSeconds || 0) : 0),
+      ((task.startDate === todayStr || String(task.createdAt || '').startsWith(todayStr)) ? Number(task.timerSeconds || 0) : 0),
+      Number(task.timerSeconds || 0)
+    ) : 0;
+
+    if (task && displayedHadClockedOut) {
       return {
         ...task,
         timerRunning: false,
-        timerSeconds: pausedTodaySecs,
-        todayWorkSeconds: pausedTodaySecs,
-        liveDurationText: formatSeconds(pausedTodaySecs)
+        timerSeconds: resolvedTodaySecs,
+        todayWorkSeconds: resolvedTodaySecs,
+        liveDurationText: formatSeconds(resolvedTodaySecs)
       };
     }
 
     if (task && !task.timerRunning) {
-      const pausedTodaySecs = Number(task.todayWorkSeconds ?? task.dailySessions?.[todayStr] ?? task.timerSeconds ?? 0);
       return {
         ...task,
         timerRunning: false,
-        timerSeconds: pausedTodaySecs,
-        todayWorkSeconds: pausedTodaySecs,
-        liveDurationText: formatSeconds(pausedTodaySecs)
+        timerSeconds: resolvedTodaySecs,
+        todayWorkSeconds: resolvedTodaySecs,
+        liveDurationText: formatSeconds(resolvedTodaySecs)
       };
     }
     return task;
-  }, [isViewingOtherEmployee, activeEmpState?.runningTask, cleanTasks, activeRunningTask, effectiveTargetUser, isTaskAssignedToUser, activeSelectedTaskId, myTasks, myPendingTasks, formatSeconds, displayedIsClockedIn, todayStr]);
+  }, [isViewingOtherEmployee, activeEmpState?.runningTask, cleanTasks, activeRunningTask, effectiveTargetUser, isTaskAssignedToUser, activeSelectedTaskId, myTasks, myPendingTasks, formatSeconds, displayedHadClockedOut, todayStr]);
 
   // Instant Cross-Device Sync Bridge: When telemetry shows user is clocked in on another device (e.g. mobile),
   // automatically update local storage and trigger TimerContext live state sync

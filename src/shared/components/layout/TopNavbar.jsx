@@ -92,21 +92,20 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
 
   const liveTaskSecs = useMemo(() => {
     if (!activeRunningTask) return 0;
+    const today = new Date().toISOString().split('T')[0];
+    const baseToday = Math.max(
+      Number(activeRunningTask.dailySessions?.[today] || 0),
+      Number(activeRunningTask.todayWorkSeconds || 0),
+      (activeRunningTask.sessionDate === today ? Number(activeRunningTask.timerSeconds || 0) : 0),
+      ((activeRunningTask.startDate === today || String(activeRunningTask.createdAt || '').startsWith(today)) ? Number(activeRunningTask.timerSeconds || 0) : 0),
+      Number(activeRunningTask.timerSeconds || 0)
+    );
     if (!activeRunningTask.timerRunning) {
-      return Number(activeRunningTask.todayWorkSeconds ?? activeRunningTask.timerSeconds ?? 0);
+      return baseToday;
     }
     const started = Number(activeRunningTask.startedAt);
-    const today = new Date().toISOString().split('T')[0];
-    let base = 0;
-    if (activeRunningTask.todayWorkSeconds !== undefined) {
-      base = Number(activeRunningTask.todayWorkSeconds) || 0;
-    } else if (activeRunningTask.dailySessions?.[today] !== undefined) {
-      base = Number(activeRunningTask.dailySessions[today]) || 0;
-    } else if (activeRunningTask.startDate === today || String(activeRunningTask.createdAt || '').startsWith(today)) {
-      base = Number(activeRunningTask.timerSeconds || 0);
-    }
     const elapsed = started > 0 ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
-    return base + elapsed;
+    return baseToday + elapsed;
   }, [activeRunningTask, taskTick]);
 
   // Dropdown States

@@ -340,8 +340,18 @@ export const workService = {
 
                 const effectiveAccum = Math.max(localAccum, remoteAccum);
                 const todayStr = getLocalDateString();
-                const localToday = Number(local.todayWorkSeconds ?? local.dailySessions?.[todayStr] ?? localTimerSecs) || 0;
-                const remoteToday = Number(rt.todayWorkSeconds ?? rt.dailySessions?.[todayStr] ?? remoteTimerSecs) || 0;
+                const localToday = Math.max(
+                  Number(local.dailySessions?.[todayStr] || 0),
+                  Number(local.todayWorkSeconds || 0),
+                  (local.sessionDate === todayStr ? Number(local.timerSeconds || 0) : 0),
+                  ((local.startDate === todayStr || String(local.createdAt || '').startsWith(todayStr)) ? Number(local.timerSeconds || 0) : 0)
+                );
+                const remoteToday = Math.max(
+                  Number(rt.dailySessions?.[todayStr] || 0),
+                  Number(rt.todayWorkSeconds || 0),
+                  (rt.sessionDate === todayStr ? Number(rt.timerSeconds || 0) : 0),
+                  ((rt.startDate === todayStr || String(rt.createdAt || '').startsWith(todayStr)) ? Number(rt.timerSeconds || 0) : 0)
+                );
                 const effectiveTodaySecs = Math.min(Math.max(localToday, remoteToday), effectiveAccum || Math.max(localToday, remoteToday));
                 const maxHours = Math.max(localHoursLogged, remoteHoursLogged, +(effectiveAccum / 3600).toFixed(2));
 

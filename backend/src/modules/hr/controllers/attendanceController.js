@@ -962,7 +962,7 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     isOnBreak: Boolean(isOnBreak),
     breakType: breakType || null,
     breakStartTimestamp: breakStartTimestamp ? Number(breakStartTimestamp) : (isOnBreak && existingCached?.breakStartTimestamp ? existingCached.breakStartTimestamp : (isOnBreak ? Date.now() : null)),
-    activeTask: (activeTask && activeTask.timerRunning !== false) ? { ...activeTask, timerRunning: true } : null,
+    activeTask: activeTask ? { ...activeTask, timerRunning: Boolean(activeTask.timerRunning !== false) } : null,
     lastHeartbeatAt: Date.now()
   };
 
@@ -1250,28 +1250,31 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         startedAt: matchedTask.startedAt,
         timerRunning: true
       };
-    } else if (r.activeTask && r.activeTask.timerRunning !== false && r.activeTask.startedAt && isClockedIn && !isOnBreak) {
-      const taskStart = Number(r.activeTask.startedAt);
-      const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
+    } else if (r.activeTask && isClockedIn) {
+      const isRunning = Boolean(r.activeTask.timerRunning !== false && r.activeTask.startedAt && !isOnBreak);
+      const taskStart = isRunning ? Number(r.activeTask.startedAt) : null;
+      const elapsedTask = isRunning ? Math.max(0, Math.floor((now - taskStart) / 1000)) : 0;
       let todayTaskBase = 0;
       if (r.activeTask.dailySessions && typeof r.activeTask.dailySessions === 'object' && r.activeTask.dailySessions[today] !== undefined) {
         todayTaskBase = Number(r.activeTask.dailySessions[today]) || 0;
-      } else if (r.activeTask.sessionDate === today && r.activeTask.todayWorkSeconds !== undefined && Number(r.activeTask.todayWorkSeconds) > 0) {
-        todayTaskBase = Number(r.activeTask.todayWorkSeconds);
+      } else if (r.activeTask.sessionDate === today) {
+        todayTaskBase = Math.max(Number(r.activeTask.todayWorkSeconds || 0), Number(r.activeTask.timerSeconds || 0));
       } else if (r.activeTask.startDate === today || String(r.activeTask.createdAt || '').startsWith(today)) {
         todayTaskBase = Number(r.activeTask.accumulatedSeconds || r.activeTask.timerSeconds || 0);
       } else {
-        todayTaskBase = 0;
+        todayTaskBase = Number(r.activeTask.todayWorkSeconds || r.activeTask.timerSeconds || 0);
       }
       const liveTaskTodaySecs = todayTaskBase + elapsedTask;
-      const totalAccum = Number(r.activeTask.accumulatedSeconds || 0);
+      const totalAccum = Number(r.activeTask.accumulatedSeconds !== undefined ? r.activeTask.accumulatedSeconds : (r.activeTask.timerSeconds || todayTaskBase));
 
       runningTask = {
         ...r.activeTask,
         accumulatedSeconds: totalAccum,
         todayWorkSeconds: todayTaskBase,
+        timerSeconds: liveTaskTodaySecs,
         liveTaskSecs: liveTaskTodaySecs,
-        timerRunning: true
+        timerRunning: isRunning,
+        startedAt: taskStart
       };
     }
 
@@ -1327,32 +1330,34 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
 
       let effectiveActiveTask = null;
       if (cachedVal && 'activeTask' in cachedVal) {
-        effectiveActiveTask = (cachedVal.activeTask && cachedVal.activeTask.timerRunning !== false) ? cachedVal.activeTask : null;
-      } else if (existingTelem && existingTelem.activeTask && existingTelem.activeTask.timerRunning !== false) {
+        effectiveActiveTask = cachedVal.activeTask;
+      } else if (existingTelem && existingTelem.activeTask) {
         effectiveActiveTask = existingTelem.activeTask;
       }
-      if (effectiveActiveTask && effectiveActiveTask.startedAt && cachedVal.isClockedIn && !cachedVal.isOnBreak) {
-        const taskStart = Number(effectiveActiveTask.startedAt);
-        const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
+      if (effectiveActiveTask) {
+        const isRunning = Boolean(effectiveActiveTask.timerRunning !== false && effectiveActiveTask.startedAt && cachedVal.isClockedIn && !cachedVal.isOnBreak);
+        const taskStart = isRunning ? Number(effectiveActiveTask.startedAt) : null;
+        const elapsedTask = isRunning ? Math.max(0, Math.floor((now - taskStart) / 1000)) : 0;
         let todayTaskBase = 0;
         if (effectiveActiveTask.dailySessions && typeof effectiveActiveTask.dailySessions === 'object' && effectiveActiveTask.dailySessions[today] !== undefined) {
           todayTaskBase = Number(effectiveActiveTask.dailySessions[today]) || 0;
-        } else if (effectiveActiveTask.sessionDate === today && effectiveActiveTask.todayWorkSeconds !== undefined && Number(effectiveActiveTask.todayWorkSeconds) > 0) {
-          todayTaskBase = Number(effectiveActiveTask.todayWorkSeconds);
+        } else if (effectiveActiveTask.sessionDate === today) {
+          todayTaskBase = Math.max(Number(effectiveActiveTask.todayWorkSeconds || 0), Number(effectiveActiveTask.timerSeconds || 0));
         } else if (effectiveActiveTask.startDate === today || String(effectiveActiveTask.createdAt || '').startsWith(today)) {
           todayTaskBase = Number(effectiveActiveTask.accumulatedSeconds || effectiveActiveTask.timerSeconds || 0);
         } else {
-          todayTaskBase = 0;
+          todayTaskBase = Number(effectiveActiveTask.todayWorkSeconds || effectiveActiveTask.timerSeconds || 0);
         }
         const liveTaskTodaySecs = todayTaskBase + elapsedTask;
-        const totalAccum = Number(effectiveActiveTask.accumulatedSeconds || 0);
+        const totalAccum = Number(effectiveActiveTask.accumulatedSeconds !== undefined ? effectiveActiveTask.accumulatedSeconds : (effectiveActiveTask.timerSeconds || todayTaskBase));
         effectiveActiveTask = {
           ...effectiveActiveTask,
           startedAt: taskStart,
           accumulatedSeconds: totalAccum,
           todayWorkSeconds: todayTaskBase,
+          timerSeconds: liveTaskTodaySecs,
           liveTaskSecs: liveTaskTodaySecs,
-          timerRunning: true
+          timerRunning: isRunning
         };
       }
 
