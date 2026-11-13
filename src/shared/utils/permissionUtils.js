@@ -401,7 +401,7 @@ export const canManageTickets = (user) => {
   if (!user) return false;
   if (isAdmin(user) || isHR(user) || isDelegationActive(user)) return true;
   const perms = getUserModulePermissions(user);
-  return Boolean(perms?.allAccess || perms?.manageTickets || perms?.tickets);
+  return Boolean(perms?.allAccess || perms?.manageTickets);
 };
 
 export const canAccessCRM = (user) => {
@@ -1387,41 +1387,75 @@ export const getUserModulePermissions = (user) => {
   }
 
   // Upward elevation: granting any granular capability enables the parent module view automatically
-  if (basePerms.manageEmployees || basePerms.deleteEmployees) {
+  if (basePerms.manageEmployees || basePerms.viewEmployeeDetails || basePerms.deleteEmployees || basePerms.reviewResignations) {
+    basePerms.manageEmployees = true;
     basePerms.employees = true;
   }
   if (basePerms.manageSalaries || basePerms.export_payroll) {
+    basePerms.manageSalaries = true;
     basePerms.payroll = true;
-  }
-  if (basePerms.accessFinance || basePerms.approveExpenses) {
     basePerms.finance = true;
   }
-  if (basePerms.accessCRM || basePerms.viewAllLeads || basePerms.deleteLeads) {
+  if (basePerms.accessFinance || basePerms.approveExpenses) {
+    basePerms.accessFinance = true;
+    basePerms.finance = true;
+  }
+  if (basePerms.accessCRM || basePerms.createLeads || basePerms.editLeads || basePerms.deleteLeads || basePerms.viewAllLeads || basePerms.export_leads) {
+    basePerms.accessCRM = true;
     basePerms.leads = true;
   }
-  if (basePerms.viewAllAttendance || basePerms.editAttendance || basePerms.forceClockOut) {
+  if (basePerms.viewAllAttendance || basePerms.editAttendance || basePerms.forceClockOut || basePerms.approveOvertime || basePerms.export_attendance) {
+    basePerms.viewAllAttendance = true;
     basePerms.attendance = true;
   }
-  if (basePerms.liveOperations) {
+  if (basePerms.liveOperations || basePerms.forceClockOut) {
+    basePerms.liveOperations = true;
     basePerms.teamoperations = true;
   }
-  if (basePerms.approveLeaves || basePerms.viewAllLeaves) {
+  if (basePerms.approveLeaves || basePerms.cancelLeaves || basePerms.viewAllLeaves) {
+    basePerms.approveLeaves = true;
     basePerms.leaves = true;
   }
   if (basePerms.manageProjects || basePerms.createProjects || basePerms.deleteProjects || basePerms.viewAllProjects) {
+    basePerms.manageProjects = true;
     basePerms.projects = true;
   }
-  if (basePerms.createTasks || basePerms.viewAllTasks || basePerms.deleteTasks) {
+  if (basePerms.createTasks || basePerms.viewAllTasks || basePerms.editAnyTask || basePerms.deleteTasks) {
     basePerms.tasks = true;
   }
-  if (basePerms.manageTickets || basePerms.deleteTickets) {
+  if (basePerms.manageTickets || basePerms.deleteTickets || basePerms.viewAllTickets) {
+    basePerms.manageTickets = true;
+    basePerms.viewAllTickets = true;
     basePerms.tickets = true;
+  }
+  if (basePerms.postNotices || basePerms.deleteNotices) {
+    basePerms.postNotices = true;
+    basePerms.notices = true;
+  }
+  if (basePerms.giveAppreciation || basePerms.deleteAppreciations) {
+    basePerms.giveAppreciation = true;
+    basePerms.appreciation = true;
+  }
+  if (basePerms.manageCompanyHolidays) {
+    basePerms.holidays = true;
+    basePerms.holiday = true;
+  }
+  if (basePerms.manageEvents) {
+    basePerms.events = true;
   }
   if (basePerms.documentation) {
     basePerms.documents = true;
+    basePerms.documentation = true;
   }
   if (basePerms.reports) {
     basePerms.viewReports = true;
+    basePerms.reports = true;
+  }
+  if (basePerms.manageSettings || basePerms.grantPermissions) {
+    basePerms.settings = true;
+  }
+  if (basePerms.createChannels || basePerms.screenShare) {
+    basePerms.messages = true;
   }
 
   if (!delegationValid) {
@@ -1518,7 +1552,6 @@ export const canCreateChannels = (user) => {
   const role = getUserRole(user);
   if (role === ROLES.TEAM_LEADER) return true;
   const perms = getUserModulePermissions(user);
-  if (!perms?.accessCRM && !perms?.leads && !perms?.allAccess) return false;
   return Boolean(perms?.allAccess || perms?.createChannels || perms?.manageGroups || perms?.manageChannels);
 };
 

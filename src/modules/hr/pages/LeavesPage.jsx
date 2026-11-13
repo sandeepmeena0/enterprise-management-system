@@ -1,25 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  Plus,
-  Download,
-  Filter,
-  Search,
-  List,
-  Calendar as CalendarIcon,
-  User,
-  ChevronRight,
-  Eye,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Palmtree,
-  FileSpreadsheet,
-  AlertCircle,
-  Check,
-  X,
-  Trash2,
-  FileText
-} from 'lucide-react';
+import { Plus, Download, Filter, Search, List, Calendar as CalendarIcon, User, Eye, CheckCircle2, XCircle, Clock, Palmtree, FileSpreadsheet, AlertCircle, Check, X, Trash2, FileText } from 'lucide-react';
 import { useHR } from '../context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { DateRangePicker } from '../components/common/DateRangePicker';
@@ -28,7 +8,7 @@ import { LeaveDetailModal } from '../components/leaves/LeaveDetailModal';
 import { RejectLeaveModal } from '../../../shared/components/modals/RejectLeaveModal';
 import { CancelLeaveModal } from '../../../shared/components/modals/CancelLeaveModal';
 import { ResignationsListPanel } from '../components/resignations/ResignationsListPanel';
-import { canApproveLeaves, isHRorAdmin, isAdmin, getUserModulePermissions, canCancelLeave, canReviewLeave, isLeaveApplicant, isLeaveDesignatedApprover, canExportData } from '../../../shared/utils/permissionUtils';
+import { canApproveLeaves, isHRorAdmin, getUserModulePermissions, canCancelLeave, canReviewLeave, isLeaveApplicant, isLeaveDesignatedApprover, canExportData } from '../../../shared/utils/permissionUtils';
 import { matchesFilter, matchesSearch } from '../../../shared/utils/filterUtils';
 import { Pagination } from '../../../shared/components/common/Pagination';
 

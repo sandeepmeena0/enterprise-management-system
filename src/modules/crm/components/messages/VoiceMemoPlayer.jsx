@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, Mic } from 'lucide-react';
+import { Play, Pause, Mic } from 'lucide-react';
 
 /**
  * @file VoiceMemoPlayer.jsx

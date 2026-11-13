@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Clock,
-  ShieldAlert,
-  Coffee,
-  Utensils,
-  CalendarCheck,
-  CheckCircle2,
-  Sparkles,
-  ArrowRight,
-  Building2,
-  Info,
-  Sliders,
-  History
-} from 'lucide-react';
+import { Clock, ShieldAlert, Coffee, Utensils, CheckCircle2, Sparkles, ArrowRight, Building2, Info, Sliders } from 'lucide-react';
 import {
   getCompanySettings,
   saveCompanySettings,

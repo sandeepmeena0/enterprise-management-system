@@ -6,30 +6,7 @@
 
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  X,
-  LayoutDashboard,
-  Users2,
-  FolderGit2,
-  ListTodo,
-  Palmtree,
-  CalendarCheck,
-  DollarSign,
-  Ticket,
-  Calendar,
-  MessageSquare,
-  BellRing,
-  Settings,
-  Clock,
-  CheckCircle2,
-  TrendingUp,
-  ArrowRight,
-  Sparkles,
-  Zap,
-  Coffee,
-  LogOut,
-  Plus
-} from 'lucide-react';
+import { X, LayoutDashboard, Users2, FolderGit2, ListTodo, Palmtree, CalendarCheck, DollarSign, Ticket, Calendar, MessageSquare, BellRing, Settings, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useHR } from '../../../modules/hr/context/HRContext';
 import { useWork } from '../../../modules/work/context/WorkContext';
 import { useCRM } from '../../context/CRMContext';

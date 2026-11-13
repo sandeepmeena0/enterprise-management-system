@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
-import { ShieldAlert, AlertTriangle, LogOut, Clock, User } from 'lucide-react';
+import { ShieldAlert, LogOut } from 'lucide-react';
 
 export const AdminForceClockOutModal = ({ isOpen, onClose, targetEmployee = null }) => {
   const { employees, adminForceClockOut, currentUser, attendance } = useHR();

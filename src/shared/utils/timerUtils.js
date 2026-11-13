@@ -224,7 +224,6 @@ export const removeTimerStorage = (user, subKey) => {
   }
 };
 
-import { API_BASE } from '../config/apiConfig.js';
 import { hrService } from '../../modules/hr/services/hrService.js';
 import { workService } from '../../modules/work/services/workService.js';
 import { getCompanySettings, fetchCompanySettingsFromDB } from '../services/companySettingsService.js';
@@ -489,59 +488,60 @@ export const calculateShiftWorkSeconds = (userOrEmp, dateStr, nowMs = Date.now()
  */
 export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffectiveClockedIn = true, isEffectiveOnBreak = false) => {
   if (!task) return 0;
-  const targetDate = dateStr || getLocalDateStr();
-  const actualToday = getLocalDateStr();
+  const actualToday = getLocalDateStr(nowMs);
+  const targetDate = dateStr || actualToday;
   const isCreatedOnTargetDate = String(task.createdAt || '').startsWith(targetDate) || task.startDate === targetDate;
+  const todayMidnight = new Date(nowMs);
+  todayMidnight.setHours(0, 0, 0, 0);
+  const maxPhysicalSecs = Math.max(0, Math.floor((nowMs - todayMidnight.getTime()) / 1000));
 
   // 1. If dailySessions explicitly records this date:
   if (task.dailySessions && typeof task.dailySessions === 'object' && task.dailySessions[targetDate] !== undefined) {
     const baseSecs = Math.max(0, Number(task.dailySessions[targetDate]) || 0);
     let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
-      const todayMidnight = new Date();
-      todayMidnight.setHours(0, 0, 0, 0);
       const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
       liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
     }
-    return Math.min(baseSecs + liveSecs, 24 * 3600);
+    const result = baseSecs + liveSecs;
+    return targetDate === actualToday ? Math.min(result, maxPhysicalSecs) : Math.min(result, 24 * 3600);
   }
 
-  // 2. If sessionDate is targetDate, use todayWorkSeconds:
+  // 2. If sessionDate is targetDate, use todayBaseSecs or non-running todayWorkSeconds:
   if (task.sessionDate === targetDate) {
-    let baseSecs = Math.max(0, Number(task.todayWorkSeconds || 0));
-    if (baseSecs === 0 && isCreatedOnTargetDate) {
+    let baseSecs = (task.todayBaseSecs !== undefined)
+      ? Math.max(0, Number(task.todayBaseSecs) || 0)
+      : (!task.timerRunning ? Math.max(0, Number(task.todayWorkSeconds) || 0) : 0);
+    if (baseSecs === 0 && isCreatedOnTargetDate && !task.timerRunning) {
       baseSecs = Math.max(0, Number(task.timerSeconds || 0));
     }
     let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
-      const todayMidnight = new Date();
-      todayMidnight.setHours(0, 0, 0, 0);
       const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
       liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
     }
-    return Math.min(baseSecs + liveSecs, 24 * 3600);
+    const result = baseSecs + liveSecs;
+    return targetDate === actualToday ? Math.min(result, maxPhysicalSecs) : Math.min(result, 24 * 3600);
   }
 
   // 3. Actively running task today with no prior recorded today session:
   if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
     const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-    const isCreatedToday = String(task.createdAt || '').startsWith(actualToday) || task.startDate === actualToday;
-    const base = isCreatedToday ? Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0)) : Math.max(0, Number(task.todayWorkSeconds || 0));
+    const base = (task.todayBaseSecs !== undefined) ? Math.max(0, Number(task.todayBaseSecs) || 0) : 0;
     const liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
-    return Math.min(base + liveSecs, 24 * 3600);
+    return Math.min(base + liveSecs, maxPhysicalSecs);
   }
 
   // 4. Task was strictly created today with work recorded:
   if (targetDate === actualToday && isCreatedOnTargetDate) {
     const secs = Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
-    return Math.min(secs, 24 * 3600);
+    return Math.min(secs, maxPhysicalSecs);
   }
 
   // 5. If task was completed on targetDate, strictly return todayWorkSeconds (never all-time timerSeconds!)
-  if (task.completedOn === targetDate) {
-    return Math.min(Math.max(0, Number(task.todayWorkSeconds || 0)), 24 * 3600);
+  if (task.completedOn === targetDate && (task.sessionDate === targetDate || (task.dailySessions && task.dailySessions[targetDate] !== undefined))) {
+    const recorded = Math.max(0, Number(task.dailySessions?.[targetDate] ?? task.todayWorkSeconds ?? 0));
+    return targetDate === actualToday ? Math.min(recorded, maxPhysicalSecs) : Math.min(recorded, 24 * 3600);
   }
 
   return 0;
@@ -583,7 +583,7 @@ export const sanitizeTaskDailySessions = (task) => {
   if (rawSessions[todayStr] !== undefined) {
     todayBase = Math.max(0, Number(rawSessions[todayStr]) || 0);
   } else if (task.sessionDate === todayStr) {
-    todayBase = Math.max(0, Number(task.todayWorkSeconds || 0));
+    todayBase = Math.max(0, Number(task.todayBaseSecs ?? task.todayWorkSeconds ?? 0));
   } else if (task.startDate === todayStr || String(task.createdAt || '').startsWith(todayStr)) {
     todayBase = Math.max(0, Number(task.todayWorkSeconds || task.timerSeconds || 0));
   }
@@ -607,6 +607,7 @@ export const sanitizeTaskDailySessions = (task) => {
     ...task,
     accumulatedSeconds: trueTotalAccum,
     todayWorkSeconds: effectiveToday,
+    todayBaseSecs: todayBase,
     timerSeconds: effectiveToday,
     dailySessions: cleanedSessions
   };
@@ -614,7 +615,7 @@ export const sanitizeTaskDailySessions = (task) => {
 
 /**
  * Atomic Lockstep Sync: Prepares a paused task object with 100% synchronized duration fields.
- * Prevents time jumping backwards on resume.
+ * Prevents time jumping backwards on resume and isolates today's time from past days.
  */
 export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPausedForClockOut = false, wasPausedForBreak = false } = {}) => {
   if (!task) return null;
@@ -628,56 +629,54 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
     sessionElapsed = Math.max(0, Math.floor((nowMs - effStart) / 1000));
   }
 
-  // Base lifetime accumulated seconds before this running session started
-  let baseAccum = 0;
-  if (task.accumulatedSeconds !== undefined && task.accumulatedSeconds !== null) {
-    baseAccum = Number(task.accumulatedSeconds) || 0;
-  } else if (task.timerSeconds !== undefined && task.timerSeconds !== null) {
-    baseAccum = Math.max(0, (Number(task.timerSeconds) || 0) - sessionElapsed);
-  }
-
-  const totalSecs = baseAccum + sessionElapsed;
-
   const dailySessionsMap = (task.dailySessions && typeof task.dailySessions === 'object') ? { ...task.dailySessions } : {};
+
+  // Determine today's baseline before this running stretch started:
   let priorTodaySecs = 0;
-  if (dailySessionsMap[today] !== undefined) {
-    priorTodaySecs = Number(dailySessionsMap[today]) || 0;
+  if (task.todayBaseSecs !== undefined && task.sessionDate === today) {
+    priorTodaySecs = Math.max(0, Number(task.todayBaseSecs) || 0);
+  } else if (dailySessionsMap[today] !== undefined) {
+    priorTodaySecs = Math.max(0, Number(dailySessionsMap[today]) || 0);
   } else if (task.sessionDate === today) {
-    priorTodaySecs = Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
+    priorTodaySecs = Math.max(0, Number(task.todayWorkSeconds) || 0);
   } else if (task.startDate === today || String(task.createdAt || '').startsWith(today)) {
-    priorTodaySecs = Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
-  }
-
-  let totalTodaySecs = 0;
-  if (sessionElapsed > 0) {
-    // If priorTodaySecs already equals or exceeds (baseAccum + sessionElapsed),
-    // it was already updated to live seconds — do NOT double-add sessionElapsed!
-    if (priorTodaySecs >= baseAccum + sessionElapsed) {
-      totalTodaySecs = baseAccum + sessionElapsed;
-    } else {
-      totalTodaySecs = Math.min(priorTodaySecs + sessionElapsed, totalSecs);
-    }
+    priorTodaySecs = Math.max(0, Number(task.todayWorkSeconds || task.timerSeconds || 0));
   } else {
-    // If not actively running in this pause event, strictly retain prior today's recorded work without dumping prior days' baseAccum!
-    totalTodaySecs = Math.min(priorTodaySecs, totalSecs);
+    priorTodaySecs = 0;
   }
 
+  // Today's total duration = baseline + session elapsed
+  const totalTodaySecs = priorTodaySecs + sessionElapsed;
   dailySessionsMap[today] = totalTodaySecs;
+
+  // Calculate lifetime accumulated seconds across all days:
+  // Strictly sum prior days (d < today) + totalTodaySecs
+  let priorDaysSum = 0;
+  for (const [d, val] of Object.entries(dailySessionsMap)) {
+    if (d < today) {
+      priorDaysSum += Math.max(0, Number(val) || 0);
+    }
+  }
+  if (priorDaysSum === 0 && Number(task.accumulatedSeconds || 0) > priorTodaySecs) {
+    priorDaysSum = (Number(task.accumulatedSeconds || 0)) - priorTodaySecs;
+  }
+  const totalLifetimeSecs = priorDaysSum + totalTodaySecs;
 
   return {
     ...task,
     timerRunning: false,
     startedAt: null,
-    accumulatedSeconds: totalSecs,
+    accumulatedSeconds: totalLifetimeSecs,
     timerSeconds: totalTodaySecs,
     todayWorkSeconds: totalTodaySecs,
+    todayBaseSecs: totalTodaySecs,
     dailySessions: dailySessionsMap,
     sessionDate: today,
     lastUpdated: nowMs,
     wasPausedForClockOut: Boolean(wasPausedForClockOut),
     wasPausedForBreak: Boolean(wasPausedForBreak),
     liveDurationText: formatSecondsToDigital(totalTodaySecs),
-    hoursLoggedText: formatSecondsToHoursMins(totalSecs)
+    hoursLoggedText: formatSecondsToHoursMins(totalLifetimeSecs)
   };
 };
 
@@ -1112,15 +1111,56 @@ export const hydrateUserCloudState = async (user) => {
       }) || null;
     }
 
+    // Direct Database Fallback: If not found in telemetry map, query attendance directly
+    if (!telemRec) {
+      try {
+        const dailyRes = await fetch(`${API_BASE}/attendance/daily?date=${today}&_t=${Date.now()}`, {
+          signal: AbortSignal.timeout(3500)
+        });
+        if (dailyRes.ok) {
+          const dailyJson = await dailyRes.json();
+          const list = dailyJson.data || dailyJson || [];
+          if (Array.isArray(list)) {
+            telemRec = list.find(a => {
+              if (a.date !== today) return false;
+              const aCode = String(a.employeeCode || '').toUpperCase();
+              const aId = String(a.employeeId || a.employee?._id || a.employee || '');
+              const aEmail = String(a.employeeEmail || a.email || '').toLowerCase();
+              return empKeys.some(k => {
+                const str = String(k);
+                return str.toUpperCase() === aCode || str === aId || str.toLowerCase() === aEmail;
+              });
+            }) || null;
+            if (telemRec) {
+              const uKey = getCanonicalTimerKey(user);
+              if (uKey) telemMap[uKey] = telemRec;
+              if (user.employeeCode) telemMap[String(user.employeeCode).toUpperCase()] = telemRec;
+              if (user._id) telemMap[String(user._id)] = telemRec;
+              try {
+                localStorage.setItem('ems_last_telemetry', JSON.stringify(telemMap));
+              } catch (_) {}
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     if (telemRec) {
       const mirrorKeys = getTimerMirrorKeys(user);
-      const isClockedIn = Boolean(telemRec.isClockedIn && !telemRec.clockOutTime);
-      const isClockedOut = Boolean(telemRec.clockOutTime || telemRec.isClockedOut);
-      const isOnBreak = Boolean(telemRec.isOnBreak);
+      const hasClockIn = Boolean(telemRec.firstClockInTime || telemRec.clockInTime || telemRec.clockIn);
+      const hasExplicitClockOut = Boolean(
+        (telemRec.clockOutTime && telemRec.clockOutTime !== '--' && telemRec.clockOutTime !== '—') ||
+        (telemRec.clockOut && telemRec.clockOut !== '--' && telemRec.clockOut !== '—') ||
+        Boolean(telemRec.clockOutTimestamp) ||
+        telemRec.isClockedOut === true
+      );
+      const isClockedIn = Boolean(!hasExplicitClockOut && (telemRec.isClockedIn === true || telemRec.isClockedIn === 'true' || hasClockIn));
+      const isClockedOut = Boolean(hasExplicitClockOut || (!isClockedIn && (telemRec.clockOutTime || telemRec.isClockedOut)));
+      const isOnBreak = Boolean(isClockedIn && telemRec.isOnBreak);
       const liveSecs = Number(telemRec.workSeconds) || 0;
       const breakSecs = Number(telemRec.breakSeconds) || 0;
-      const loginTime = telemRec.clockInTime || telemRec.clockIn || null;
-      const clockInTs = Number(telemRec.clockInTimestamp || 0);
+      const loginTime = telemRec.firstClockInTime || telemRec.clockInTime || telemRec.clockIn || null;
+      const clockInTs = Number(telemRec.clockInTimestamp || telemRec.firstClockInTimestamp || 0);
       const sessStart = Number(telemRec.currentSessionStartTimestamp || clockInTs || 0);
 
       for (const uk of mirrorKeys) {
@@ -1129,8 +1169,14 @@ export const hydrateUserCloudState = async (user) => {
         localStorage.setItem(`ems_timer_${uk}_is_running`, (isClockedIn && !isOnBreak) ? 'true' : 'false');
         localStorage.setItem(`ems_timer_${uk}_is_on_break`, isOnBreak ? 'true' : 'false');
         localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, isClockedOut ? 'true' : 'false');
-        if (loginTime) localStorage.setItem(`ems_timer_${uk}_login_time`, loginTime);
-        if (clockInTs > 0) localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(clockInTs));
+        if (loginTime) {
+          localStorage.setItem(`ems_timer_${uk}_login_time`, loginTime);
+          localStorage.setItem(`ems_timer_${uk}_first_clock_in_time`, loginTime);
+        }
+        if (clockInTs > 0) {
+          localStorage.setItem(`ems_timer_${uk}_clock_in_timestamp`, String(clockInTs));
+          localStorage.setItem(`ems_timer_${uk}_first_clock_in_timestamp`, String(clockInTs));
+        }
         if (sessStart > 0) localStorage.setItem(`ems_timer_${uk}_current_session_start_timestamp`, String(sessStart));
 
         // Never downgrade local work seconds if higher

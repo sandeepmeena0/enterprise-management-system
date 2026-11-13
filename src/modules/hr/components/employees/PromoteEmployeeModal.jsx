@@ -1,20 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Award,
-  ArrowRight,
-  ShieldCheck,
-  CheckCircle2,
-  Lock,
-  Printer,
-  FileText,
-  Building2,
-  Sparkles,
-  UserCheck
-} from 'lucide-react';
+import { X, Award, ArrowRight, ShieldCheck, CheckCircle2, Lock, Printer, FileText } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
 import { useToast } from '../../../../shared/context/ToastContext';
-import { getRoles, canUserAssignRole, recordPromotion } from '../../../../shared/services/roleManagementService';
+import { getRoles, recordPromotion } from '../../../../shared/services/roleManagementService';
 import { getCompanySettings } from '../../../../shared/services/companySettingsService';
 
 export const PromoteEmployeeModal = ({ isOpen, onClose, employee }) => {

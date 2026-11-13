@@ -4,31 +4,23 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Send,
-  User,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Tag,
-  ShieldAlert,
-  Lock,
-  MessageSquare,
-  FileText,
-  UserCheck,
-  ChevronDown,
-  Trash2
-} from 'lucide-react';
+import { X, Send, Lock, MessageSquare, Trash2 } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useHR } from '../../../hr/context/HRContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';
-import { canDeleteTicket } from '../../../../shared/utils/permissionUtils';
+import { canDeleteTicket, canManageTickets, isHRorAdmin } from '../../../../shared/utils/permissionUtils';
 
 export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
   const { replyToTicket = async () => {}, updateTicketStatus = async () => {}, addTicketInternalNote = async () => {}, assignTicket = async () => {}, deleteTicket = async () => {} } = useCRM() || {};
   const { currentUser = null, employees = [] } = useHR() || {};
   const { confirm = async () => true } = useConfirm() || {};
+
+  const canManage = canManageTickets(currentUser) || isHRorAdmin(currentUser);
+  const isRequester = currentUser && (
+    (ticket.requestedById && String(ticket.requestedById) === String(currentUser._id || currentUser.id || currentUser.employeeCode)) ||
+    (ticket.requestedByName && currentUser.name && ticket.requestedByName.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
+  );
+  const canChangeStatus = canManage || isRequester;
 
   const [replyText, setReplyText] = useState('');
   const [internalNoteText, setInternalNoteText] = useState('');
@@ -162,35 +154,64 @@ export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
             {/* Status Switcher */}
             <div>
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Status</span>
-              <select
-                value={ticket.status}
-                onChange={e => handleStatusChange(e.target.value)}
-                className={`block mt-1 py-1 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold outline-none cursor-pointer ${
-                  ticket.status === 'resolved' || ticket.status === 'closed' ? 'text-green-600' : 'text-blue-600'
-                }`}
-              >
-                <option value="open">Open</option>
-                <option value="in_progress">In Progress</option>
-                <option value="pending">Pending</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
-              </select>
+              {canChangeStatus ? (
+                <select
+                  value={ticket.status}
+                  onChange={e => handleStatusChange(e.target.value)}
+                  className={`block mt-1 py-1 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold outline-none cursor-pointer ${
+                    ticket.status === 'resolved' || ticket.status === 'closed' ? 'text-green-600' : 'text-blue-600'
+                  }`}
+                >
+                  {canManage ? (
+                    <>
+                      <option value="open">Open</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="pending">Pending</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value={ticket.status}>{ticket.status === 'closed' ? 'Closed' : ticket.status === 'resolved' ? 'Resolved' : 'Open'}</option>
+                      <option value="resolved">Mark Resolved</option>
+                      <option value="closed">Close Ticket</option>
+                      {ticket.status === 'closed' && <option value="open">Reopen Ticket</option>}
+                    </>
+                  )}
+                </select>
+              ) : (
+                <div className="mt-1">
+                  <span className={`inline-block py-0.5 px-2 rounded-md text-[11px] font-bold uppercase ${
+                    ticket.status === 'resolved' || ticket.status === 'closed'
+                      ? 'bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300'
+                      : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                  }`}>
+                    {ticket.status?.replace('_', ' ') || 'Open'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Assigned To */}
             <div>
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">Assigned Support</span>
-              <select
-                value={ticket.assignedToId || 'emp_005'}
-                onChange={e => handleAssign(e.target.value)}
-                className="block mt-1 py-1 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 outline-none cursor-pointer max-w-[160px]"
-              >
-                {employees.map(emp => (
-                  <option key={emp._id || emp.id || emp.employeeCode} value={emp._id || emp.id}>
-                    {emp.name} ({emp.role?.split(' ')[0]})
-                  </option>
-                ))}
-              </select>
+              {canManage ? (
+                <select
+                  value={ticket.assignedToId || 'emp_005'}
+                  onChange={e => handleAssign(e.target.value)}
+                  className="block mt-1 py-1 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 outline-none cursor-pointer max-w-[160px]"
+                >
+                  {employees.map(emp => (
+                    <option key={emp._id || emp.id || emp.employeeCode} value={emp._id || emp.id}>
+                      {emp.name} ({emp.role?.split(' ')[0]})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 mt-1">
+                  {employees.find(e => String(e._id) === String(ticket.assignedToId) || String(e.id) === String(ticket.assignedToId) || String(e.employeeCode) === String(ticket.assignedToId))?.name || ticket.assignedToName || 'Unassigned'}
+                </div>
+              )}
             </div>
           </div>
 
@@ -218,18 +239,20 @@ export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
                 Conversation Stream ({ticket.replies?.length || 0})
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('internal_notes')}
-                className={`bg-transparent border-none py-1.5 px-3 text-[13px] font-bold cursor-pointer flex items-center gap-1.5 transition-colors ${
-                  activeTab === 'internal_notes'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                <Lock size={14} />
-                Admin Internal Notes ({ticket.internalNotes?.length || 0})
-              </button>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('internal_notes')}
+                  className={`bg-transparent border-none py-1.5 px-3 text-[13px] font-bold cursor-pointer flex items-center gap-1.5 transition-colors ${
+                    activeTab === 'internal_notes'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Lock size={14} />
+                  Admin Internal Notes ({ticket.internalNotes?.length || 0})
+                </button>
+              )}
             </div>
 
             {/* Conversation Tab Body */}

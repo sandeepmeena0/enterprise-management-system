@@ -409,6 +409,40 @@ const markAttendance = asyncHandler(async (req, res) => {
     { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
   );
 
+  // Immediately update in-memory liveTelemetryCache so zero-flicker telemetry reflects clock-in/out across all devices instantly!
+  try {
+    const telemPayload = {
+      employeeId: String(targetEmpId),
+      employeeCode: String(targetEmpCode || ''),
+      employeeName: targetEmpName,
+      date,
+      status: calculatedStatus,
+      isLate,
+      isClockedIn: Boolean(record.isClockedIn),
+      clockInTime: record.firstClockInTime || record.clockInTime || null,
+      firstClockInTime: record.firstClockInTime || record.clockInTime || null,
+      clockInTimestamp: record.clockInTimestamp || null,
+      clockOutTime: record.clockOutTime || null,
+      lastClockOutTime: record.lastClockOutTime || record.clockOutTime || null,
+      clockOutTimestamp: record.clockOutTimestamp || null,
+      currentSessionStartTimestamp: record.currentSessionStartTimestamp || record.clockInTimestamp || null,
+      workSeconds: Number(record.workSeconds) || 0,
+      breakSeconds: Number(record.breakSeconds) || 0,
+      isOnBreak: Boolean(record.isOnBreak),
+      breakType: record.breakType || null,
+      breakStartTimestamp: record.breakStartTimestamp || null,
+      activeTask: record.activeTask || null,
+      lastHeartbeatAt: Date.now()
+    };
+    if (targetEmpCode) {
+      liveTelemetryCache.set(String(targetEmpCode).trim().toUpperCase(), telemPayload);
+      liveTelemetryCache.set(String(targetEmpCode).trim().toLowerCase(), telemPayload);
+    }
+    if (targetEmpId) {
+      liveTelemetryCache.set(String(targetEmpId), telemPayload);
+    }
+  } catch (_) {}
+
   // Mandatory Audit Trail for Admin manual modifications
   if (auditNote || isAdminOverride || isPrivileged) {
     try {
@@ -739,6 +773,37 @@ const forceClockOut = asyncHandler(async (req, res) => {
       notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
     });
   }
+
+  // Immediately update in-memory liveTelemetryCache so zero-flicker telemetry reflects forced clock-out across all devices instantly!
+  try {
+    const telemOutPayload = {
+      employeeId: String(targetEmpId || employeeId),
+      employeeCode: String(targetEmpCode || ''),
+      employeeName: targetEmpName,
+      date: targetDate,
+      status: attRecord.status,
+      isLate: attRecord.isLate,
+      isClockedIn: false,
+      isClockedOut: true,
+      clockInTime: attRecord.firstClockInTime || attRecord.clockInTime || null,
+      clockOutTime: attRecord.clockOutTime,
+      lastClockOutTime: attRecord.clockOutTime,
+      clockInTimestamp: attRecord.clockInTimestamp || null,
+      clockOutTimestamp: attRecord.clockOutTimestamp || Date.now(),
+      workSeconds: Number(attRecord.workSeconds) || 0,
+      breakSeconds: Number(attRecord.breakSeconds) || 0,
+      isOnBreak: false,
+      activeTask: null,
+      lastHeartbeatAt: Date.now()
+    };
+    if (targetEmpCode) {
+      liveTelemetryCache.set(String(targetEmpCode).trim().toUpperCase(), telemOutPayload);
+      liveTelemetryCache.set(String(targetEmpCode).trim().toLowerCase(), telemOutPayload);
+    }
+    if (targetEmpId) {
+      liveTelemetryCache.set(String(targetEmpId), telemOutPayload);
+    }
+  } catch (_) {}
 
   // Create official Audit Trail record
   const auditEntry = new AttendanceAudit({
@@ -1123,7 +1188,14 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
   const records = await Attendance.find(query).lean();
 
   // Also query active tasks across the company to surface live running tasks and live ticking task seconds
-  const activeTasks = await Task.find({ timerRunning: true }).lean().catch(() => []);
+  const activeTasks = await Task.find({
+    $or: [
+      { timerRunning: true },
+      { sessionDate: today, todayWorkSeconds: { $gt: 0 } },
+      { sessionDate: today, timerSeconds: { $gt: 0 } },
+      { sessionDate: today, status: { $in: ['in_progress', 'on_hold'] } }
+    ]
+  }).lean().catch(() => []);
 
   const telemetryMap = {};
 
@@ -1209,7 +1281,8 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
 
     // Match any actively running task for this employee from Task collection
     let runningTask = null;
-    const matchedTask = (activeTasks || []).find(t => {
+    let matchedTask = (activeTasks || []).find(t => {
+      if (!t.timerRunning) return false;
       const tAssignedId = String(t.assignedToId || t.assignedTo || '').toUpperCase();
       const tActiveUser = String(t.activeUserId || '').toUpperCase();
       if (code && (tAssignedId === code || tActiveUser === code)) return true;
@@ -1219,9 +1292,23 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       return false;
     });
 
-    if (matchedTask && isClockedIn && !isOnBreak) {
-      const taskStart = Number(matchedTask.startedAt || now);
-      const elapsedTask = Math.max(0, Math.floor((now - taskStart) / 1000));
+    if (!matchedTask) {
+      // If no actively ticking timer, find any task worked on today by this employee (even if paused / on break)
+      matchedTask = (activeTasks || []).find(t => {
+        const tAssignedId = String(t.assignedToId || t.assignedTo || '').toUpperCase();
+        const tActiveUser = String(t.activeUserId || '').toUpperCase();
+        if (code && (tAssignedId === code || tActiveUser === code)) return true;
+        if (id && (tAssignedId === String(id).toUpperCase() || tActiveUser === String(id).toUpperCase())) return true;
+        if (Array.isArray(t.assignedToIds) && t.assignedToIds.some(aid => String(aid).toUpperCase() === code || String(aid).toUpperCase() === String(id).toUpperCase())) return true;
+        if (Array.isArray(t.assignees) && t.assignees.some(a => String(a.employeeCode || a._id || a.id).toUpperCase() === code || String(a._id || a.id) === String(id))) return true;
+        return false;
+      });
+    }
+
+    if (matchedTask && isClockedIn) {
+      const isRunning = Boolean(matchedTask.timerRunning && !isOnBreak);
+      const taskStart = isRunning ? Number(matchedTask.startedAt || now) : null;
+      const elapsedTask = isRunning ? Math.max(0, Math.floor((now - (Number(matchedTask.startedAt) || now)) / 1000)) : 0;
       
       // Strict same-day isolation in backend telemetry: never count prior day's accumulated duration!
       let todayTaskBase = 0;
@@ -1235,9 +1322,9 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         }
         todayTaskBase = baseVal;
       } else if (matchedTask.sessionDate === today && matchedTask.todayWorkSeconds !== undefined && Number(matchedTask.todayWorkSeconds) > 0) {
-        todayTaskBase = Number(matchedTask.todayWorkSeconds);
+        todayTaskBase = Number(matchedTask.todayBaseSecs ?? matchedTask.todayWorkSeconds);
       } else if (matchedTask.startDate === today || String(matchedTask.createdAt || '').startsWith(today)) {
-        todayTaskBase = Number(matchedTask.accumulatedSeconds || matchedTask.timerSeconds || 0);
+        todayTaskBase = Number(matchedTask.todayWorkSeconds || 0);
       } else {
         todayTaskBase = 0;
       }
@@ -1257,8 +1344,8 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         liveTaskSecs: liveTaskTodaySecs,
         dailySessions: matchedTask.dailySessions || {},
         sessionDate: matchedTask.sessionDate || today,
-        startedAt: matchedTask.startedAt,
-        timerRunning: true
+        startedAt: taskStart,
+        timerRunning: isRunning
       };
     } else if (r.activeTask && isClockedIn) {
       const isRunning = Boolean(r.activeTask.timerRunning !== false && r.activeTask.startedAt && !isOnBreak);
@@ -1275,11 +1362,11 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         }
         todayTaskBase = baseVal;
       } else if (r.activeTask.sessionDate === today) {
-        todayTaskBase = Math.max(Number(r.activeTask.todayWorkSeconds || 0), Number(r.activeTask.timerSeconds || 0));
+        todayTaskBase = Math.max(Number(r.activeTask.todayBaseSecs ?? r.activeTask.todayWorkSeconds ?? 0), 0);
       } else if (r.activeTask.startDate === today || String(r.activeTask.createdAt || '').startsWith(today)) {
-        todayTaskBase = Number(r.activeTask.accumulatedSeconds || r.activeTask.timerSeconds || 0);
+        todayTaskBase = Number(r.activeTask.todayWorkSeconds || 0);
       } else {
-        todayTaskBase = Number(r.activeTask.todayWorkSeconds || r.activeTask.timerSeconds || 0);
+        todayTaskBase = 0;
       }
       const liveTaskTodaySecs = todayTaskBase + elapsedTask;
       const totalAccum = Number(r.activeTask.accumulatedSeconds !== undefined ? r.activeTask.accumulatedSeconds : (r.activeTask.timerSeconds || todayTaskBase));
@@ -1326,10 +1413,13 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
     telemetryMap[key] = state;
     if (code) {
       telemetryMap[code] = state;
+      telemetryMap[code.toUpperCase()] = state;
       telemetryMap[code.toLowerCase()] = state;
     }
     if (id) {
       telemetryMap[id] = state;
+      telemetryMap[String(id).toUpperCase()] = state;
+      telemetryMap[String(id).toLowerCase()] = state;
     }
     const empEmail = String(r.employeeEmail || r.email || '').trim().toLowerCase();
     if (empEmail) {
@@ -1345,6 +1435,12 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       const id = String(cachedVal.employeeId || '');
       const existingTelem = telemetryMap[code] || telemetryMap[id] || null;
 
+      // SAFETY: If existing record in DB shows isClockedIn: true today and has no clockOutTime,
+      // never let a stale unclocked heartbeat with older timestamp downgrade it to false!
+      if (existingTelem?.isClockedIn && !existingTelem?.clockOutTime && !cachedVal.isClockedIn && !cachedVal.clockOutTime) {
+        return; // Ignore stale unclocked heartbeat from before clock-in
+      }
+
       let effectiveActiveTask = null;
       if (cachedVal && 'activeTask' in cachedVal) {
         effectiveActiveTask = cachedVal.activeTask;
@@ -1359,11 +1455,11 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         if (effectiveActiveTask.dailySessions && typeof effectiveActiveTask.dailySessions === 'object' && effectiveActiveTask.dailySessions[today] !== undefined) {
           todayTaskBase = Number(effectiveActiveTask.dailySessions[today]) || 0;
         } else if (effectiveActiveTask.sessionDate === today) {
-          todayTaskBase = Math.max(Number(effectiveActiveTask.todayWorkSeconds || 0), Number(effectiveActiveTask.timerSeconds || 0));
+          todayTaskBase = Math.max(Number(effectiveActiveTask.todayBaseSecs ?? effectiveActiveTask.todayWorkSeconds ?? 0), 0);
         } else if (effectiveActiveTask.startDate === today || String(effectiveActiveTask.createdAt || '').startsWith(today)) {
-          todayTaskBase = Number(effectiveActiveTask.accumulatedSeconds || effectiveActiveTask.timerSeconds || 0);
+          todayTaskBase = Number(effectiveActiveTask.todayWorkSeconds || 0);
         } else {
-          todayTaskBase = Number(effectiveActiveTask.todayWorkSeconds || effectiveActiveTask.timerSeconds || 0);
+          todayTaskBase = 0;
         }
         const liveTaskTodaySecs = todayTaskBase + elapsedTask;
         const totalAccum = Number(effectiveActiveTask.accumulatedSeconds !== undefined ? effectiveActiveTask.accumulatedSeconds : (effectiveActiveTask.timerSeconds || todayTaskBase));
@@ -1432,10 +1528,17 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
 
       if (code) {
         telemetryMap[code] = mergedState;
+        telemetryMap[code.toUpperCase()] = mergedState;
         telemetryMap[code.toLowerCase()] = mergedState;
       }
       if (id) {
         telemetryMap[id] = mergedState;
+        telemetryMap[String(id).toUpperCase()] = mergedState;
+        telemetryMap[String(id).toLowerCase()] = mergedState;
+      }
+      const cEmail = String(cachedVal.employeeEmail || cachedVal.email || '').trim().toLowerCase();
+      if (cEmail) {
+        telemetryMap[cEmail] = mergedState;
       }
     }
   });

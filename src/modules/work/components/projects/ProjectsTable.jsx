@@ -4,19 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  MoreVertical,
-  Calendar,
-  Building,
-  User,
-  Trash2,
-  Eye,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  TrendingUp,
-  FolderGit2
-} from 'lucide-react';
+import { MoreVertical, Calendar, Trash2, Eye, CheckCircle2, FolderGit2 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';

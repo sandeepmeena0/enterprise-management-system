@@ -1,21 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getCollection, saveCollection, KEYS, syncDatabaseToStorage } from '../services/storageService';
-import {
-  ROLES,
-  ROLE_CONFIGS,
-  getUserRole,
-  isAdmin,
-  isHR,
-  isTeamMember,
-  isHRorAdmin,
-  isLeaderOrAbove,
-  getRoleConfig,
-  classifyBaseRole,
-  isPrimaryAdmin
-} from '../utils/permissionUtils';
+import { ROLES, getUserRole, isAdmin, isHR, isTeamMember, isHRorAdmin, isLeaderOrAbove, getRoleConfig, classifyBaseRole, isPrimaryAdmin } from '../utils/permissionUtils';
 import { API_BASE } from '../config/apiConfig';
 import { subscribeToSyncEvents } from '../services/realtimeSyncService';
-import { performShiftClockOut, hydrateUserCloudState } from '../utils/timerUtils';
+import { hydrateUserCloudState } from '../utils/timerUtils';
 
 const AuthContext = createContext();
 
@@ -146,7 +134,6 @@ export const AuthProvider = ({ children }) => {
         if (!query) return;
 
         const res = await fetch(`${API_BASE}/employees?search=${encodeURIComponent(query)}&_t=${Date.now()}`, {
-          headers: { 'Cache-Control': 'no-cache, no-store' },
           signal: AbortSignal.timeout(3500)
         });
         if (res.ok && isMounted) {
@@ -267,11 +254,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, [currentUser]);
 
-  // Reactive Cross-App Synchronization for Profile Updates & Auth Sessions
+  // Reactive Cross-App Synchronization for Profile Updates, Permissions & Auth Sessions
   useEffect(() => {
     const handleStorageChange = (e) => {
       const key = e?.detail?.key;
-      if (key === AUTH_STORAGE_KEY || key === 'ems_auth_session' || key === KEYS.EMPLOYEES) {
+      if (key === AUTH_STORAGE_KEY || key === 'ems_auth_session' || key === KEYS.EMPLOYEES || key === 'EMS_USER_PERMISSIONS') {
         try {
           const raw = localStorage.getItem(AUTH_STORAGE_KEY);
           if (raw) {
@@ -280,8 +267,51 @@ export const AuthProvider = ({ children }) => {
               setCurrentUser(prev => ({ ...prev, ...parsed }));
             }
           }
+          // Also sync any permissions updated in KEYS.EMPLOYEES or EMS_USER_PERMISSIONS
+          const employees = getCollection(KEYS.EMPLOYEES) || [];
+          setCurrentUser(prev => {
+            if (!prev) return prev;
+            const updatedEmp = employees.find(emp =>
+              String(emp._id) === String(prev._id) ||
+              String(emp.employeeCode) === String(prev.employeeCode) ||
+              (emp.email && prev.email && emp.email.toLowerCase() === prev.email.toLowerCase())
+            );
+            if (updatedEmp && (updatedEmp.permissions || updatedEmp.role || updatedEmp.systemRole || updatedEmp.isDelegatedAdmin !== undefined)) {
+              return {
+                ...prev,
+                ...updatedEmp,
+                role: updatedEmp.role || prev.role,
+                systemRole: updatedEmp.systemRole || prev.systemRole,
+                permissions: updatedEmp.permissions || prev.permissions,
+                isDelegatedAdmin: updatedEmp.isDelegatedAdmin ?? prev.isDelegatedAdmin
+              };
+            }
+            return prev;
+          });
         } catch (_) {}
       }
+    };
+
+    const handleCustomPermUpdate = (e) => {
+      const detail = e?.detail;
+      if (!detail) return;
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        const isMatch = String(prev._id || '') === String(detail.employeeId || '') ||
+          String(prev.employeeCode || '') === String(detail.employeeCode || '') ||
+          String(prev.employeeCode || '') === String(detail.employeeId || '');
+        if (isMatch) {
+          return {
+            ...prev,
+            ...detail,
+            permissions: detail.permissions || prev.permissions,
+            role: detail.role || prev.role,
+            systemRole: detail.systemRole || prev.systemRole,
+            isDelegatedAdmin: detail.isDelegatedAdmin ?? prev.isDelegatedAdmin
+          };
+        }
+        return prev;
+      });
     };
 
     const handleNativeStorage = (e) => {
@@ -292,13 +322,17 @@ export const AuthProvider = ({ children }) => {
             setCurrentUser(parsed);
           }
         } catch (_) {}
+      } else if (e.key === 'EMS_USER_PERMISSIONS' || e.key === KEYS.EMPLOYEES) {
+        handleStorageChange({ detail: { key: e.key } });
       }
     };
 
     window.addEventListener('hrms_storage_change', handleStorageChange);
+    window.addEventListener('ems_permissions_updated', handleCustomPermUpdate);
     window.addEventListener('storage', handleNativeStorage);
     return () => {
       window.removeEventListener('hrms_storage_change', handleStorageChange);
+      window.removeEventListener('ems_permissions_updated', handleCustomPermUpdate);
       window.removeEventListener('storage', handleNativeStorage);
     };
   }, []);
@@ -389,7 +423,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(targetUser));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
-      hydrateUserCloudState(targetUser).catch(() => {});
+      await hydrateUserCloudState(targetUser);
       syncDatabaseToStorage().catch(() => {});
     }
     return targetUser;
@@ -485,6 +519,8 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalizedAdmin));
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+      await hydrateUserCloudState(finalizedAdmin);
+      syncDatabaseToStorage().catch(() => {});
       return finalizedAdmin;
     }
 
@@ -560,7 +596,7 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(finalizedUser));
     window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
-    hydrateUserCloudState(finalizedUser).catch(() => {});
+    await hydrateUserCloudState(finalizedUser);
     syncDatabaseToStorage().catch(() => {});
     return finalizedUser;
   }, []);

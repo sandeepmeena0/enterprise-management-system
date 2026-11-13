@@ -137,15 +137,15 @@ export const Sidebar = ({ mobileMenuOpen = false, onCloseMobile = () => {} }) =>
 
   const isLeadsActive = ['/leads', '/lead-contact'].some(path => location.pathname.startsWith(path));
 
-  const isHrActive = ['/leaves', '/attendance', '/attendance-clock', '/clock', '/break', '/breaks', '/holiday', '/holidays', '/documents', '/documentation', '/appreciation', '/appreciations'].some(path =>
+  const isHrActive = ['/leaves', '/attendance', '/holiday', '/holidays', '/documents', '/documentation', '/appreciation', '/appreciations'].some(path =>
     location.pathname.startsWith(path)
   );
 
-  const isWorkActive = ['/projects', '/tasks', '/timesheet', '/timesheets', '/timer', '/timelog', '/timelogs', '/work-timer', '/time-tracker', '/time', '/work'].some(path =>
+  const isWorkActive = ['/projects', '/tasks', '/timesheet'].some(path =>
     location.pathname.startsWith(path)
   );
 
-  const isFinanceActive = ['/payroll', '/payslips', '/finance', '/expenses'].some(path =>
+  const isFinanceActive = ['/payroll', '/expenses'].some(path =>
     location.pathname.startsWith(path)
   );
 
@@ -401,6 +401,16 @@ export const Sidebar = ({ mobileMenuOpen = false, onCloseMobile = () => {} }) =>
             {/* Submenu for Leads */}
             {leadsExpanded && (
               <div className={`mt-1 flex flex-col gap-0.5 ${collapsed ? 'ml-0 pl-0 border-l-0' : 'ml-4 pl-3 border-l border-white/10'}`}>
+                <NavLink
+                  to="/leads"
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-2.5 py-2 rounded-md no-underline text-[13px] transition-all duration-150 ${isActive ? 'text-white bg-blue-700 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5 font-normal'
+                    }`
+                  }
+                >
+                  <Layers size={15} />
+                  {!collapsed && <span>Leads Pipeline</span>}
+                </NavLink>
                 <NavLink
                   to="/lead-contact"
                   className={({ isActive }) =>

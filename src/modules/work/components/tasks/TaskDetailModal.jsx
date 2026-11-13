@@ -4,23 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Play,
-  Pause,
-  Square,
-  Clock,
-  Calendar,
-  User,
-  Tag,
-  FolderGit2,
-  CheckCircle2,
-  Check,
-  History,
-  ArrowRight,
-  Sparkles,
-  Trash2
-} from 'lucide-react';
+import { X, Play, Pause, Square, Clock, CheckCircle2, History, Trash2 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';

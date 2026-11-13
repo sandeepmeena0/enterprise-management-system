@@ -24,17 +24,7 @@ import {
   canDeleteLead
 } from '../utils/permissionUtils';
 import { readTimerStorage } from '../utils/timerUtils';
-import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../services/realtimeSyncService';
-
-const DEFAULT_WEEKLY_TIMELOGS = [
-  { day: 'Monday', shortDay: 'Mo', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
-  { day: 'Tuesday', shortDay: 'Tu', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
-  { day: 'Wednesday', shortDay: 'We', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
-  { day: 'Thursday', shortDay: 'Th', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
-  { day: 'Friday', shortDay: 'Fr', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
-  { day: 'Saturday', shortDay: 'Sa', date: '', durationText: '0h 00m', durationHours: 0, loginTime: '--', logoutTime: '--', breakDuration: '0m', isCompleted: false },
-  { day: 'Sunday', shortDay: 'Su', date: '', durationText: '0h 00m', durationHours: 0, loginTime: 'Off', logoutTime: 'Off', breakDuration: '0m', isDayOff: true }
-];
+import { broadcastSyncEvent, subscribeToSyncEvents } from '../services/realtimeSyncService';
 
 const defaultCRMContext = {
   expenses: [],
@@ -367,7 +357,6 @@ export const CRMProvider = ({ children }) => {
     return () => window.removeEventListener('ems_chat_message_sent', handleChatMessage);
   }, [currentUser]);
   const [wfhEmployees, setWfhEmployees] = useState(() => getCollection(KEYS.WFH));
-  const [storedWeeklyTimeLogs, setStoredWeeklyTimeLogs] = useState(() => getCollection(KEYS.WEEKLY_TIMELOGS));
   const [leads, setLeads] = useState(() => getCollection(KEYS.LEADS));
   const [emergencyContacts, setEmergencyContacts] = useState(() => getCollection(KEYS.EMERGENCY_CONTACTS));
   const [userSettings, setUserSettings] = useState(() => {
@@ -462,7 +451,6 @@ export const CRMProvider = ({ children }) => {
     setEvents((getCollection(KEYS.EVENTS) || []).map(normalizeEvent));
     setConversations(ensureDefaultChannels(getCollection(KEYS.CONVERSATIONS)));
     setWfhEmployees(getCollection(KEYS.WFH));
-    setStoredWeeklyTimeLogs(getCollection(KEYS.WEEKLY_TIMELOGS));
     setLeads(getCollection(KEYS.LEADS));
     setEmergencyContacts(getCollection(KEYS.EMERGENCY_CONTACTS));
     setStorageTick(prev => prev + 1);
@@ -893,7 +881,6 @@ export const CRMProvider = ({ children }) => {
     const timesheets = getCollection(KEYS.TIMESHEETS) || [];
     const attendance = getCollection(KEYS.ATTENDANCE) || [];
     const settings = getCompanySettings();
-    const standardWorkHours = Number(settings.standardWorkHours) || 9;
     const shiftStart = settings.shiftStartTime || '10:00 AM';
     const shiftEnd = settings.shiftEndTime || '07:00 PM';
 
@@ -905,7 +892,6 @@ export const CRMProvider = ({ children }) => {
       return `${year}-${month}-${day}`;
     };
 
-    const todayStr = formatLocalDate(now);
     const todayDayIndex = now.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
     // Mon = 0, Tue = 1, Wed = 2, Thu = 3, Fri = 4, Sat = 5, Sun = 6
     const currentDayOffset = todayDayIndex === 0 ? 6 : todayDayIndex - 1;

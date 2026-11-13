@@ -6,22 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  CheckCircle2,
-  FolderGit2,
-  User,
-  Users,
-  Clock,
-  Calendar,
-  AlertCircle,
-  Plus,
-  Sparkles,
-  Zap,
-  Tag,
-  Search,
-  Check
-} from 'lucide-react';
+import { X, CheckCircle2, FolderGit2, User, Users, Plus, Sparkles, Zap, Search, Check } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useHR } from '../../../hr/context/HRContext';
 import { useToast } from '../../../../shared/context/ToastContext';

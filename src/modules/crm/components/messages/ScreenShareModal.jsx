@@ -1,16 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  X,
-  Maximize2,
-  Minimize2,
-  Monitor,
-  MonitorOff,
-  Radio,
-  Users,
-  Eye,
-  Sparkles,
-  ShieldAlert
-} from 'lucide-react';
+import { X, Maximize2, Minimize2, Monitor, MonitorOff } from 'lucide-react';
 import { useTimer } from '../../../../shared/context/TimerContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 

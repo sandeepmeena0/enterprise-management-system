@@ -4,13 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  LifeBuoy,
-  UploadCloud,
-  Check,
-  AlertCircle
-} from 'lucide-react';
+import { X, UploadCloud, Check } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../context/ToastContext';
 

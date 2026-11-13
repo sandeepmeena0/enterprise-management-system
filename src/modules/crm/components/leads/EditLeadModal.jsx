@@ -4,21 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  User,
-  Building,
-  Mail,
-  Phone,
-  Calendar,
-  DollarSign,
-  Briefcase,
-  Layers,
-  Sparkles,
-  Check,
-  Flame,
-  UserCheck
-} from 'lucide-react';
+import { X, Sparkles, Check, UserCheck } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useHR } from '../../../hr/context/HRContext';
 

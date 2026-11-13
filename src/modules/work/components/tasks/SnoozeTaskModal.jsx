@@ -5,17 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Clock,
-  Calendar,
-  X,
-  Bell,
-  Sparkles,
-  Pause,
-  Play,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
+import { X, Bell } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 

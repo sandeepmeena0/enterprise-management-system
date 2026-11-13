@@ -5,27 +5,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Clock,
-  MapPin,
-  Users,
-  Search,
-  Calendar as CalendarIcon,
-  Sparkles,
-  Trash2,
-  Tag,
-  CheckCircle2,
-  X,
-  Repeat,
-  Bell,
-  Heart,
-  Award,
-  Lock,
-  Check
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Search, Calendar as CalendarIcon, Trash2, X, Repeat, Heart, Award, Lock } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useHR } from '../../hr/context/HRContext';
 import { useWork } from '../../work/context/WorkContext';
@@ -36,7 +16,7 @@ import { DateMemoryModal } from '../components/calendar/DateMemoryModal';
 import { dateMemoryService } from '../services/dateMemoryService';
 import { holidaySyncService } from '../../hr/services/holidaySyncService';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';
-import { isProjectVisibleToUser, isTaskVisibleToUser, canManageEvents, isHRorAdmin } from '../../../shared/utils/permissionUtils';
+import { isProjectVisibleToUser, isTaskVisibleToUser, canManageEvents, isHRorAdmin, getUserModulePermissions } from '../../../shared/utils/permissionUtils';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -48,7 +28,8 @@ export const CalendarPage = () => {
   const { holidays, currentUser, employees, leaves } = useHR();
   const { tasks, projects } = useWork();
 
-  const isPrivileged = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr' || currentUser?.role === 'admin' || currentUser?.role === 'hr' || currentUser?.role === 'manager';
+  const perms = useMemo(() => getUserModulePermissions(currentUser), [currentUser]);
+  const isPrivileged = Boolean(currentUser?.isAdmin || currentUser?.isDelegatedAdmin || perms?.allAccess || perms?.manageEvents || isHRorAdmin(currentUser));
   const canAddPublicEvent = useMemo(() => canManageEvents(currentUser) || isHRorAdmin(currentUser), [currentUser]);
 
   const [currentDate, setCurrentDate] = useState(new Date()); // Dynamic live current date
@@ -244,7 +225,7 @@ export const CalendarPage = () => {
 
     // 5. Dynamic Approved Leaves from Database
     const approvedLeaveEvents = [];
-    const isPrivilegedUser = currentUser?.isAdmin || currentUser?.systemRole === 'admin' || currentUser?.systemRole === 'hr';
+    const isPrivilegedUser = isPrivileged;
     (leaves || []).filter(l => l.status === 'approved').forEach(l => {
       const isMine = (l.employeeId && currentUser?._id && String(l.employeeId) === String(currentUser._id)) ||
                      (l.employee && currentUser?._id && String(l.employee) === String(currentUser._id)) ||

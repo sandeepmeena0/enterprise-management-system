@@ -1,26 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  User,
-  Mail,
-  Briefcase,
-  Phone,
-  Building,
-  Camera,
-  Check,
-  Sparkles,
-  ShieldCheck,
-  Lock,
-  Award,
-  Key,
-  Plus,
-  Trash2
-} from 'lucide-react';
+import { X, Camera, Check, ShieldCheck, Lock, Key, Plus, Trash2 } from 'lucide-react';
 import { useHR } from '../../../modules/hr/context/HRContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCRM } from '../../context/CRMContext';
 import { useToast } from '../../context/ToastContext';
-import { getRoles, canUserAssignRole, recordPromotion } from '../../services/roleManagementService';
+import { getRoles, recordPromotion } from '../../services/roleManagementService';
 import { getCompanySettings } from '../../services/companySettingsService';
 import { ChangePasswordModal } from './ChangePasswordModal';
 

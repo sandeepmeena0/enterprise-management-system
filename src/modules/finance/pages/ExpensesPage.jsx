@@ -4,25 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  Plus,
-  Upload,
-  Download,
-  Search,
-  Filter,
-  Eye,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  MoreVertical,
-  DollarSign,
-  ChevronDown,
-  Calendar,
-  Layers,
-  Sparkles,
-  Check
-} from 'lucide-react';
+import { Plus, Upload, Download, Search, CheckCircle2, XCircle, Clock, DollarSign, Check } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';

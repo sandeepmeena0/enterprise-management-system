@@ -4,24 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  X,
-  Clock,
-  Calendar,
-  AlertCircle,
-  Play,
-  Pause,
-  CheckCircle2,
-  ListTodo,
-  Search,
-  Filter,
-  ArrowUpRight,
-  ExternalLink,
-  Tag,
-  User,
-  Layers,
-  ChevronRight
-} from 'lucide-react';
+import { X, Clock, Calendar, Play, Pause, CheckCircle2, ListTodo, Search, ExternalLink, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const PendingTasksModal = ({

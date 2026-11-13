@@ -4,19 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  ShieldCheck,
-  Mail,
-  Smartphone,
-  KeyRound,
-  Laptop,
-  LogOut,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  QrCode,
-  Lock
-} from 'lucide-react';
+import { ShieldCheck, Mail, Smartphone, KeyRound, Laptop, LogOut, X, QrCode } from 'lucide-react';
 import { useHR } from '../../hr/context/HRContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';

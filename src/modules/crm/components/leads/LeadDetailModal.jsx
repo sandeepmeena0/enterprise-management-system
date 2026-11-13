@@ -4,28 +4,7 @@
  */
 
 import React from 'react';
-import {
-  X,
-  User,
-  Building,
-  Mail,
-  Phone,
-  Calendar,
-  DollarSign,
-  Briefcase,
-  Layers,
-  Sparkles,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Flame,
-  FileText,
-  UserCheck,
-  Edit2,
-  Trash2,
-  ExternalLink,
-  ShieldCheck
-} from 'lucide-react';
+import { X, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';
 

@@ -1,20 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Building2,
-  Mail,
-  Phone,
-  Globe,
-  MapPin,
-  ShieldCheck,
-  CheckCircle2,
-  FileText,
-  Printer,
-  Sparkles,
-  Edit3,
-  Clock,
-  ArrowRight,
-  Info
-} from 'lucide-react';
+import { Building2, Mail, Phone, Globe, MapPin, CheckCircle2, FileText, Sparkles, Clock, ArrowRight } from 'lucide-react';
 import { getCompanySettings, saveCompanySettings, fetchCompanySettingsFromDB } from '../../../shared/services/companySettingsService';
 import { useToast } from '../../../shared/context/ToastContext';
 

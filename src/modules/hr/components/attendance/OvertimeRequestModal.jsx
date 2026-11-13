@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Clock, CheckCircle2, AlertTriangle, ShieldCheck, Briefcase, FileText, Send, User } from 'lucide-react';
+import { X, Clock, CheckCircle2, ShieldCheck, Briefcase, Send } from 'lucide-react';
 import { hrService } from '../../services/hrService';
 import { isHRorAdmin } from '../../../../shared/utils/permissionUtils';
 

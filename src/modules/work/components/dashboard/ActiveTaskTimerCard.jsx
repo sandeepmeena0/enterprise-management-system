@@ -31,11 +31,12 @@ export const ActiveTaskTimerCard = ({
   navigate
 }) => {
   const effectiveTodayStr = todayStr || new Date().toISOString().split('T')[0];
-  const activeTaskTodaySecs = displayActiveTask ? Math.max(
-    Number(displayActiveTask.dailySessions?.[effectiveTodayStr] || 0),
-    Number(displayActiveTask.todayWorkSeconds || 0),
-    (displayActiveTask.sessionDate === effectiveTodayStr ? Number(displayActiveTask.timerSeconds || 0) : 0),
-    Number(displayActiveTask.timerSeconds || 0)
+  const activeTaskTodaySecs = displayActiveTask ? (
+    displayActiveTask.sessionDate === effectiveTodayStr
+      ? Number(displayActiveTask.timerSeconds ?? displayActiveTask.todayWorkSeconds ?? 0)
+      : (displayActiveTask.dailySessions && displayActiveTask.dailySessions[effectiveTodayStr] !== undefined
+          ? Number(displayActiveTask.dailySessions[effectiveTodayStr])
+          : 0)
   ) : 0;
 
   return (
@@ -155,7 +156,11 @@ export const ActiveTaskTimerCard = ({
                         : 'bg-sky-600'
                     }`}
                     style={{
-                      width: `${Math.min(100, Math.round(((((Number(displayActiveTask.hoursLogged) || 0) * 3600) + (Number(displayActiveTask.timerSeconds) || 0)) / ((Number(displayActiveTask.estimatedHours) || 4) * 3600)) * 100)) || 5}%`
+                      width: `${(() => {
+                        const effectiveSecs = Math.max((Number(displayActiveTask.hoursLogged) || 0) * 3600, Number(displayActiveTask.accumulatedSeconds) || 0, Number(displayActiveTask.timerSeconds) || 0);
+                        const budgetSecs = (Number(displayActiveTask.estimatedHours) || 4) * 3600;
+                        return Math.min(100, Math.round((effectiveSecs / budgetSecs) * 100)) || 5;
+                      })()}%`
                     }}
                   />
                 </div>

@@ -7,19 +7,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Lock,
-  Eye,
-  EyeOff,
-  Key,
-  CheckCircle2,
-  AlertCircle,
-  RefreshCw,
-  Copy,
-  Check,
-  X,
-  ShieldCheck
-} from 'lucide-react';
+import { Lock, Eye, EyeOff, Key, CheckCircle2, AlertCircle, RefreshCw, Copy, Check, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { getCollection, saveCollection, KEYS } from '../../services/storageService';

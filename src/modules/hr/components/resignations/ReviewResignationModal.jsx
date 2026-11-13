@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, XCircle, UserCheck, ShieldAlert, Calendar, FileText, AlertCircle } from 'lucide-react';
+import { X, CheckCircle2, XCircle, UserCheck, ShieldAlert } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { useToast } from '../../../../shared/context/ToastContext';

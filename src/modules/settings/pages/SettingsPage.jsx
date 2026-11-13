@@ -4,21 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  User,
-  ShieldCheck,
-  Search,
-  Settings as SettingsIcon,
-  Sparkles,
-  Phone,
-  KeyRound,
-  Bell,
-  Building2,
-  Clock,
-  Layers,
-  Sliders,
-  Check
-} from 'lucide-react';
+import { User, ShieldCheck, Search, Settings as SettingsIcon, KeyRound, Building2, Clock, Sliders } from 'lucide-react';
 import { ProfileTab } from '../components/ProfileTab';
 import { EmergencyContactsTab } from '../components/EmergencyContactsTab';
 import { SecuritySettingsTab } from '../components/SecuritySettingsTab';

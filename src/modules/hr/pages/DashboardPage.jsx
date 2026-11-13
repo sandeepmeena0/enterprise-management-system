@@ -7,69 +7,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Users,
-  User,
-  Palmtree,
-  UserCheck,
-  UserX,
-  CalendarCheck,
-  Award,
-  ArrowRight,
-  TrendingUp,
-  Clock,
-  CheckCircle2,
-  X,
-  XCircle,
-  AlertTriangle,
-  AlertCircle,
-  Sparkles,
-  Calendar as CalendarIcon,
-  ChevronRight,
-  ChevronLeft,
-  ChevronDown,
-  Plus,
-  ThumbsUp,
-  Trophy,
-  Filter,
-  UserPlus,
-  Play,
-  Pause,
-  Square,
-  Coffee,
-  Utensils,
-  LogOut,
-  FolderGit2,
-  ListTodo,
-  LifeBuoy,
-  Bell,
-  Home,
-  Cake,
-  Plane,
-  Eye,
-  Check,
-  Briefcase,
-  RefreshCw,
-  Shield,
-  Layers,
-  Search,
-  Zap,
-  LayoutDashboard,
-  History,
-  Trash2
-} from 'lucide-react';
+import { Users, Palmtree, Award, Clock, CheckCircle2, X, AlertCircle, Plus, Play, ListTodo, LifeBuoy, Bell, Plane, Eye, Layers, Zap, LayoutDashboard, History } from 'lucide-react';
 import { useHR } from '../context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { useWork } from '../../work/context/WorkContext';
 import { useTimer } from '../../../shared/context/TimerContext';
 import { useCRM } from '../../../shared/context/CRMContext';
-import { ROLES, ROLE_CONFIGS, getUserRole, canAccessModule, canApproveLeaves, isHRorAdmin, isAdmin, isHR, getUserModulePermissions, canCancelLeave, canReviewLeave, isLeaveApplicant, isLeaveDesignatedApprover, isProjectVisibleToUser, isTaskVisibleToUser, canDeleteTask as checkCanDeleteTask } from '../../../shared/utils/permissionUtils';
-import { getCollection, saveCollection, KEYS } from '../../../shared/services/storageService';
+import { ROLES, ROLE_CONFIGS, getUserRole, canAccessModule, canApproveLeaves, isAdmin, isHR, getUserModulePermissions, isLeaveApplicant, isLeaveDesignatedApprover, isProjectVisibleToUser, canDeleteTask as checkCanDeleteTask } from '../../../shared/utils/permissionUtils';
 import { hrService } from '../services/hrService';
-import { workService } from '../../work/services/workService';
-import { broadcastSyncEvent, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
-import { getCanonicalTimerKey, getTimerMirrorKeys, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, syncTaskPauseState, normalizePunchSessions, performShiftClockOut, getLocalDateStr } from '../../../shared/utils/timerUtils';
+import { getCanonicalTimerKey, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, normalizePunchSessions, getLocalDateStr } from '../../../shared/utils/timerUtils';
 
 // Modals
 import { BreakModal } from '../../../shared/components/modals/BreakModal';
@@ -139,7 +86,6 @@ export const DashboardPage = () => {
     pauseTaskTimer,
     stopTaskTimer,
     activeRunningTask,
-    changeTaskStatus,
     completeTask,
     completeAndNextTask,
     formatSeconds,
@@ -151,7 +97,7 @@ export const DashboardPage = () => {
     reopenProject,
     deleteTask
   } = useWork();
-  const { tickets, notices, events, birthdays, computedBirthdays, computedAnniversaries, wfhEmployees, weeklyTimeLogs, dismissNoticeForUser } = useCRM();
+  const { tickets, notices, events, birthdays, computedBirthdays, computedAnniversaries, weeklyTimeLogs, dismissNoticeForUser } = useCRM();
   const [activeSelectedTaskId, setActiveSelectedTaskId] = useState(null);
   const [snoozeTaskTarget, setSnoozeTaskTarget] = useState(null);
   const [isSnoozeModalOpen, setIsSnoozeModalOpen] = useState(false);
@@ -329,21 +275,13 @@ export const DashboardPage = () => {
     clockOutTime,
     hadClockedOutToday,
     workSeconds,
-    workDurationText,
     breakDurationText,
-    grossDurationText,
-    timeString,
-    isRunning,
     isOnBreak,
     breakType,
-    customBreakLimitMinutes,
     currentBreakTimeString,
-    breakRemainingTimeString,
     isBreakOverdue,
     isClockedIn,
     isOnLeaveToday,
-    todayLeaveRecord,
-    togglePauseResume,
     handleClockIn,
     handleClockOut,
     startTeaBreak,
@@ -375,7 +313,6 @@ export const DashboardPage = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [showBreakDropdown, setShowBreakDropdown] = useState(false);
   const [showWorkModeMenu, setShowWorkModeMenu] = useState(false);
   const [celebrationTab, setCelebrationTab] = useState('birthdays'); // 'birthdays' | 'anniversaries'
 
@@ -492,13 +429,7 @@ export const DashboardPage = () => {
   };
 
   // Dashboard Task Filter State
-  const [taskScopeFilter, setTaskScopeFilter] = useState('all'); // 'all' | 'my' | 'delegated'
-  const [taskMemberFilter, setTaskMemberFilter] = useState('all');
   const [taskStatusTab, setTaskStatusTab] = useState('active'); // 'active' (New & Pending) | 'completed' (Recently Done) | 'all'
-
-  // Category-Wise Task Filter (Across all company categories for Admin/HR, and personal for employees)
-  const [taskCategoryFilter, setTaskCategoryFilter] = useState('all');
-  const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
   // Helper to read any employee's live today shift and task status from storage & attendance (with 1-sec real-time counting)
   const getEmployeeTodayState = React.useCallback((emp) => {
@@ -687,8 +618,8 @@ export const DashboardPage = () => {
     ));
 
     // Strict Clock-In validation: Local browser state & telemetry unified
-    const isClockedIn = Boolean(
-      telem?.isClockedIn ||
+    const isClockedIn = !isExplicitlyStoredClockedOut && Boolean(
+      (telem?.isClockedIn && !telem?.clockOutTime) ||
       (!isStaleFromPreviousDay && (
         (hasTodayStoredSession && storedClockedIn) ||
         (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.status !== 'absent' && attRec?.isClockedIn !== false)
@@ -834,22 +765,25 @@ export const DashboardPage = () => {
       let todayTaskBase = 0;
       if (candidateTask.dailySessions && typeof candidateTask.dailySessions === 'object' && candidateTask.dailySessions[todayStr] !== undefined) {
         todayTaskBase = Number(candidateTask.dailySessions[todayStr]) || 0;
-      } else if (candidateTask.sessionDate === todayStr) {
-        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), Number(candidateTask.timerSeconds || 0));
-      } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
-        todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
+      } else if (candidateTask.todayBaseSecs !== undefined && candidateTask.sessionDate === todayStr) {
+        todayTaskBase = Math.max(Number(candidateTask.todayBaseSecs), 0);
+      } else if (!isTimerRunning && candidateTask.sessionDate === todayStr) {
+        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), 0);
+      } else if (!isTimerRunning && (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr))) {
+        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0), 0);
       } else {
-        todayTaskBase = Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0);
+        todayTaskBase = 0;
       }
 
       const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || todayTaskBase));
       const rawLiveSecs = todayTaskBase + elapsed;
 
-      // Monotonic Shield: timer seconds can NEVER jump backwards or reset to 1-2-3s!
-      const prevSecs = liveTaskMemoryRef.current.get(taskIdentityKey)?.lastLiveSecs || 0;
-      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : Math.max(prevSecs, todayTaskBase);
+      // Ensure task seconds can never physically exceed seconds elapsed today
+      const maxPhysicalToday = Math.max(0, Math.floor((Date.now() - new Date().setHours(0, 0, 0, 0)) / 1000));
+      const liveTaskSecs = isTimerRunning ? Math.min(rawLiveSecs, maxPhysicalToday) : todayTaskBase;
 
       liveTaskMemoryRef.current.set(taskIdentityKey, {
+        date: todayStr,
         startedAt: isTimerRunning ? startedAtMs : null,
         lastLiveSecs: liveTaskSecs
       });
@@ -929,183 +863,6 @@ export const DashboardPage = () => {
   const activeEmpState = React.useMemo(() => {
     return getEmployeeTodayState(activeViewUser);
   }, [getEmployeeTodayState, activeViewUser, syncTick]);
-
-  // Admin Force Clock Out function
-  const handleAdminClockOut = async (empId, empName) => {
-    if (!empId) return;
-    if (!isUserAdminOrHR) {
-      addToast('⛔ Access Denied: Administrator or HR privilege required to clock out another employee.', 'error');
-      return;
-    }
-    const note = `Shift ended by Admin ${currentUser?.name || 'Admin'} from Dashboard`;
-    try {
-      const targetEmp = (employees || []).find(e => e._id === empId || e.employeeCode === empId);
-      const empObj = targetEmp || { _id: empId, employeeCode: empId, name: empName };
-      const empKey = getCanonicalTimerKey(empObj);
-      const nowTs = Date.now();
-      const nowStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-      // Execute canonical shift clock-out to preserve punch sessions and final work time
-      performShiftClockOut(empObj, { reason: note, nowTs, nowStr });
-
-      // 🚀 0ms Instant Local Storage & Timer update
-      if (targetEmp) {
-        writeTimerStorage(targetEmp, 'work_session_date', todayStr);
-        writeTimerStorage(targetEmp, 'is_clocked_in', 'false');
-        writeTimerStorage(targetEmp, 'is_running', 'false');
-        writeTimerStorage(targetEmp, 'is_on_break', 'false');
-        writeTimerStorage(targetEmp, 'had_clocked_out', 'true');
-        writeTimerStorage(targetEmp, 'clock_out', nowStr);
-        writeTimerStorage(targetEmp, 'clockout_time', nowStr);
-        writeTimerStorage(targetEmp, 'clock_out_timestamp', Date.now().toString());
-      } else {
-        localStorage.setItem(`ems_timer_${empKey}_work_session_date`, todayStr);
-        localStorage.setItem(`ems_timer_${empKey}_is_clocked_in`, 'false');
-        localStorage.setItem(`ems_timer_${empKey}_is_running`, 'false');
-        localStorage.setItem(`ems_timer_${empKey}_is_on_break`, 'false');
-        localStorage.setItem(`ems_timer_${empKey}_had_clocked_out`, 'true');
-        localStorage.setItem(`ems_timer_${empKey}_clock_out`, nowStr);
-        localStorage.setItem(`ems_timer_${empKey}_clockout_time`, nowStr);
-        localStorage.setItem(`ems_timer_${empKey}_clock_out_timestamp`, Date.now().toString());
-      }
-
-      // Background cloud sync
-      hrService.adminForceClockOut(empId, note, todayStr).catch(backendErr => {
-        console.warn('Backend adminForceClockOut warning:', backendErr);
-      });
-
-      const allTasks = getCollection(KEYS.TASKS) || [];
-      let taskChanged = false;
-      const updatedTasks = allTasks.map(t => {
-        const isTargetTask = (t.assignedToId === empId || t.assignedTo === empKey || t.assignedToName?.toLowerCase() === empName?.toLowerCase() || (Array.isArray(t.assignedToIds) && t.assignedToIds.includes(empId)));
-        if (isTargetTask && t.timerRunning) {
-          taskChanged = true;
-          const pausedT = syncTaskPauseState(t, { nowMs: Date.now(), todayStr, wasPausedForClockOut: true });
-          // Persist paused state to MongoDB Atlas
-          workService.updateTask(t._id || t.id, {
-            timerRunning: false,
-            startedAt: null,
-            accumulatedSeconds: pausedT.accumulatedSeconds,
-            timerSeconds: pausedT.timerSeconds,
-            todayWorkSeconds: pausedT.todayWorkSeconds,
-            dailySessions: pausedT.dailySessions,
-            sessionDate: todayStr,
-            hoursLogged: +(pausedT.accumulatedSeconds / 3600).toFixed(2),
-            hoursLoggedText: formatSeconds(pausedT.accumulatedSeconds)
-          }).catch(err => console.warn('Sync force clock-out task pause to DB:', err));
-
-          return {
-            ...t,
-            ...pausedT,
-            _id: t._id,
-            id: t.id
-          };
-        }
-        return t;
-      });
-
-      if (taskChanged) {
-        saveCollection(KEYS.TASKS, updatedTasks);
-        const rawActiveTimer = localStorage.getItem(`ems_active_task_timer_${empKey}`);
-        if (rawActiveTimer) {
-          try {
-            const parsed = JSON.parse(rawActiveTimer);
-            parsed.timerRunning = false;
-            parsed.startedAt = null;
-            localStorage.setItem(`ems_active_task_timer_${empKey}`, JSON.stringify(parsed));
-          } catch { }
-        }
-      }
-
-      broadcastSyncEvent(SYNC_EVENTS.SHIFT_CLOCKED_OUT, { employeeId: empId, empKey, adminName: currentUser?.name });
-      broadcastSyncEvent(SYNC_EVENTS.TASK_TIMER_PAUSED, { empKey });
-      window.dispatchEvent(new CustomEvent('ems_force_clock_out', { detail: { employeeId: empId, adminName: currentUser?.name } }));
-      window.dispatchEvent(new CustomEvent('ems_clocked_out', { detail: { employeeId: empId } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.ATTENDANCE } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
-      setSyncTick(t => t + 1);
-
-      addToast(`🛑 Successfully Clocked Out ${empName}!`, 'success');
-    } catch (err) {
-      console.error('Failed to force clock out employee:', err);
-      addToast(`🛑 Successfully Clocked Out ${empName}!`, 'success');
-      setSyncTick(t => t + 1);
-    }
-  };
-
-  // Admin Pause Employee Task function
-  const handleAdminPauseTask = async (taskId, empKey, empName) => {
-    if (!isUserAdminOrHR) {
-      addToast('⛔ Access Denied: Administrator or HR privilege required to pause employee tasks.', 'error');
-      return;
-    }
-    try {
-      const now = Date.now();
-      const allTasks = getCollection(KEYS.TASKS) || [];
-      let currentSecs = 0;
-      let pausedTodaySecs = 0;
-      let pausedDailySessions = undefined;
-      let matchedTaskId = taskId;
-
-      const updatedTasks = allTasks.map(t => {
-        const isMatch = String(t._id || t.id) === String(taskId) ||
-          (empKey && (t.assignedToId === empKey || t.assignedTo === empKey || (Array.isArray(t.assignedToIds) && t.assignedToIds.includes(empKey))) && t.timerRunning);
-        if (isMatch) {
-          matchedTaskId = t._id || t.id;
-          const pausedT = syncTaskPauseState(t, { nowMs: now, todayStr });
-          currentSecs = pausedT.accumulatedSeconds;
-          pausedTodaySecs = pausedT.todayWorkSeconds;
-          pausedDailySessions = pausedT.dailySessions;
-          return {
-            ...t,
-            ...pausedT,
-            _id: t._id,
-            id: t.id
-          };
-        }
-        return t;
-      });
-      saveCollection(KEYS.TASKS, updatedTasks);
-
-      if (empKey) {
-        const timerKey = `ems_active_task_timer_${empKey}`;
-        const raw = localStorage.getItem(timerKey);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            const pausedSnap = syncTaskPauseState(parsed, { nowMs: now, todayStr });
-            localStorage.setItem(timerKey, JSON.stringify(pausedSnap));
-          } catch { }
-        }
-      }
-
-      // 🚀 0ms Instant Broadcast & Local Dispatch
-      broadcastSyncEvent(SYNC_EVENTS.TASK_TIMER_PAUSED, { taskId: matchedTaskId, empKey, pausedBy: currentUser?.name || 'Admin', empName });
-      window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { taskId: matchedTaskId, empKey } }));
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
-      setSyncTick(t => t + 1);
-      addToast(`⏸️ Task paused for ${empName}!`, 'info');
-
-      // Asynchronous background sync to MongoDB Atlas
-      if (matchedTaskId) {
-        workService.updateTask(matchedTaskId, {
-          timerRunning: false,
-          startedAt: null,
-          accumulatedSeconds: currentSecs,
-          timerSeconds: pausedTodaySecs,
-          todayWorkSeconds: pausedTodaySecs,
-          dailySessions: pausedDailySessions,
-          sessionDate: todayStr,
-          lastUpdated: now,
-          hoursLogged: +(currentSecs / 3600).toFixed(2),
-          hoursLoggedText: formatSeconds(currentSecs)
-        }).catch(err => console.warn('Sync admin pause to DB:', err));
-      }
-    } catch (err) {
-      console.error('Failed to pause employee task:', err);
-      addToast('Failed to pause task', 'error');
-    }
-  };
 
   // ── CANONICAL BUILDER FOR DAY TIME LOG MODAL ─────────────────────────
   const buildDayLogData = React.useCallback((targetUser, customDate = todayStr) => {
@@ -1574,113 +1331,6 @@ export const DashboardPage = () => {
     });
   }, [cleanTasks, currentUser]);
 
-  // Base Scoped Tasks
-  const baseScopedTasks = React.useMemo(() => {
-    return cleanTasks.filter(t => {
-      if (!t) return false;
-
-      // Personal task privacy isolation:
-      // An employee's personal routine task is private to them.
-      // Admin's general overview is NOT cluttered with other employees' personal tasks!
-      if (t.isPersonal) {
-        const isMyTask = isTaskAssignedToUser(t, currentUser) ||
-          String(t.assignedById) === String(currentUser?._id) ||
-          String(t.assignedToId) === String(currentUser?._id);
-
-        if (isViewingOtherEmployee && activeViewUser) {
-          const isForActiveViewUser = isTaskAssignedToUser(t, activeViewUser) ||
-            String(t.assignedById) === String(activeViewUser?._id) ||
-            String(t.assignedToId) === String(activeViewUser?._id);
-          if (!isForActiveViewUser) return false;
-        } else if (!isMyTask) {
-          return false;
-        }
-      }
-
-      if (taskCategoryFilter !== 'all' && t.category !== taskCategoryFilter) {
-        return false;
-      }
-      if (taskMemberFilter !== 'all') {
-        return (
-          t.assignedToId === taskMemberFilter ||
-          t.assignedTo === taskMemberFilter ||
-          t.assignedToName === taskMemberFilter
-        );
-      }
-      if (taskScopeFilter === 'my') {
-        return isTaskAssignedToUser(t, currentUser);
-      }
-      if (taskScopeFilter === 'delegated') {
-        return (t.assignedBy === currentUser?.name || t.assignedById === currentUser?._id) && !t.isPersonal;
-      }
-      if (isUserAdminOrHR || perms.viewAllTasks) return true;
-      return isTaskAssignedToUser(t, currentUser);
-    });
-  }, [tasks, taskCategoryFilter, taskMemberFilter, taskScopeFilter, currentUser, isUserAdminOrHR, perms.viewAllTasks, isViewingOtherEmployee, activeViewUser]);
-
-  // 1. Active & Newly Assigned Tasks (Sorted by in_progress first, then newest assigned/created at top)
-  const activeScopedTasks = React.useMemo(() => {
-    return baseScopedTasks
-      .filter(t => !isTaskActuallyCompleted(t))
-      .sort((a, b) => {
-        if (a.timerRunning && !b.timerRunning) return -1;
-        if (!a.timerRunning && b.timerRunning) return 1;
-        if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
-        if (a.status !== 'in_progress' && b.status === 'in_progress') return 1;
-        const timeA = new Date(a.createdAt || a.assignedAt || a.startDate || 0).getTime();
-        const timeB = new Date(b.createdAt || b.assignedAt || b.startDate || 0).getTime();
-        return timeB - timeA;
-      });
-  }, [baseScopedTasks]);
-
-  // 2. Recently Completed Tasks (Sorted by completion time descending - latest completed at top)
-  const completedScopedTasks = React.useMemo(() => {
-    return baseScopedTasks
-      .filter(t => isTaskActuallyCompleted(t))
-      .sort((a, b) => {
-        const timeA = new Date(a.completedAt || a.completedOn || a.updatedAt || a.createdAt || 0).getTime();
-        const timeB = new Date(b.completedAt || b.completedOn || b.updatedAt || b.createdAt || 0).getTime();
-        return timeB - timeA;
-      });
-  }, [baseScopedTasks]);
-
-  const scopedInProgressCount = React.useMemo(() => baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && (t.status === 'in_progress' || t.timerRunning)).length, [baseScopedTasks]);
-  const scopedPendingCount = React.useMemo(() => baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && t.status !== 'in_progress' && !t.timerRunning).length, [baseScopedTasks]);
-  const scopedDueTodayCount = React.useMemo(() => baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && !t.isUntimed && !t.hasNoDueDate && t.dueDate === todayStr).length, [baseScopedTasks, todayStr]);
-  const scopedOverdueCount = React.useMemo(() => baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && !t.isUntimed && !t.hasNoDueDate && t.dueDate && t.dueDate < todayStr).length, [baseScopedTasks, todayStr]);
-
-  // Filtered tasks for the "My Tasks & Delegation" table supporting all lifecycle states and search
-  const tableDisplayTasks = React.useMemo(() => {
-    let list = [];
-    if (taskStatusTab === 'in_progress') {
-      list = baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && (t.status === 'in_progress' || t.timerRunning));
-    } else if (taskStatusTab === 'pending') {
-      list = baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && t.status !== 'in_progress' && !t.timerRunning);
-    } else if (taskStatusTab === 'due_today') {
-      list = baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && !t.isUntimed && !t.hasNoDueDate && t.dueDate === todayStr);
-    } else if (taskStatusTab === 'overdue') {
-      list = baseScopedTasks.filter(t => !isTaskActuallyCompleted(t) && !t.isUntimed && !t.hasNoDueDate && t.dueDate && t.dueDate < todayStr);
-    } else if (taskStatusTab === 'completed') {
-      list = completedScopedTasks;
-    } else if (taskStatusTab === 'active') {
-      list = activeScopedTasks;
-    } else {
-      list = [...activeScopedTasks, ...completedScopedTasks];
-    }
-
-    if (taskSearchQuery && taskSearchQuery.trim()) {
-      const q = taskSearchQuery.toLowerCase().trim();
-      list = list.filter(t =>
-        (t.title && t.title.toLowerCase().includes(q)) ||
-        (t.taskCode && t.taskCode.toLowerCase().includes(q)) ||
-        (t.projectName && t.projectName.toLowerCase().includes(q)) ||
-        (t.assignedToName && t.assignedToName.toLowerCase().includes(q)) ||
-        (Array.isArray(t.assignees) && t.assignees.some(a => a.name && a.name.toLowerCase().includes(q)))
-      );
-    }
-    return list;
-  }, [baseScopedTasks, completedScopedTasks, activeScopedTasks, taskStatusTab, taskSearchQuery, todayStr]);
-
   // Dashboard Ticket Filter State (Scoped to user permissions)
   const [ticketFilterTab, setTicketFilterTab] = useState('all'); // 'all' | 'open' | 'resolved'
   const scopedTickets = React.useMemo(() => {
@@ -1763,15 +1413,6 @@ export const DashboardPage = () => {
     }).sort((a, b) => (a.dueDate || a.startDate || '').localeCompare(b.dueDate || b.startDate || ''));
   }, [myPendingTasks, todayStr]);
 
-  // Tasks assigned or scheduled for future dates
-  const myFutureTasks = React.useMemo(() => {
-    return myPendingTasks.filter(t => {
-      const isFutureStart = t.startDate && t.startDate > todayStr;
-      const isFutureDue = t.dueDate && t.dueDate > todayStr && (!t.startDate || t.startDate > todayStr);
-      return isFutureStart || isFutureDue;
-    }).sort((a, b) => (a.startDate || a.dueDate || '').localeCompare(b.startDate || b.dueDate || ''));
-  }, [myPendingTasks, todayStr]);
-
   // Current active pool of tasks displayed in the Dashboard tasks section
   const currentScopePool = React.useMemo(() => {
     if (dashboardTaskScope === 'delegated') return delegatedByMeTasks;
@@ -1807,7 +1448,6 @@ export const DashboardPage = () => {
   const allTasksList = cleanTasks;
   const allPendingTasksCount = React.useMemo(() => allTasksList.filter(t => !isTaskActuallyCompleted(t)).length, [allTasksList]);
   const allInProgressTasksCount = React.useMemo(() => allTasksList.filter(t => !isTaskActuallyCompleted(t) && (t.status === 'in_progress' || t.timerRunning)).length, [allTasksList]);
-  const allDueTodayTasksCount = React.useMemo(() => allTasksList.filter(t => !isTaskActuallyCompleted(t) && t.dueDate === todayStr).length, [allTasksList, todayStr]);
   const allOverdueTasksCount = React.useMemo(() => allTasksList.filter(t => !isTaskActuallyCompleted(t) && t.dueDate && t.dueDate < todayStr).length, [allTasksList, todayStr]);
   const allCompletedTodayCount = React.useMemo(() => allTasksList.filter(t => isTaskActuallyCompleted(t) && (t.completedAt?.startsWith(todayStr) || t.updatedAt?.startsWith(todayStr))).length, [allTasksList, todayStr]);
 
@@ -1839,8 +1479,6 @@ export const DashboardPage = () => {
     return (projects || []).filter(p => isProjectVisibleToUser(p, effectiveTargetUser || currentUser));
   }, [projects, effectiveTargetUser, currentUser]);
 
-  const activeProjectsCount = userScopedProjects.filter(p => p?.status === 'in_progress').length || 0;
-  const overdueProjectsCount = userScopedProjects.filter(p => p?.status !== 'completed' && p?.deadline && p?.deadline < todayStr).length || 0;
 
 
   // Snoozed / Reminded Tasks (Tasks on hold with CRM reminder — strictly scoped per user)
@@ -1919,11 +1557,15 @@ export const DashboardPage = () => {
   }, [isViewingOtherEmployee, activeEmpState?.runningTask, cleanTasks, activeRunningTask, effectiveTargetUser, isTaskAssignedToUser, activeSelectedTaskId, myTasks, myPendingTasks, formatSeconds, displayedHadClockedOut, todayStr]);
 
   // Instant Cross-Device Sync Bridge: When telemetry shows user is clocked in on another device (e.g. mobile),
-  // automatically update local storage and trigger TimerContext live state sync
+  // automatically update local storage and trigger TimerContext live state sync (ONLY if not explicitly clocked out locally today)
   React.useEffect(() => {
-    if (!isViewingOtherEmployee && activeEmpState?.isClockedIn && !isClockedIn) {
+    if (!isViewingOtherEmployee && activeEmpState?.isClockedIn && !isClockedIn && !activeEmpState?.isClockedOut && !hadClockedOutToday) {
       const uKey = getCanonicalTimerKey(currentUser);
       if (uKey) {
+        const storedOut = localStorage.getItem(`ems_timer_${uKey}_had_clocked_out`) === 'true' ||
+          localStorage.getItem(`ems_timer_${uKey}_is_clocked_in`) === 'false';
+        if (storedOut) return; // Do NOT re-clock in if user explicitly clocked out locally!
+
         localStorage.setItem(`ems_timer_${uKey}_is_clocked_in`, 'true');
         localStorage.setItem(`ems_timer_${uKey}_is_running`, activeEmpState.isOnBreak ? 'false' : 'true');
         localStorage.setItem(`ems_timer_${uKey}_is_on_break`, activeEmpState.isOnBreak ? 'true' : 'false');
@@ -1937,13 +1579,12 @@ export const DashboardPage = () => {
         window.dispatchEvent(new CustomEvent('ems_clocked_in', { detail: { empKey: uKey, userKey: uKey } }));
       }
     }
-  }, [isViewingOtherEmployee, activeEmpState?.isClockedIn, isClockedIn, activeEmpState?.isOnBreak, activeEmpState?.loginTime, activeEmpState?.workSecs, currentUser]);
+  }, [isViewingOtherEmployee, activeEmpState?.isClockedIn, activeEmpState?.isClockedOut, hadClockedOutToday, isClockedIn, activeEmpState?.isOnBreak, activeEmpState?.loginTime, activeEmpState?.workSecs, currentUser]);
 
   // Upcoming Next tasks in queue (strictly from user's personal pending queue)
   const upcomingQueueTasks = myPendingTasks
     .filter(t => t._id !== displayActiveTask?._id && !t.snoozed);
 
-  const upNextTask = upcomingQueueTasks[0] || null;
 
   // Stable logged total duration today strictly scoped to current viewed user (timesheets logged today + active task timer seconds)
   const todayTimesheets = React.useMemo(() => {
@@ -2023,182 +1664,12 @@ export const DashboardPage = () => {
 
   const rawTotalTaskTodaySecs = totalLoggedTodaySecs + unsubmittedTodayTaskSecs;
 
-  // Active shift work seconds guard
-  const currentShiftSecs = isViewingOtherEmployee
-    ? (activeEmpState?.workSecs || 0)
-    : (workSeconds || activeEmpState?.workSecs || 0);
-  const currentHadClockedOut = isViewingOtherEmployee
-    ? (activeEmpState?.hadClockedOut || activeEmpState?.isClockedOut || false)
-    : (displayedHadClockedOut || activeEmpState?.hadClockedOut || activeEmpState?.isClockedOut || false);
-  const currentIsClockedIn = !currentHadClockedOut && (isViewingOtherEmployee
-    ? (activeEmpState?.isClockedIn || false)
-    : (displayedIsClockedIn || false));
-
   // Today's total task seconds strictly derives from actual tasks worked today (timesheets + active timer)
   let totalTaskTodaySecs = rawTotalTaskTodaySecs;
   if (totalTaskTodaySecs === 0 && todayTimesheets.length > 0) {
     totalTaskTodaySecs = totalLoggedTodaySecs;
   }
 
-  const taskTodayH = Math.floor(totalTaskTodaySecs / 3600);
-  const taskTodayM = Math.floor((totalTaskTodaySecs % 3600) / 60);
-  const taskTodayFormatted = totalTaskTodaySecs > 0
-    ? (totalTaskTodaySecs < 60 ? `${totalTaskTodaySecs}s` : `${taskTodayH}h ${String(taskTodayM).padStart(2, '0')}m`)
-    : '0h 0m';
-
-
-  // Task-based Weekly Calculation (User requirement):
-  // 1. Day-wise time accumulates based on tasks worked on that day
-  // 2. Today's live task seconds (active timer + timesheets) adds in real-time
-  // 3. Weekly total = Monday + Tuesday + Wednesday + Thursday + Friday + Saturday + Sunday
-  const effectiveWeekUser = effectiveTargetUser || activeViewUser || currentUser;
-
-  const displayWeeklyTimeLogs = React.useMemo(() => {
-    const now = new Date();
-    const formatLocalDate = (d) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    const currentTodayStr = formatLocalDate(now);
-    const todayDayIndex = now.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
-    const currentDayOffset = todayDayIndex === 0 ? 6 : todayDayIndex - 1;
-    const mondayDiff = todayDayIndex === 0 ? -6 : 1 - todayDayIndex;
-    const mondayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayDiff);
-
-    const dayMeta = [
-      { day: 'Monday', shortDay: 'Mo', offset: 0 },
-      { day: 'Tuesday', shortDay: 'Tu', offset: 1 },
-      { day: 'Wednesday', shortDay: 'We', offset: 2 },
-      { day: 'Thursday', shortDay: 'Th', offset: 3 },
-      { day: 'Friday', shortDay: 'Fr', offset: 4 },
-      { day: 'Saturday', shortDay: 'Sa', offset: 5 },
-      { day: 'Sunday', shortDay: 'Su', offset: 6, isSunday: true, isDayOff: true }
-    ];
-
-    const uId = effectiveWeekUser?._id ? String(effectiveWeekUser._id).toLowerCase() : '';
-    const uCode = effectiveWeekUser?.employeeCode ? String(effectiveWeekUser.employeeCode).toLowerCase() : '';
-    const uName = effectiveWeekUser?.name ? effectiveWeekUser.name.toLowerCase().trim() : '';
-
-    return dayMeta.map(item => {
-      const dayDateObj = new Date(mondayDate.getFullYear(), mondayDate.getMonth(), mondayDate.getDate() + item.offset);
-      const dateStr = formatLocalDate(dayDateObj);
-      const isCurrentDay = item.offset === currentDayOffset;
-      const isPastDay = item.offset < currentDayOffset;
-      const isFutureDay = item.offset > currentDayOffset;
-
-      if (item.isSunday) {
-        return {
-          day: 'Sunday',
-          shortDay: 'Su',
-          date: dateStr,
-          durationText: '0h 00m',
-          durationHours: 0,
-          durationSeconds: 0,
-          breakDuration: '0m',
-          isSunday: true,
-          isDayOff: true,
-          isCurrentDay,
-          tasksWorked: []
-        };
-      }
-
-      // Timesheets for effective user on this day (Strict date authority: never count past dates)
-      const dayTs = (timesheets || []).filter(ts => {
-        const tsDate = ts.date || (ts.createdAt ? ts.createdAt.split('T')[0] : '');
-        if (tsDate !== dateStr) return false;
-        if (!effectiveWeekUser) return true;
-        const tsId = ts.employeeId ? String(ts.employeeId).toLowerCase() : (ts.employee ? String(ts.employee._id || ts.employee).toLowerCase() : '');
-        const tsCode = ts.employeeCode ? String(ts.employeeCode).toLowerCase() : '';
-        const tsName = ts.employeeName ? ts.employeeName.toLowerCase().trim() : '';
-
-        if (uId && (tsId === uId || String(ts.employee) === uId)) return true;
-        if (uCode && (tsId === uCode || tsCode === uCode)) return true;
-        if (uName && tsName && (tsName === uName || tsName.includes(uName) || uName.includes(tsName))) return true;
-        return false;
-      });
-
-      const dayDedupeMap = new Map();
-      dayTs.forEach(ts => {
-        const taskKey = String(ts.taskCode || ts.taskId || ts.taskTitle || ts._id).trim().toLowerCase();
-        const dur = Number(ts.totalDurationSeconds) || 0;
-        if (!dayDedupeMap.has(taskKey) || dur > (Number(dayDedupeMap.get(taskKey).totalDurationSeconds) || 0)) {
-          dayDedupeMap.set(taskKey, ts);
-        }
-      });
-      const dedupedDayTs = Array.from(dayDedupeMap.values());
-      let dayTotalSecs = dedupedDayTs.reduce((acc, curr) => acc + (Number(curr.totalDurationSeconds) || 0), 0);
-
-      // Check tasks completed on this date that might not be in timesheets (strictly isolate to this date)
-      (tasks || []).forEach(t => {
-        if (!isTaskAssignedToUser(t, effectiveWeekUser)) return;
-        const isCompletedOnDate = t.completedOn === dateStr || (t.completedAt && String(t.completedAt).startsWith(dateStr));
-        const alreadyInTs = dedupedDayTs.some(ts => String(ts.taskId) === String(t._id || t.id) || (t.taskCode && ts.taskCode === t.taskCode) || (t.title && ts.taskTitle === t.title));
-        if (isCompletedOnDate && !alreadyInTs) {
-          const tSecs = getTaskTodaySeconds(t, dateStr, Date.now(), isCurrentDay && displayedIsClockedIn, isCurrentDay && displayedIsOnBreak);
-          if (tSecs > 0) dayTotalSecs += tSecs;
-        }
-      });
-
-      if (isCurrentDay) {
-        dayTotalSecs = Math.max(dayTotalSecs, totalTaskTodaySecs || 0);
-      }
-
-      const hrs = Math.floor(dayTotalSecs / 3600);
-      const mins = Math.floor((dayTotalSecs % 3600) / 60);
-      const durationText = dayTotalSecs > 0
-        ? (dayTotalSecs < 60 ? `${dayTotalSecs}s` : `${hrs}h ${String(mins).padStart(2, '0')}m`)
-        : '0h 00m';
-
-      // Attendance record for break info
-      const dayAtt = (attendance || []).find(a =>
-        a.date === dateStr && (
-          (uId && (String(a.employeeId).toLowerCase() === uId || String(a.employee).toLowerCase() === uId)) ||
-          (uCode && (String(a.employeeCode).toLowerCase() === uCode || String(a.employeeId).toLowerCase() === uCode)) ||
-          (uName && a.employeeName?.toLowerCase().includes(uName))
-        )
-      );
-
-      return {
-        day: item.day,
-        shortDay: item.shortDay,
-        date: dateStr,
-        durationText,
-        durationHours: +(dayTotalSecs / 3600).toFixed(2),
-        durationSeconds: dayTotalSecs,
-        breakDuration: dayAtt?.totalBreakHours ? `${Math.round(dayAtt.totalBreakHours * 60)}m` : '0m',
-        isCurrentDay,
-        isPastDay,
-        isFutureDay,
-        tasksWorked: dayTs.map(ts => ({
-          taskId: ts.taskId,
-          taskCode: ts.taskCode || 'TSK',
-          taskTitle: ts.taskTitle || 'Assigned Work',
-          projectName: ts.projectName || 'General Work',
-          durationText: ts.totalDurationText || formatSeconds(ts.totalDurationSeconds || 0),
-          durationSeconds: ts.totalDurationSeconds || 0,
-          status: 'completed',
-          isCompleted: true
-        }))
-      };
-    });
-  }, [effectiveWeekUser, timesheets, tasks, attendance, totalTaskTodaySecs, formatSeconds, isTaskAssignedToUser, syncTick]);
-
-  const todayWeekLog = displayWeeklyTimeLogs.find(l => l.isCurrentDay);
-  const otherDaysTaskSecs = React.useMemo(() => {
-    return displayWeeklyTimeLogs
-      .filter(l => !l.isCurrentDay && l.date !== todayStr)
-      .reduce((acc, curr) => acc + (Number(curr.durationSeconds) || 0), 0);
-  }, [displayWeeklyTimeLogs, todayStr]);
-
-  // Today's total task seconds strictly from today's completed timesheets + current running/paused task timer:
-  const totalWeeklySecs = otherDaysTaskSecs + (totalTaskTodaySecs || 0);
-  const totalWeeklyHours = +(totalWeeklySecs / 3600).toFixed(2);
-  const weekH = Math.floor(totalWeeklySecs / 3600);
-  const weekM = Math.floor((totalWeeklySecs % 3600) / 60);
-  const totalWeeklyFormatted = `${weekH}h ${String(weekM).padStart(2, '0')}m`;
 
   const [companySettings, setCompanySettings] = useState(getCompanySettings);
 
@@ -2217,12 +1688,6 @@ export const DashboardPage = () => {
       setActiveWeekDayShort(todayDayShort);
     }
   }, [todayDayShort]);
-
-  const selectedDayLogData = displayWeeklyTimeLogs.find(l => l.shortDay === activeWeekDayShort) || displayWeeklyTimeLogs.find(l => l.isCurrentDay) || displayWeeklyTimeLogs[0] || null;
-  const isSelectedDayToday = selectedDayLogData?.isCurrentDay || selectedDayLogData?.date === todayStr || activeWeekDayShort === todayDayShort;
-  const displayedSelectedDayDuration = isSelectedDayToday
-    ? (totalTaskTodaySecs > 0 ? (totalTaskTodaySecs < 60 ? `${totalTaskTodaySecs}s` : `${Math.floor(totalTaskTodaySecs / 3600)}h ${String(Math.floor((totalTaskTodaySecs % 3600) / 60)).padStart(2, '0')}m`) : '0h 00m')
-    : (selectedDayLogData?.durationText || '0h 00m');
 
   // Upcoming Schedule & Events (strictly October 2026 onwards from current date)
   const upcomingScheduleEvents = React.useMemo(() => {
@@ -3166,7 +2631,7 @@ export const DashboardPage = () => {
                     ? (activeEmpState?.isOnBreak ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800')
                     : (activeEmpState?.isClockedOut ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-500')
                 }`}>
-                  {activeEmpState?.isClockedIn ? (activeEmpState?.isOnBreak ? '☕ On Break' : '🟢 Active Shift') : (activeEmpState?.isClockedOut ? '🔴 Clocked Out' : '⚪ Offline')}
+                  {activeEmpState?.isClockedIn ? (activeEmpState?.isOnBreak ? `☕ On ${activeEmpState.breakType || 'Break'} (${formatTimeDurationSafe(activeEmpState.breakSecs)})` : '🟢 Active Shift') : (activeEmpState?.isClockedOut ? '🔴 Clocked Out' : '⚪ Offline')}
                 </span>
               </div>
               <div className="text-[11px] text-blue-700 dark:text-blue-300">

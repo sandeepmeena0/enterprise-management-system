@@ -1,32 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ChevronRight,
-  Download,
-  Plus,
-  Grid,
-  List,
-  BarChart2,
-  Calendar,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  Award,
-  Palmtree,
-  UserCheck,
-  UserX,
-  Users,
-  CalendarCheck,
-  ShieldAlert,
-  LogOut,
-  History,
-  Filter,
-  RotateCcw
-} from 'lucide-react';
+import { Download, Plus, Grid, List, BarChart2, Calendar, Clock, CheckCircle2, AlertTriangle, XCircle, Award, Palmtree, UserCheck, UserX, Users, CalendarCheck, ShieldAlert, LogOut, History, Filter, RotateCcw } from 'lucide-react';
 import { useHR } from '../context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
-import { getUserModulePermissions, isHRorAdmin, getUserRole, ROLES, canExportData } from '../../../shared/utils/permissionUtils';
+import { getUserModulePermissions, isHRorAdmin, getUserRole, canExportData } from '../../../shared/utils/permissionUtils';
 import { matchesFilter } from '../../../shared/utils/filterUtils';
 import { AttendanceLegend } from '../components/attendance/AttendanceLegend';
 import { MonthlyMatrixTable } from '../components/attendance/MonthlyMatrixTable';

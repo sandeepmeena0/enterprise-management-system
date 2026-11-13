@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
-import { ShieldAlert, AlertCircle, Info } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 import { getCompanySettings } from '../../../../shared/services/companySettingsService';
 
 const toTimeInput = (timeStr, fallback = '09:30') => {

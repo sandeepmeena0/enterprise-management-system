@@ -1,34 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import {
-  Search,
-  Bell,
-  Power,
-  ChevronDown,
-  Play,
-  Pause,
-  Square,
-  Settings,
-  Calendar,
-  Clock,
-  User,
-  Edit3,
-  Coffee,
-  X,
-  ListTodo,
-  FolderGit2,
-  Users2,
-  Ticket,
-  Palmtree,
-  CheckCircle2,
-  AlertCircle,
-  Key,
-  Sun,
-  Moon,
-  MessageSquare,
-  LayoutDashboard,
-  FileText,
-  Menu
-} from 'lucide-react';
+import { Search, Bell, Power, Play, Pause, Square, Settings, Calendar, Clock, Edit3, Coffee, ListTodo, FolderGit2, Users2, Key, Sun, Moon, MessageSquare, LayoutDashboard, FileText, Menu } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTimer } from '../../context/TimerContext';
 import { useHR } from '../../../modules/hr/context/HRContext';

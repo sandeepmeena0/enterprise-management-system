@@ -1,24 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  ChevronRight,
-  Plus,
-  Download,
-  Filter,
-  Search,
-  Award,
-  Trophy,
-  Star,
-  Trash2,
-  Gift,
-  HeartHandshake,
-  Sparkles,
-  Users,
-  CheckCircle2
-} from 'lucide-react';
+import { Plus, Download, Search, Award, Trophy, Star, Trash2, Gift, HeartHandshake } from 'lucide-react';
 import { useHR } from '../context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';
-import { DateRangePicker } from '../components/common/DateRangePicker';
 import { AddAppreciationModal } from '../components/appreciation/AddAppreciationModal';
 import {
   canGiveAppreciation,

@@ -4,17 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Plus,
-  Search,
-  Filter,
-  Layers,
-  FolderGit2,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  Briefcase
-} from 'lucide-react';
+import { Plus, Search, FolderGit2, CheckCircle2, Clock, AlertCircle, Briefcase } from 'lucide-react';
 import { useWork } from '../context/WorkContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { isHRorAdmin, getUserModulePermissions, canManageProjects, isProjectVisibleToUser } from '../../../shared/utils/permissionUtils';

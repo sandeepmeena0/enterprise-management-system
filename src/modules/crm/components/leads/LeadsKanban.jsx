@@ -4,19 +4,6 @@
  */
 
 import React from 'react';
-import {
-  Sparkles,
-  Flame,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  MoreVertical,
-  Plus,
-  Eye,
-  Edit2,
-  DollarSign,
-  User
-} from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { canEditLeads } from '../../../../shared/utils/permissionUtils';

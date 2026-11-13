@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Plus, Edit3, Trash2, Phone, Mail, UserCheck, List } from 'lucide-react';
+import { Plus, Edit3, Trash2, List } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';
 import { AddEmergencyContactModal } from './AddEmergencyContactModal';

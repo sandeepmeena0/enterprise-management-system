@@ -5,17 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Key,
-  Mail,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  RefreshCw,
-  X,
-  ShieldCheck,
-  LifeBuoy
-} from 'lucide-react';
+import { CheckCircle2, AlertCircle, HelpCircle, X } from 'lucide-react';
 import { getCollection, saveCollection, KEYS } from '../../services/storageService';
 import { useToast } from '../../context/ToastContext';
 

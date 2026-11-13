@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';
-import { Plus, Trash2, Mail, Briefcase, Building, Search, Calendar, UserCheck, Award, User, Edit3, ArrowUpDown, ShieldCheck, Key } from 'lucide-react';
+import { Plus, Trash2, Search, Award, User, ArrowUpDown, ShieldCheck, Key } from 'lucide-react';
 import { AddEmployeeModal } from './AddEmployeeModal';
 import { PromoteEmployeeModal } from './PromoteEmployeeModal';
 import { EditProfileModal } from '../../../../shared/components/modals/EditProfileModal';

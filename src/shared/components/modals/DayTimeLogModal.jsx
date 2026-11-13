@@ -4,27 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  X,
-  Clock,
-  Calendar,
-  Coffee,
-  CheckCircle2,
-  LogIn,
-  LogOut,
-  Zap,
-  ListTodo,
-  Briefcase,
-  ShieldAlert,
-  Utensils,
-  AlertTriangle,
-  History,
-  User,
-  Play,
-  Pause,
-  Palmtree,
-  Home
-} from 'lucide-react';
+import { X, Clock, Coffee, LogIn, LogOut, Zap, ListTodo, ShieldAlert, Utensils, AlertTriangle, History, Play, Palmtree, Home } from 'lucide-react';
 import { getCollection, KEYS } from '../../services/storageService';
 
 export const DayTimeLogModal = ({ dayLog, onClose }) => {

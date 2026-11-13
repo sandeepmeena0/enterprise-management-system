@@ -1,35 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import {
-  Zap,
-  Clock,
-  UserCheck,
-  Users,
-  Coffee,
-  Play,
-  Pause,
-  Square,
-  Eye,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  Calendar,
-  Download,
-  History,
-  FileSpreadsheet,
-  Shield,
-  Search,
-  Filter,
-  ArrowUpDown,
-  Check,
-  X,
-  ChevronRight,
-  LogIn,
-  LogOut,
-  RefreshCw,
-  HelpCircle,
-  FileText,
-  MessageSquare
-} from 'lucide-react';
+import { Zap, Clock, Users, Coffee, Play, Eye, CheckCircle2, AlertTriangle, Calendar, Download, History, Shield, Search, Check, X, LogIn, LogOut, RefreshCw, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useHR } from '../context/HRContext';
@@ -484,8 +454,8 @@ export const TeamOperationsPage = () => {
       telem?.clockOutTime
     );
 
-    const effectiveOnBreak = isSelf ? storedOnBreak : (telem ? Boolean(telem.isOnBreak) : storedOnBreak);
-    const effectiveBreakType = isSelf ? storedBreakType : (telem ? (telem.breakType || 'Break') : storedBreakType);
+    const effectiveOnBreak = telem ? Boolean(telem.isOnBreak) : storedOnBreak;
+    const effectiveBreakType = telem ? (telem.breakType || storedBreakType || 'Break') : (storedBreakType || 'Break');
 
     const loginTime = isClockedIn
       ? (storedFirstLogin || telem?.firstClockInTime || attRec?.firstClockInTime || telem?.clockInTime || attRec?.clockInTime || storedLogin || 'Active')
@@ -501,45 +471,18 @@ export const TeamOperationsPage = () => {
       isClockedOut,
       isOnBreak: effectiveOnBreak,
       attRec,
-      telemetry: isSelf ? null : telem
+      telemetry: telem
     });
 
     // Live ticking break duration for both local and remote telemetry (monotonic real-time counter)
     let effectiveBreakSecs = storedBreakSecs;
-    if (isSelf) {
-      if (storedOnBreak) {
-        const localBreakStart = Number(readTimerStorage(emp, 'break_start_timestamp')) || nowMs;
-        const curBreakElapsed = (localBreakStart > 0 && localBreakStart <= nowMs) ? Math.max(0, Math.floor((nowMs - localBreakStart) / 1000)) : 0;
-        effectiveBreakSecs = storedBreakSecs + curBreakElapsed;
-      } else {
-        effectiveBreakSecs = storedBreakSecs;
-      }
-    } else if (telem) {
-      const telemBreaks = Number(telem.breakSeconds) || storedBreakSecs;
-      if (effectiveOnBreak) {
-        const remoteBreakStart = Number(telem.breakStartTimestamp);
-        let anchorStart = 0;
-        if (remoteBreakStart > 0 && remoteBreakStart <= nowMs) {
-          anchorStart = remoteBreakStart;
-          liveBreakTrackerMap.set(empKey, remoteBreakStart);
-        } else if (liveBreakTrackerMap.has(empKey)) {
-          anchorStart = liveBreakTrackerMap.get(empKey);
-        } else {
-          anchorStart = nowMs;
-          liveBreakTrackerMap.set(empKey, nowMs);
-        }
-        const curBreakElapsed = (anchorStart > 0 && anchorStart <= nowMs) ? Math.max(0, Math.floor((nowMs - anchorStart) / 1000)) : 0;
-        effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks + curBreakElapsed);
-      } else {
-        liveBreakTrackerMap.delete(empKey);
-        effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks);
-      }
-    } else if (storedOnBreak) {
-      const localBreakStart = Number(readTimerStorage(emp, 'break_start_timestamp')) || nowMs;
-      const curBreakElapsed = (localBreakStart > 0 && localBreakStart <= nowMs) ? Math.max(0, Math.floor((nowMs - localBreakStart) / 1000)) : 0;
-      effectiveBreakSecs = storedBreakSecs + curBreakElapsed;
+    const telemBreaks = Number(telem?.breakSeconds) || 0;
+    if (effectiveOnBreak) {
+      const bStart = Number(telem?.breakStartTimestamp || readTimerStorage(emp, 'break_start_timestamp') || nowMs);
+      const curBreakElapsed = (bStart > 0 && bStart <= nowMs) ? Math.max(0, Math.floor((nowMs - bStart) / 1000)) : 0;
+      effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks + curBreakElapsed);
     } else {
-      liveBreakTrackerMap.delete(empKey);
+      effectiveBreakSecs = Math.max(storedBreakSecs, telemBreaks);
     }
 
     // Active Running Task: seamless resolution across local activeTimer, task collections, and Atlas telemetry
@@ -613,22 +556,25 @@ export const TeamOperationsPage = () => {
       let todayTaskBase = 0;
       if (candidateTask.dailySessions && typeof candidateTask.dailySessions === 'object' && candidateTask.dailySessions[todayStr] !== undefined) {
         todayTaskBase = Number(candidateTask.dailySessions[todayStr]) || 0;
-      } else if (candidateTask.sessionDate === todayStr) {
-        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), Number(candidateTask.timerSeconds || 0));
-      } else if (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr)) {
-        todayTaskBase = Number(candidateTask.accumulatedSeconds || candidateTask.timerSeconds || 0);
+      } else if (candidateTask.todayBaseSecs !== undefined && candidateTask.sessionDate === todayStr) {
+        todayTaskBase = Math.max(Number(candidateTask.todayBaseSecs), 0);
+      } else if (!isTimerRunning && candidateTask.sessionDate === todayStr) {
+        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), 0);
+      } else if (!isTimerRunning && (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr))) {
+        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0), 0);
       } else {
-        todayTaskBase = Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0);
+        todayTaskBase = 0;
       }
 
       const totalAccum = Number(candidateTask.accumulatedSeconds !== undefined ? candidateTask.accumulatedSeconds : (candidateTask.timerSeconds || todayTaskBase));
       const rawLiveSecs = todayTaskBase + elapsed;
 
-      // Monotonic Shield: timer seconds can NEVER jump backwards or reset to 1-2-3s!
-      const prevSecs = liveTaskMemoryRef.current.get(taskIdentityKey)?.lastLiveSecs || 0;
-      const liveTaskSecs = isTimerRunning ? Math.max(prevSecs, rawLiveSecs) : Math.max(prevSecs, todayTaskBase);
+      // Ensure task seconds can never physically exceed seconds elapsed today
+      const maxPhysicalToday = Math.max(0, Math.floor((Date.now() - new Date().setHours(0, 0, 0, 0)) / 1000));
+      const liveTaskSecs = isTimerRunning ? Math.min(rawLiveSecs, maxPhysicalToday) : todayTaskBase;
 
       liveTaskMemoryRef.current.set(taskIdentityKey, {
+        date: todayStr,
         startedAt: isTimerRunning ? startedAtMs : null,
         lastLiveSecs: liveTaskSecs
       });
@@ -687,7 +633,7 @@ export const TeamOperationsPage = () => {
     const total = teamTodayStates.length;
     const onLeave = teamTodayStates.filter(s => s.isOnLeave).length;
     const working = teamTodayStates.filter(s => s.isClockedIn && !s.isOnBreak && !s.isOnLeave).length;
-    const onBreak = teamTodayStates.filter(s => s.isClockedIn && s.isOnBreak && !s.isOnLeave).length;
+    const onBreak = teamTodayStates.filter(s => s.isOnBreak && !s.isOnLeave).length;
     const clockedOut = teamTodayStates.filter(s => s.isClockedOut && !s.isOnLeave).length;
     const offline = Math.max(0, total - working - onBreak - clockedOut - onLeave);
     const runningTasksCount = teamTodayStates.filter(s => s.runningTask && s.runningTask.timerRunning && !s.isOnLeave).length;
@@ -706,7 +652,7 @@ export const TeamOperationsPage = () => {
     return teamTodayStates.filter(item => {
       // Status filter
       if (statusFilter === 'working' && (!item.isClockedIn || item.isOnBreak)) return false;
-      if (statusFilter === 'break' && (!item.isClockedIn || !item.isOnBreak)) return false;
+      if (statusFilter === 'break' && !item.isOnBreak) return false;
       if (statusFilter === 'clocked_out' && !item.isClockedOut) return false;
       if (statusFilter === 'offline' && (item.isClockedIn || item.isClockedOut)) return false;
 
@@ -1002,15 +948,16 @@ export const TeamOperationsPage = () => {
 
       // Get exact today seconds from task
       const targetTask = (tasks || []).find(t => String(t._id || t.id) === String(taskId)) || task;
-      const cached = liveTaskMemoryRef.current.get(String(taskId)) || liveTaskMemoryRef.current.get(empKey);
-      const existingTodaySecs = Math.max(
-        getTaskTodaySeconds(targetTask, todayStr, now, false, false),
-        Number(cached?.lastLiveSecs || 0),
-        Number(targetTask.dailySessions?.[todayStr] || 0),
-        (targetTask.sessionDate === todayStr ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
-        ((targetTask.startDate === todayStr || String(targetTask.createdAt || '').startsWith(todayStr)) ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
-        Number(targetTask.todayWorkSeconds || 0)
-      );
+      let existingTodaySecs = 0;
+      if (targetTask.dailySessions && typeof targetTask.dailySessions === 'object' && targetTask.dailySessions[todayStr] !== undefined) {
+        existingTodaySecs = Math.max(0, Number(targetTask.dailySessions[todayStr]) || 0);
+      } else if (targetTask.todayBaseSecs !== undefined && targetTask.sessionDate === todayStr) {
+        existingTodaySecs = Math.max(0, Number(targetTask.todayBaseSecs) || 0);
+      } else if (targetTask.sessionDate === todayStr && !targetTask.timerRunning) {
+        existingTodaySecs = Math.max(0, Number(targetTask.todayWorkSeconds) || 0);
+      } else if ((targetTask.startDate === todayStr || String(targetTask.createdAt || '').startsWith(todayStr)) && !targetTask.timerRunning) {
+        existingTodaySecs = Math.max(0, Number(targetTask.todayWorkSeconds || targetTask.timerSeconds || 0));
+      }
       const existingAccumSecs = Math.max(Number(targetTask.accumulatedSeconds || 0), Number(targetTask.timerSeconds || 0), existingTodaySecs);
 
       const runningObj = {
@@ -2023,7 +1970,7 @@ export const TeamOperationsPage = () => {
                         }`}>
                           <span className={`w-[7px] h-[7px] rounded-full ${
                             item.isClockedIn
-                              ? 'bg-green-500'
+                              ? (item.isOnBreak ? 'bg-amber-500 animate-pulse' : 'bg-green-500')
                               : item.isOnLeave
                               ? 'bg-teal-500'
                               : item.isClockedOut
@@ -2063,13 +2010,13 @@ export const TeamOperationsPage = () => {
                         {item.runningTask ? (
                           <div className="max-w-[240px]">
                             <div className="flex items-center gap-1">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.runningTask.timerRunning ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.runningTask.timerRunning ? 'bg-green-500 animate-pulse' : (item.isOnBreak ? 'bg-amber-500' : 'bg-slate-400')}`} />
                               <strong className="text-[11.5px] text-slate-900 dark:text-slate-100 truncate">
                                 #{item.runningTask.taskCode || 'TSK'}: {item.runningTask.title}
                               </strong>
                             </div>
                             <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
-                              <span>⏱️ <strong className="text-sky-600 dark:text-sky-400">{item.runningTask.liveDurationText}</strong> {item.runningTask.timerRunning ? '' : '(Paused)'}</span>
+                              <span>⏱️ <strong className="text-sky-600 dark:text-sky-400">{item.runningTask.liveDurationText}</strong> {item.runningTask.timerRunning ? '' : (item.isOnBreak ? '(Paused for Break ☕)' : '(Paused)')}</span>
                               {isPrivileged && (
                                 item.runningTask.timerRunning ? (
                                   <button
@@ -2080,13 +2027,17 @@ export const TeamOperationsPage = () => {
                                     Pause ⏸️
                                   </button>
                                 ) : (
-                                  <button
-                                    onClick={() => handleAdminStartTask(item.runningTask, emp)}
-                                    className="border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors inline-flex items-center gap-0.5"
-                                    title="Resume task timer for employee"
-                                  >
-                                    <Play size={9} className="fill-emerald-600" /> Resume
-                                  </button>
+                                  !item.isOnBreak ? (
+                                    <button
+                                      onClick={() => handleAdminStartTask(item.runningTask, emp)}
+                                      className="border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors inline-flex items-center gap-0.5"
+                                      title="Resume task timer for employee"
+                                    >
+                                      <Play size={9} className="fill-emerald-600" /> Resume
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] text-amber-800 dark:text-amber-300 italic font-semibold">Break active</span>
+                                  )
                                 )
                               )}
                             </div>

@@ -5,23 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Key,
-  Mail,
-  User,
-  Copy,
-  Check,
-  Printer,
-  Eye,
-  EyeOff,
-  ExternalLink,
-  ShieldCheck,
-  Building,
-  Calendar,
-  Lock,
-  Share2
-} from 'lucide-react';
+import { X, Key, Mail, User, Copy, Check, Printer, Eye, EyeOff, ExternalLink, ShieldCheck, Lock, Share2 } from 'lucide-react';
 import { useToast } from '../../../../shared/context/ToastContext';
 
 export const EmployeeCredentialsModal = ({ isOpen, onClose, employee }) => {

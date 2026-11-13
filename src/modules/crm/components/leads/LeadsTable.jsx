@@ -4,24 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  MoreVertical,
-  Eye,
-  Edit2,
-  Trash2,
-  CheckCircle2,
-  Phone,
-  Mail,
-  Building,
-  User,
-  ExternalLink,
-  Copy,
-  Check,
-  Flame,
-  Clock,
-  Sparkles,
-  ArrowUpDown
-} from 'lucide-react';
+import { MoreVertical, Eye, Edit2, Trash2, CheckCircle2, Copy, Check, ArrowUpDown } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';

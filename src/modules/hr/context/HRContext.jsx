@@ -319,11 +319,11 @@ export const HRProvider = ({ children }) => {
       // 🚀 0ms Instant Optimistic Local Update
       setCurrentUser(prev => {
         if (!prev) return prev;
-        const isMatch = prev._id === employeeId ||
-          prev.employeeCode === employeeId ||
-          (updateData.employeeCode && prev.employeeCode === updateData.employeeCode) ||
-          (updateData.email && prev.email?.toLowerCase() === updateData.email?.toLowerCase()) ||
-          prev.isCurrentUser;
+        const isMatch = String(prev._id || '') === String(employeeId) ||
+          String(prev.id || '') === String(employeeId) ||
+          String(prev.employeeCode || '') === String(employeeId) ||
+          (updateData.employeeCode && String(prev.employeeCode) === String(updateData.employeeCode)) ||
+          (updateData.email && String(prev.email || '').toLowerCase() === String(updateData.email).toLowerCase());
         if (isMatch) {
           const merged = { ...prev, ...updateData };
           try {
@@ -336,17 +336,20 @@ export const HRProvider = ({ children }) => {
       });
 
       setEmployees(prev => prev.map(e => {
-        const isMatch = e._id === employeeId ||
-          e.employeeCode === employeeId ||
-          (updateData.employeeCode && e.employeeCode === updateData.employeeCode) ||
-          (updateData.email && e.email?.toLowerCase() === updateData.email?.toLowerCase()) ||
-          (e.isCurrentUser && updateData.isCurrentUser);
+        const isMatch = String(e._id || '') === String(employeeId) ||
+          String(e.id || '') === String(employeeId) ||
+          String(e.employeeCode || '') === String(employeeId) ||
+          (updateData.employeeCode && String(e.employeeCode) === String(updateData.employeeCode)) ||
+          (updateData.email && String(e.email || '').toLowerCase() === String(updateData.email).toLowerCase());
         return isMatch ? { ...e, ...updateData } : e;
       }));
 
       const cur = getCollection(KEYS.EMPLOYEES) || [];
       const updatedCur = cur.map(e => {
-        const isMatch = e._id === employeeId || e.employeeCode === employeeId || (updateData.employeeCode && e.employeeCode === updateData.employeeCode);
+        const isMatch = String(e._id || '') === String(employeeId) ||
+          String(e.id || '') === String(employeeId) ||
+          String(e.employeeCode || '') === String(employeeId) ||
+          (updateData.employeeCode && String(e.employeeCode) === String(updateData.employeeCode));
         return isMatch ? { ...e, ...updateData } : e;
       });
       saveCollection(KEYS.EMPLOYEES, updatedCur);
@@ -369,16 +372,38 @@ export const HRProvider = ({ children }) => {
       // 🚀 0ms Instant Optimistic Local Update
       setCurrentUser(prev => {
         if (!prev) return prev;
-        if (prev._id === employeeId || prev.employeeCode === employeeId || prev.isCurrentUser) {
-          return { ...prev, ...payload };
+        const isMatch = String(prev._id || '') === String(employeeId) ||
+          String(prev.id || '') === String(employeeId) ||
+          String(prev.employeeCode || '') === String(employeeId);
+        if (isMatch) {
+          const merged = { ...prev, ...payload };
+          try {
+            localStorage.setItem('ems_auth_session', JSON.stringify(merged));
+            window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+          } catch (_) {}
+          return merged;
         }
         return prev;
       });
-      setEmployees(prev => prev.map(e => (e._id === employeeId || e.employeeCode === employeeId ? { ...e, ...payload } : e)));
+      setEmployees(prev => prev.map(e => (String(e._id) === String(employeeId) || String(e.id) === String(employeeId) || String(e.employeeCode) === String(employeeId) ? { ...e, ...payload } : e)));
       const cur = getCollection(KEYS.EMPLOYEES) || [];
-      const updatedCur = cur.map(e => (e._id === employeeId || e.employeeCode === employeeId ? { ...e, ...payload } : e));
+      const updatedCur = cur.map(e => (String(e._id) === String(employeeId) || String(e.id) === String(employeeId) || String(e.employeeCode) === String(employeeId) ? { ...e, ...payload } : e));
       saveCollection(KEYS.EMPLOYEES, updatedCur);
+
+      // Also persist to EMS_USER_PERMISSIONS local cache
+      try {
+        const rawMap = localStorage.getItem('EMS_USER_PERMISSIONS');
+        const parsed = rawMap ? JSON.parse(rawMap) : {};
+        const emp = (cur || []).find(e => String(e._id) === String(employeeId) || String(e.employeeCode) === String(employeeId));
+        const keys = [employeeId, emp?.employeeCode, emp?.email].filter(Boolean);
+        keys.forEach(k => {
+          parsed[String(k)] = { ...(parsed[String(k)] || {}), ...(payload.permissions || payload) };
+        });
+        localStorage.setItem('EMS_USER_PERMISSIONS', JSON.stringify(parsed));
+      } catch (_) {}
+
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
+      window.dispatchEvent(new CustomEvent('ems_permissions_updated', { detail: { employeeId, ...payload } }));
 
       hrService.updateEmployeePermissions(employeeId, payload).catch(err => console.warn('[HRContext] Sync permissions to DB:', err));
       return { _id: employeeId, ...payload };

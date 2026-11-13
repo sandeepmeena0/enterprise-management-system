@@ -4,23 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  LifeBuoy,
-  Plus,
-  Search,
-  Filter,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  XCircle,
-  Download,
-  MoreVertical,
-  Trash2,
-  Eye,
-  MessageSquare,
-  Sparkles,
-  Ticket as TicketIcon
-} from 'lucide-react';
+import { LifeBuoy, Plus, Search, CheckCircle2, Clock, AlertCircle, Download, Trash2, Eye, Ticket as TicketIcon } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';
@@ -40,7 +24,7 @@ export const TicketsPage = () => {
 
   const isPrivileged = useMemo(() => isHRorAdmin(currentUser), [currentUser]);
   const perms = useMemo(() => getUserModulePermissions(currentUser), [currentUser]);
-  const canViewAllTickets = isPrivileged || perms?.viewAllTickets;
+  const canViewAllTickets = isPrivileged || perms?.viewAllTickets || perms?.manageTickets || perms?.allAccess;
   const canExport = useMemo(() => canExportData(currentUser, 'tickets') || isHRorAdmin(currentUser), [currentUser]);
 
   const [isRaiseModalOpen, setIsRaiseModalOpen] = useState(false);

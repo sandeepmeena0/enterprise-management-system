@@ -1,19 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  Circle,
-  Clock,
-  Tag,
-  Lock,
-  Calendar,
-  Sparkles,
-  Edit2,
-  Save,
-  AlertCircle
-} from 'lucide-react';
+import { X, Plus, Trash2, CheckCircle2, Circle, Clock, Lock, Calendar, Edit2, Save } from 'lucide-react';
 import { dateMemoryService } from '../../services/dateMemoryService';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';

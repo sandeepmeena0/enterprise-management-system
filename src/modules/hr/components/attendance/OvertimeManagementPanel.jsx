@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, CheckCircle2, XCircle, Briefcase, User, Calendar, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { hrService } from '../../services/hrService';
 import { isHRorAdmin } from '../../../../shared/utils/permissionUtils';
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
-import { ShieldCheck, Check, Sparkles, AlertCircle, Key, RefreshCw, Copy, Lock } from 'lucide-react';
+import { Check, AlertCircle, Key, RefreshCw, Copy, Lock } from 'lucide-react';
 import { useToast } from '../../../../shared/context/ToastContext';
 import {
   GRANULAR_PERMISSIONS_LIST,
@@ -9,7 +9,8 @@ import {
   setUserPermissions,
   canUserGrantPermissions,
   classifyBaseRole,
-  isPrimaryAdmin as checkIsPrimaryAdmin
+  isPrimaryAdmin as checkIsPrimaryAdmin,
+  sanitizePermissionDependencies
 } from '../../../../shared/utils/permissionUtils';
 import { useHR } from '../../context/HRContext';
 import { broadcastSyncEvent } from '../../../../shared/services/realtimeSyncService';
@@ -124,42 +125,12 @@ export const ManagePermissionsModal = ({ isOpen, onClose, employee }) => {
       const isTargetPrimary = checkIsPrimaryAdmin(employee) || isPrimaryAdmin;
       const isAllAccess = Boolean(permissions.allAccess);
       const isDelegated = Boolean(isAllAccess || (employee.isDelegatedAdmin && isAllAccess));
-      const cleanPerms = { ...permissions };
-
+      // Auto-grant parent module dependencies for granular permissions
+      const cleanPerms = sanitizePermissionDependencies({ ...permissions });
       if (!isDelegated) {
         delete cleanPerms.allAccess;
         delete cleanPerms.isDelegatedAdmin;
         delete cleanPerms.delegationExpiresAt;
-      }
-
-      // Auto-grant parent module dependencies for granular permissions
-      if (cleanPerms.createLeads || cleanPerms.editLeads || cleanPerms.deleteLeads) {
-        cleanPerms.accessCRM = true;
-        cleanPerms.leads = true;
-      }
-      if (cleanPerms.createTasks || cleanPerms.editTasks || cleanPerms.deleteTasks) {
-        cleanPerms.tasks = true;
-        cleanPerms.accessTasks = true;
-      }
-      if (cleanPerms.viewAllAttendance || cleanPerms.markAttendance || cleanPerms.editAttendance || cleanPerms.forceClockOut) {
-        cleanPerms.attendance = true;
-        cleanPerms.accessAttendance = true;
-      }
-      if (cleanPerms.approveLeaves || cleanPerms.manageLeaves) {
-        cleanPerms.leaves = true;
-        cleanPerms.accessLeaves = true;
-      }
-      if (cleanPerms.createTickets || cleanPerms.manageTickets) {
-        cleanPerms.tickets = true;
-        cleanPerms.accessCRM = true;
-      }
-      if (cleanPerms.createExpenses || cleanPerms.approveExpenses) {
-        cleanPerms.finance = true;
-        cleanPerms.expenses = true;
-      }
-      if (cleanPerms.manageEmployees) {
-        cleanPerms.employees = true;
-        cleanPerms.accessHR = true;
       }
 
       const underlyingBaseRole = employee.baseRole || classifyBaseRole(employee) || 'team_member';

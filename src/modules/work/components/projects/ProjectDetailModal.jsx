@@ -4,25 +4,7 @@
  */
 
 import React from 'react';
-import {
-  X,
-  Calendar,
-  Building,
-  Users,
-  DollarSign,
-  CheckCircle2,
-  Clock,
-  ListTodo,
-  TrendingUp,
-  Tag,
-  AlertTriangle,
-  History,
-  Shield,
-  UserCheck,
-  ArrowRight,
-  MessageSquare,
-  Trash2
-} from 'lucide-react';
+import { X, Calendar, Building, CheckCircle2, TrendingUp, AlertTriangle, History, UserCheck, Trash2 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';

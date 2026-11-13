@@ -31,8 +31,31 @@ const allowedOrigins = [
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
+  'https://enterprise-management-system-two.vercel.app',
   process.env.FRONTEND_URL
 ].filter(Boolean);
+
+// Universal Bulletproof CORS & Preflight Handler
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  const reqHeaders = req.headers['access-control-request-headers'];
+  if (reqHeaders) {
+    res.setHeader('Access-Control-Allow-Headers', reqHeaders);
+  } else {
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, cache-control, Pragma, pragma, Expires, x-user-id, x-user-email, x-user-code, x-user-role, Accept, X-Requested-With, Origin');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -44,7 +67,22 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-user-email', 'x-user-code', 'x-user-role', 'Accept']
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Cache-Control',
+    'cache-control',
+    'Pragma',
+    'pragma',
+    'Expires',
+    'x-user-id',
+    'x-user-email',
+    'x-user-code',
+    'x-user-role',
+    'Accept',
+    'X-Requested-With',
+    'Origin'
+  ]
 }));
 app.options('*', cors());
 app.use(express.json({ limit: '50mb' }));

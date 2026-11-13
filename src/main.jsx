@@ -10,6 +10,14 @@ if (typeof window !== 'undefined') {
     console.warn('[Vite] Dynamic import preload error detected. Reloading for newest deployment...', event);
     window.location.reload();
   });
+
+  // Suppress harmless browser extension message-channel closed errors in console
+  window.addEventListener('unhandledrejection', (event) => {
+    const msg = event?.reason?.message || String(event?.reason || '');
+    if (msg.includes('message channel closed') || msg.includes('asynchronous response by returning true')) {
+      event.preventDefault();
+    }
+  });
 }
 
 // Initialize storage seed data on app start

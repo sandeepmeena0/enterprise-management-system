@@ -4,24 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Play,
-  Pause,
-  Square,
-  MoreVertical,
-  Clock,
-  Eye,
-  Trash2,
-  CheckCircle2,
-  Calendar,
-  AlertTriangle,
-  FileSpreadsheet,
-  Bell
-} from 'lucide-react';
+import { Play, Pause, Square, MoreVertical, Clock, Eye, Trash2, CheckCircle2, Calendar, Bell } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { canDeleteTask } from '../../../../shared/utils/permissionUtils';
-import { useConfirm, confirmDialog } from '../../../../shared/context/ConfirmContext';
+import { confirmDialog } from '../../../../shared/context/ConfirmContext';
 import { SnoozeTaskModal } from './SnoozeTaskModal';
 import { Pagination } from '../../../../shared/components/common/Pagination';
 
@@ -342,22 +329,32 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                           <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-50 py-px px-1.5 rounded">
                             ⚡ Open
                           </span>
-                        ) : (
-                          <span className={`text-[9.5px] font-extrabold ${((Number(task.hoursLogged) || 0) + (Number(task.timerSeconds || 0) / 3600)) > Number(task.estimatedHours) ? 'text-amber-600' : 'text-green-600'}`}>
-                            {Math.round(((((Number(task.hoursLogged) || 0) * 3600) + (Number(task.timerSeconds) || 0)) / (Number(task.estimatedHours) * 3600)) * 100)}%
-                          </span>
-                        )}
+                        ) : (() => {
+                          const effectiveSecs = Math.max((Number(task.hoursLogged) || 0) * 3600, Number(task.accumulatedSeconds) || 0, Number(task.timerSeconds) || 0);
+                          const budgetSecs = Number(task.estimatedHours) * 3600;
+                          const pct = Math.round((effectiveSecs / budgetSecs) * 100);
+                          const isOver = effectiveSecs > budgetSecs;
+                          return (
+                            <span className={`text-[9.5px] font-extrabold ${isOver ? 'text-amber-600' : 'text-green-600'}`}>
+                              {pct}%
+                            </span>
+                          );
+                        })()}
                       </div>
-                      {!task.isUntimed && task.estimatedHours > 0 && (
-                        <div className="w-full h-1 bg-slate-200 rounded-sm overflow-hidden">
-                          <div
-                            className={`h-full rounded-sm transition-all duration-300 ${((Number(task.hoursLogged) || 0) + (Number(task.timerSeconds || 0) / 3600)) > Number(task.estimatedHours) ? 'bg-amber-500' : 'bg-blue-600'}`}
-                            style={{
-                              width: `${Math.min(100, Math.round(((((Number(task.hoursLogged) || 0) * 3600) + (Number(task.timerSeconds) || 0)) / (Number(task.estimatedHours) * 3600)) * 100))}%`
-                            }}
-                          />
-                        </div>
-                      )}
+                      {!task.isUntimed && task.estimatedHours > 0 && (() => {
+                        const effectiveSecs = Math.max((Number(task.hoursLogged) || 0) * 3600, Number(task.accumulatedSeconds) || 0, Number(task.timerSeconds) || 0);
+                        const budgetSecs = Number(task.estimatedHours) * 3600;
+                        const pct = Math.min(100, Math.round((effectiveSecs / budgetSecs) * 100));
+                        const isOver = effectiveSecs > budgetSecs;
+                        return (
+                          <div className="w-full h-1 bg-slate-200 rounded-sm overflow-hidden">
+                            <div
+                              className={`h-full rounded-sm transition-all duration-300 ${isOver ? 'bg-amber-500' : 'bg-blue-600'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        );
+                      })()}
                     </div>
                   </td>
 

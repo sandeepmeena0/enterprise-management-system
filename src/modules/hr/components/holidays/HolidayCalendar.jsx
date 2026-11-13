@@ -1,18 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Trash2,
-  Calendar as CalendarIcon,
-  Clock,
-  CheckCircle2,
-  Lock,
-  Filter,
-  Search,
-  Sparkles,
-  AlertTriangle,
-  Plus
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, Calendar as CalendarIcon, Filter, Plus } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';

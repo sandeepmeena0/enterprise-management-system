@@ -1,18 +1,5 @@
 import React, { useState } from 'react';
-import {
-  FolderLock,
-  Upload,
-  Search,
-  Filter,
-  FileText,
-  ShieldCheck,
-  Download,
-  Trash2,
-  Eye,
-  CheckCircle,
-  Clock,
-  AlertCircle
-} from 'lucide-react';
+import { FolderLock, Upload, Search, FileText, ShieldCheck, Download, Trash2, CheckCircle } from 'lucide-react';
 import { useHR } from '../context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';

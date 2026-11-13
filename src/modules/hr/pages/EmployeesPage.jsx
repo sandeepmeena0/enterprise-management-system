@@ -1,26 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Users,
-  Plus,
-  Search,
-  Award,
-  User,
-  ShieldCheck,
-  Shield,
-  Building,
-  Mail,
-  Calendar,
-  Layers,
-  Sparkles,
-  Trash2,
-  Lock,
-  ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  ArrowUpDown,
-  Filter,
-  Key
-} from 'lucide-react';
+import { Users, Plus, Search, Award, User, ShieldCheck, Shield, Trash2, ArrowUpDown, Key } from 'lucide-react';
 import { useHR } from '../context/HRContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';

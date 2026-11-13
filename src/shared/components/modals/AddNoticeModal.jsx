@@ -4,17 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  BellRing,
-  AlertTriangle,
-  FileText,
-  CheckCircle2,
-  Calendar,
-  Users,
-  Sparkles,
-  Check
-} from 'lucide-react';
+import { X, BellRing, Check } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { useHR } from '../../../modules/hr/context/HRContext';
 import { useToast } from '../../context/ToastContext';

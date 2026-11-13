@@ -58,10 +58,7 @@ const getAuthUser = () => {
 };
 
 const getAuthHeaders = () => {
-  const headers = {
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache'
-  };
+  const headers = {};
   const u = getAuthUser();
   if (u) {
     headers['x-user-id'] = String(u._id || u.id || u.employeeCode || u.email || '');

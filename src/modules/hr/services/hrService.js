@@ -29,10 +29,7 @@ const getAuthUser = () => {
 };
 
 const getAuthHeaders = () => {
-  const headers = {
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache'
-  };
+  const headers = {};
   const u = getAuthUser();
   if (u) {
     headers['x-user-id'] = String(u._id || u.id || u.employeeCode || u.email || '');
@@ -92,15 +89,25 @@ async function fetchWithFallback(url, options, fallbackFn) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    const res = await fetch(url, {
+    const headers = {};
+    if (options?.body || method !== 'GET') {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (!options?.skipAuthHeaders) {
+      Object.assign(headers, getAuthHeaders());
+    }
+    if (options?.headers) {
+      Object.assign(headers, options.headers);
+    }
+
+    const fetchOptions = {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-        ...(options?.headers || {})
-      },
+      headers,
       signal: controller.signal
-    });
+    };
+    delete fetchOptions.skipAuthHeaders;
+
+    const res = await fetch(url, fetchOptions);
     clearTimeout(timeoutId);
 
     const ct = res.headers.get('content-type') || '';
@@ -1194,7 +1201,8 @@ export const hrService = {
   async getLiveTelemetry(dateStr) {
     const today = dateStr || new Date().toISOString().split('T')[0];
     const res = await fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}&_t=${Date.now()}`, {
-      method: 'GET'
+      method: 'GET',
+      skipAuthHeaders: true
     }, async () => {
       // LocalStorage fallback for offline / mock
       const telemetryMap = {};

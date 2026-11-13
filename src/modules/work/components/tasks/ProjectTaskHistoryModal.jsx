@@ -6,27 +6,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  X,
-  Search,
-  Filter,
-  History,
-  Calendar,
-  User,
-  Users,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowRight,
-  Download,
-  FolderGit2,
-  Tag,
-  Sparkles,
-  Layers,
-  FileCheck2,
-  CalendarClock,
-  RefreshCw
-} from 'lucide-react';
+import { X, Search, History, Users, Clock, CheckCircle2, ArrowRight, Download, Layers, CalendarClock } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { isHRorAdmin } from '../../../../shared/utils/permissionUtils';

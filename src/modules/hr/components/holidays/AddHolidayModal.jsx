@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
 import { isHRorAdmin } from '../../../../shared/utils/permissionUtils';
-import { ShieldCheck } from 'lucide-react';
 
 export const AddHolidayModal = ({ isOpen, onClose, selectedDate = '' }) => {
   const { addHoliday, currentUser } = useHR();

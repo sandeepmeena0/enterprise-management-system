@@ -4,18 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Upload,
-  FileSpreadsheet,
-  Download,
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-  Trash2,
-  Sparkles,
-  ArrowRight
-} from 'lucide-react';
+import { X, Upload, FileSpreadsheet, Download, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 

@@ -1,34 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
-import {
-  User,
-  Mail,
-  Briefcase,
-  Building,
-  Calendar,
-  Clock,
-  Sparkles,
-  ShieldAlert,
-  Check,
-  Lock,
-  Eye,
-  EyeOff,
-  KeyRound,
-  ShieldCheck,
-  Plus,
-  Trash2
-} from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck, Plus } from 'lucide-react';
 import { getRoles } from '../../../../shared/services/roleManagementService';
 import { getCompanySettings } from '../../../../shared/services/companySettingsService';
 import { KEYS } from '../../../../shared/services/storageService';
 import { API_BASE } from '../../../../shared/config/apiConfig';
-import {
-  ROLES,
-  GRANULAR_PERMISSIONS_LIST,
-  DEFAULT_MODULE_PERMISSIONS,
-  canUserGrantPermissions
-} from '../../../../shared/utils/permissionUtils';
+import { GRANULAR_PERMISSIONS_LIST, DEFAULT_MODULE_PERMISSIONS, canUserGrantPermissions } from '../../../../shared/utils/permissionUtils';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { EmployeeCredentialsModal } from './EmployeeCredentialsModal';
 

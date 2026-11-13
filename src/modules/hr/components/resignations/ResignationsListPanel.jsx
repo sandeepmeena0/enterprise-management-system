@@ -1,18 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  FileText,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  UserCheck,
-  Search,
-  Filter,
-  Plus,
-  ShieldCheck,
-  Send,
-  Calendar
-} from 'lucide-react';
+import { FileText, Clock, CheckCircle2, XCircle, UserCheck, Search, ShieldCheck, Send } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { isHRorAdmin, isAdmin } from '../../../../shared/utils/permissionUtils';

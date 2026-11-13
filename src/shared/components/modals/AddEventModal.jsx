@@ -4,17 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Calendar,
-  Clock,
-  MapPin,
-  Bell,
-  Repeat,
-  Tag,
-  Sparkles,
-  Check
-} from 'lucide-react';
+import { X, Calendar, Bell, Repeat, Check } from 'lucide-react';
 import { useCRM } from '../../context/CRMContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';

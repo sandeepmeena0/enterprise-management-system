@@ -3,8 +3,7 @@ import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { useToast } from '../../../../shared/context/ToastContext';
-import { canApproveLeaves, isAdmin } from '../../../../shared/utils/permissionUtils';
-import { UserCheck, ShieldAlert, Calendar, Clock, AlertCircle } from 'lucide-react';
+import { canApproveLeaves } from '../../../../shared/utils/permissionUtils';
 
 export const NewLeaveModal = ({ isOpen, onClose }) => {
   const { employees = [], currentUser: hrUser = null, applyLeave = () => {} } = useHR() || {};

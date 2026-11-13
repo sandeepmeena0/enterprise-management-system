@@ -87,11 +87,7 @@ export const ShiftClockCard = ({
   const overtimeMins = Math.floor(((effectiveWorkSecs - standardWorkHours * 3600) % 3600) / 60);
 
   const onClockOutClick = () => {
-    if (isOvertime && !isViewingOtherEmployee) {
-      setIsOvertimeModalOpen(true);
-    } else {
-      handleClockOut();
-    }
+    handleClockOut();
   };
 
   return (

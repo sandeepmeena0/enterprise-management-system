@@ -71,14 +71,11 @@ export function App() {
                       <Route path="projects"      element={<ProjectsPage />} />
                       <Route path="tasks"         element={<TasksPage />} />
                       <Route path="timesheet"     element={<TimesheetPage />} />
-                      <Route path="timesheets"    element={<Navigate to="/timesheet" replace />} />
-                      <Route path="work"          element={<Navigate to="/projects" replace />} />
 
                       {/* ── HR Module Routes ────────────────────────────────── */}
                       <Route path="employees"        element={<EmployeesPage />} />
                       <Route path="team"             element={<EmployeesPage />} />
                       <Route path="team-operations"  element={<TeamOperationsPage />} />
-                      <Route path="operations"       element={<TeamOperationsPage />} />
                       <Route path="leaves"           element={<LeavesPage />} />
                       <Route path="attendance"       element={<AttendancePage />} />
                       <Route path="holiday"          element={<HolidayPage />} />
@@ -89,12 +86,8 @@ export function App() {
                       <Route path="documentation"    element={<DocumentationPage />} />
 
                       {/* ── Finance & Payroll Module ────────────────────────── */}
-                      <Route path="finance"          element={<ExpensesPage />} />
-                      <Route path="finance/expenses" element={<ExpensesPage />} />
                       <Route path="expenses"         element={<ExpensesPage />} />
                       <Route path="payroll"          element={<PayrollPage />} />
-                      <Route path="payslips"         element={<PayrollPage />} />
-                      <Route path="finance/payroll"  element={<PayrollPage />} />
 
                       {/* ── CRM Modules: Tickets, Events, Messages, Notices ──── */}
                       <Route path="tickets"      element={<TicketsPage />} />
@@ -107,9 +100,6 @@ export function App() {
 
                       {/* ── Settings ────────────────────────────────────────── */}
                       <Route path="settings"                 element={<SettingsPage />} />
-                      <Route path="profile-settings"         element={<SettingsPage />} />
-                      <Route path="security-settings"        element={<SettingsPage />} />
-                      <Route path="account/settings/*"       element={<SettingsPage />} />
 
                       <Route path="*" element={<Navigate to="/dashboard" replace />} />
                     </Route>

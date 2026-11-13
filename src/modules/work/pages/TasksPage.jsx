@@ -4,22 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Plus,
-  Search,
-  Filter,
-  Download,
-  UserCheck,
-  LayoutList,
-  Kanban,
-  Calendar,
-  Layers,
-  CheckCircle2,
-  Clock,
-  Sparkles,
-  Trash2,
-  History
-} from 'lucide-react';
+import { Plus, Search, Download, LayoutList, Kanban, CheckCircle2, History } from 'lucide-react';
 import { useWork } from '../context/WorkContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';

@@ -13,45 +13,12 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import {
-  ShieldCheck,
-  Check,
-  RotateCcw,
-  Crown,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  AlertCircle,
-  Shield,
-  Layers,
-  Search,
-  Filter,
-  Sparkles,
-  CheckCircle2,
-  XCircle,
-  Lock,
-  Unlock,
-  Info
-} from 'lucide-react';
+import { ShieldCheck, Check, RotateCcw, Crown, Clock, ChevronDown, ChevronUp, Shield, Layers, Search, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import { useHR } from '../../hr/context/HRContext';
 import { broadcastSyncEvent } from '../../../shared/services/realtimeSyncService';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';
-import {
-  ROLES,
-  getUserRole,
-  getUserModulePermissions,
-  GRANULAR_PERMISSIONS_LIST,
-  PERMISSION_CATEGORIES,
-  PERMISSION_DEPENDENCIES,
-  getPermissionPrerequisite,
-  getDependentChildPermissions,
-  sanitizePermissionDependencies,
-  canUserGrantPermissions,
-  isAdmin,
-  classifyBaseRole,
-  isPrimaryAdmin
-} from '../../../shared/utils/permissionUtils';
+import { ROLES, getUserModulePermissions, GRANULAR_PERMISSIONS_LIST, PERMISSION_CATEGORIES, PERMISSION_DEPENDENCIES, getDependentChildPermissions, sanitizePermissionDependencies, canUserGrantPermissions, isAdmin, classifyBaseRole, isPrimaryAdmin } from '../../../shared/utils/permissionUtils';
 
 const BASE_ROLES = [
   {

@@ -1,24 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  TrendingUp,
-  TrendingDown,
-  Percent,
-  DollarSign,
-  Calendar,
-  Award,
-  FileCheck,
-  Printer,
-  Mail,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowRight,
-  Sparkles,
-  Building2,
-  Sliders,
-  FileText,
-  ShieldCheck
-} from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Percent, DollarSign, FileCheck, Printer, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useToast } from '../../../shared/context/ToastContext';
 import { useHR } from '../../hr/context/HRContext';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';

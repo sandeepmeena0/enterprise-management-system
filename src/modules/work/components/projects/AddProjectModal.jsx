@@ -5,21 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  FolderGit2,
-  Calendar,
-  DollarSign,
-  Users,
-  CheckCircle2,
-  Plus,
-  Building2,
-  Globe,
-  Lock,
-  Shield,
-  Search,
-  UserCheck
-} from 'lucide-react';
+import { X, FolderGit2, Users, CheckCircle2, Globe, Lock, UserCheck } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { useToast } from '../../../../shared/context/ToastContext';

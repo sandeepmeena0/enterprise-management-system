@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, AlertTriangle, MessageSquare, Check, Calendar, User, Clock, RotateCcw, ShieldAlert, Sparkles } from 'lucide-react';
+import { X, AlertTriangle, MessageSquare, Check, Calendar, Clock, RotateCcw, Sparkles } from 'lucide-react';
 
 const ADMIN_CANCEL_PRESETS = [
   'Staffing shortage / critical team coverage required',

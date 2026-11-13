@@ -4,17 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Users2,
-  DollarSign,
-  User,
-  Building,
-  Mail,
-  Phone,
-  CheckCircle2,
-  Plus
-} from 'lucide-react';
+import { X, Users2, CheckCircle2 } from 'lucide-react';
 import { useCRM } from '../../../../shared/context/CRMContext';
 import { useHR } from '../../../hr/context/HRContext';
 import { useToast } from '../../../../shared/context/ToastContext';

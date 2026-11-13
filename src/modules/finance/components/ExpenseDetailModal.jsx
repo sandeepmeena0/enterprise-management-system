@@ -4,19 +4,7 @@
  */
 
 import React from 'react';
-import {
-  X,
-  DollarSign,
-  Building,
-  Calendar,
-  User,
-  FileText,
-  ExternalLink,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Trash2
-} from 'lucide-react';
+import { X, FileText, ExternalLink, CheckCircle2, XCircle, Clock, Trash2 } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';

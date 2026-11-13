@@ -4,19 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Plus,
-  Search,
-  Filter,
-  Clock,
-  Zap,
-  Calendar,
-  Layers,
-  User,
-  CheckCircle2,
-  TrendingUp,
-  Download
-} from 'lucide-react';
+import { Plus, Search, Clock, Zap, Layers, User, Download } from 'lucide-react';
 import { useWork } from '../context/WorkContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { isHRorAdmin, canExportData } from '../../../shared/utils/permissionUtils';

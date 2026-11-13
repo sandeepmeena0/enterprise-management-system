@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import { AlertTriangle, Calendar, Clock, CheckCircle2, Play, X, ArrowRight } from 'lucide-react';
+import { AlertTriangle, Calendar, CheckCircle2, X } from 'lucide-react';
 import { useToast } from '../../../../shared/context/ToastContext';
 
 export const OverdueTaskModal = ({

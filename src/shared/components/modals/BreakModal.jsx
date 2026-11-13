@@ -9,24 +9,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Coffee,
-  Utensils,
-  User,
-  Clock,
-  Sparkles,
-  Check,
-  History,
-  AlertTriangle,
-  Play,
-  Trash2,
-  Calendar,
-  CheckCircle2,
-  TrendingUp,
-  Heart,
-  Plus
-} from 'lucide-react';
+import { X, Coffee, Utensils, User, Clock, History, AlertTriangle, Play, Trash2, Heart, Plus } from 'lucide-react';
 import { useTimer } from '../../context/TimerContext';
 
 const PRESET_BREAKS = [

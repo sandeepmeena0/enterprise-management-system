@@ -4,14 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Clock,
-  Trash2,
-  MoreVertical,
-  Calendar,
-  CheckCircle2,
-  FileText
-} from 'lucide-react';
+import { Clock, Trash2, MoreVertical } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { isHRorAdmin, canDeleteTask } from '../../../../shared/utils/permissionUtils';

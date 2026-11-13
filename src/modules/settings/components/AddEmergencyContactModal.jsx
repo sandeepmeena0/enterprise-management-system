@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, Mail, Heart, MapPin, Check } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 
 export const AddEmergencyContactModal = ({ isOpen, onClose, contactToEdit = null }) => {

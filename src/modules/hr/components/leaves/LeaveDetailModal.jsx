@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { useHR } from '../../context/HRContext';
 import { useConfirm } from '../../../../shared/context/ConfirmContext';
-import { Check, X, Trash2, Calendar, Clock, User, ShieldCheck, ShieldAlert, UserCheck } from 'lucide-react';
-import { canApproveLeaves, isHRorAdmin, isAdmin, canCancelLeave, canReviewLeave, isLeaveApplicant, isLeaveDesignatedApprover } from '../../../../shared/utils/permissionUtils';
+import { Check, X, Trash2, Calendar, ShieldCheck, ShieldAlert, UserCheck } from 'lucide-react';
+import { isAdmin, canCancelLeave, canReviewLeave, isLeaveApplicant, isLeaveDesignatedApprover } from '../../../../shared/utils/permissionUtils';
 import { CancelLeaveModal } from '../../../../shared/components/modals/CancelLeaveModal';
 
 export const LeaveDetailModal = ({ leave, isOpen, onClose }) => {

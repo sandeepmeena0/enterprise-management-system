@@ -5,7 +5,6 @@
 
 const mongoose = require('mongoose');
 const Task = require('../models/Task');
-const Timesheet = require('../models/Timesheet');
 
 // @desc    Get all tasks with filters
 // @route   GET /api/tasks

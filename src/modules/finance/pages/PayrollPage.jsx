@@ -1,28 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  DollarSign,
-  Download,
-  Printer,
-  Search,
-  Filter,
-  CheckCircle2,
-  Calendar,
-  Building2,
-  FileText,
-  CreditCard,
-  Send,
-  Plus,
-  TrendingUp,
-  TrendingDown,
-  UserPlus,
-  Sparkles,
-  SlidersHorizontal,
-  ArrowUpDown,
-  User,
-  ShieldCheck,
-  AlertCircle,
-  Clock
-} from 'lucide-react';
+import { DollarSign, Download, Search, Building2, FileText, CreditCard, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
 import { useHR } from '../../hr/context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';

@@ -1,20 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Upload,
-  Check,
-  Eye,
-  EyeOff,
-  RefreshCw,
-  Sparkles,
-  Camera,
-  ShieldCheck,
-  Lock
-} from 'lucide-react';
+import { Check, Eye, EyeOff, RefreshCw, Camera } from 'lucide-react';
 import { useHR } from '../../hr/context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';
-import { getRoles, canUserAssignRole, recordPromotion } from '../../../shared/services/roleManagementService';
+import { getRoles, recordPromotion } from '../../../shared/services/roleManagementService';
 
 const COUNTRIES = [
   { code: 'AF', name: 'Afghanistan', dial: '+93', flag: '🇦🇫' },

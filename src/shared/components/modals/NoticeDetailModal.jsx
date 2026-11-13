@@ -4,14 +4,7 @@
  */
 
 import React from 'react';
-import {
-  X,
-  Bell,
-  Calendar,
-  User,
-  Tag,
-  AlertTriangle
-} from 'lucide-react';
+import { X, Calendar, User } from 'lucide-react';
 
 export const NoticeDetailModal = ({ notice, onClose }) => {
   if (!notice) return null;

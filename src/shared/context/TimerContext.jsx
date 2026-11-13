@@ -17,22 +17,7 @@ import { useAuth } from './AuthContext';
 import { hrService } from '../../modules/hr/services/hrService';
 import { getCompanySettings } from '../services/companySettingsService';
 import { broadcastSyncEvent, SYNC_EVENTS } from '../services/realtimeSyncService';
-import {
-  getCanonicalTimerKey,
-  getTimerMirrorKeys,
-  parseTimeToSeconds,
-  formatSecondsToDigital,
-  formatSecondsToHoursMins,
-  normalizePunchSessions,
-  readTimerStorage,
-  writeTimerStorage,
-  removeTimerStorage,
-  calculateShiftWorkSeconds,
-  getTaskTodaySeconds,
-  syncTaskPauseState,
-  performShiftClockOut,
-  getLocalDateStr
-} from '../utils/timerUtils';
+import { getCanonicalTimerKey, getTimerMirrorKeys, parseTimeToSeconds, normalizePunchSessions, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, performShiftClockOut, getLocalDateStr } from '../utils/timerUtils';
 
 const defaultTimerContext = {
   isClockedIn: false,
@@ -175,15 +160,6 @@ export const TimerProvider = ({ children }) => {
     return false;
   }, [targetEmpId, targetEmpCode, userKey, currentUser, targetEmpName]);
 
-  const k = useCallback((name) => `ems_timer_${userKey}_${name}`, [userKey]);
-
-  // ── Helper to read state with userKey scoping ──
-  const readUserItem = useCallback((name, fallback = null) => {
-    const scoped = localStorage.getItem(`ems_timer_${userKey}_${name}`);
-    if (scoped !== null) return scoped;
-    return fallback;
-  }, [userKey]);
-
   // ── Helper: Accurately compute total task seconds worked today (logged timesheets + active unsubmitted timer) ──
   const getTodayTaskSecondsForUser = useCallback(() => {
     const today = getTodayStr();
@@ -296,6 +272,18 @@ export const TimerProvider = ({ children }) => {
         const r = map[String(k)] || map[String(k).toUpperCase()] || map[String(k).toLowerCase()];
         if (r && r.date === today) return r;
       }
+      const allVals = Object.values(map);
+      const found = allVals.find(v => {
+        if (!v || v.date !== today) return false;
+        const vCode = String(v.employeeCode || '').toUpperCase();
+        const vId = String(v.employeeId || '');
+        const vEmail = String(v.employeeEmail || '').toLowerCase();
+        return keys.some(k => {
+          const str = String(k);
+          return str.toUpperCase() === vCode || str === vId || str.toLowerCase() === vEmail;
+        });
+      });
+      if (found) return found;
     } catch (_) {}
     return null;
   };
@@ -599,30 +587,48 @@ export const TimerProvider = ({ children }) => {
       return;
     }
 
-    if (prevUserKeyRef.current !== userKey) {
-      setIsClockedIn(false);
-      setIsRunning(false);
-      setIsOnBreak(false);
-      setBreakType(null);
-      setWorkSeconds(0);
-      setBreakSeconds(0);
-      setCurrentBreakSeconds(0);
-      setLoginTime(null);
-      setClockOutTime(null);
-      setHadClockedOutToday(false);
-      setPunchSessions([]);
-      setReclockStatus('none');
-      setReclockSessionSeconds(0);
-      setSavedOfficialWorkSeconds(0);
-    }
-
-    isHydratingRef.current = true;
-    prevUserKeyRef.current = userKey;
-
     const today = getTodayStr();
     const storedDate = readTimerStorage(currentUser, 'work_session_date') || today;
     const isToday = storedDate === today;
     const cachedTelem = getCachedTelemRecord();
+
+    const isCloudClockedIn = Boolean(cachedTelem?.isClockedIn && !cachedTelem?.clockOutTime);
+    const localInVal = readTimerStorage(currentUser, 'is_clocked_in');
+    const isLocalClockedIn = localInVal === 'true' || localInVal === true;
+    const shouldBeClockedIn = isCloudClockedIn || isLocalClockedIn;
+
+    if (prevUserKeyRef.current !== userKey) {
+      if (!shouldBeClockedIn) {
+        setIsClockedIn(false);
+        setIsRunning(false);
+        setIsOnBreak(false);
+        setBreakType(null);
+        setWorkSeconds(0);
+        setBreakSeconds(0);
+        setCurrentBreakSeconds(0);
+        setLoginTime(null);
+        setClockOutTime(null);
+        setHadClockedOutToday(false);
+        setPunchSessions([]);
+        setReclockStatus('none');
+        setReclockSessionSeconds(0);
+        setSavedOfficialWorkSeconds(0);
+      } else {
+        setIsClockedIn(true);
+        setIsRunning(!cachedTelem?.isOnBreak);
+        setIsOnBreak(Boolean(cachedTelem?.isOnBreak));
+        if (cachedTelem?.breakType) setBreakType(cachedTelem.breakType);
+        const lTime = cachedTelem?.clockInTime || readTimerStorage(currentUser, 'login_time') || null;
+        if (lTime) setLoginTime(lTime);
+        const wSecs = Number(cachedTelem?.workSeconds) || Number(readTimerStorage(currentUser, 'work_seconds')) || 0;
+        if (wSecs > 0) setWorkSeconds(wSecs);
+        setClockOutTime(null);
+        setHadClockedOutToday(false);
+      }
+    }
+
+    isHydratingRef.current = true;
+    prevUserKeyRef.current = userKey;
 
     setSessionDate(storedDate);
     if (!isToday) {
@@ -903,16 +909,15 @@ export const TimerProvider = ({ children }) => {
         rec && (
           (rec.clockOutTime && rec.clockOutTime !== '--' && rec.clockOutTime !== '—') ||
           (rec.clockOut && rec.clockOut !== '--' && rec.clockOut !== '—') ||
-          rec.isClockedOut === true ||
-          rec.isClockedIn === false ||
-          rec.isClockedIn === 'false'
+          Boolean(rec.clockOutTimestamp) ||
+          rec.isClockedOut === true
         )
       );
       const remoteIsClockedIn = Boolean(
         rec &&
         rec.date === today &&
         !hasExplicitClockOut &&
-        (rec.isClockedIn === true || rec.isClockedIn === 'true' || (hasClockIn && !hasExplicitClockOut)) &&
+        (rec.isClockedIn === true || rec.isClockedIn === 'true' || hasClockIn) &&
         rec.status !== 'on_leave' &&
         rec.status !== 'absent'
       );
@@ -1168,6 +1173,7 @@ export const TimerProvider = ({ children }) => {
     window.addEventListener('hrms_storage_change', handleSync);
     window.addEventListener('ems_clocked_in', handleSync);
     window.addEventListener('ems_clocked_out', handleSync);
+    window.addEventListener('ems_shift_telemetry_synced', handleSync);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleSync);
@@ -1176,6 +1182,7 @@ export const TimerProvider = ({ children }) => {
       window.removeEventListener('hrms_storage_change', handleSync);
       window.removeEventListener('ems_clocked_in', handleSync);
       window.removeEventListener('ems_clocked_out', handleSync);
+      window.removeEventListener('ems_shift_telemetry_synced', handleSync);
     };
   }, [syncLiveShiftState]);
 
@@ -1312,16 +1319,15 @@ export const TimerProvider = ({ children }) => {
 
     const tick = () => {
       const today = getTodayStr();
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
+      const todayMidnightMs = todayMidnight.getTime();
+
       const inVal = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true';
       const onBreakVal = localStorage.getItem(`ems_timer_${userKey}_is_on_break`) === 'true';
       const hadOutVal = localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true';
       let clockInTs = Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
       let breakStartTs = Number(localStorage.getItem(`ems_timer_${userKey}_break_start_timestamp`));
-
-      const todayMidnight = new Date();
-      todayMidnight.setHours(0, 0, 0, 0);
-      const todayMidnightMs = todayMidnight.getTime();
-      const maxPossibleGrossSecs = Math.max(0, Math.floor((Date.now() - todayMidnightMs) / 1000));
 
       // 🌙 Strict Midnight Auto-Close (User Requirement): Auto-clock out at 11:59 PM so that day's shift is cleanly sealed into today's attendance
       const nowClock = new Date();
@@ -1993,7 +1999,6 @@ export const TimerProvider = ({ children }) => {
     const storedSessionDate = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
     const storedLogin = (storedSessionDate === today ? localStorage.getItem(`ems_timer_${userKey}_login_time`) : null);
     const storedClockInTs = Number(localStorage.getItem(`ems_timer_${userKey}_clock_in_timestamp`));
-    const hasStoredClockIn = Boolean(storedSessionDate === today && (storedLogin || (storedClockInTs && storedClockInTs >= todayMidnight.getTime())));
 
     const hasRemoteSessionToday = Boolean(
       existingRec &&
@@ -2305,7 +2310,10 @@ export const TimerProvider = ({ children }) => {
                     timerRunning: true
                   };
                 } else {
-                  activeTaskData = null;
+                  activeTaskData = {
+                    ...p,
+                    timerRunning: false
+                  };
                 }
                 break;
               }
@@ -2382,12 +2390,29 @@ export const TimerProvider = ({ children }) => {
    * Clock Out Handler
    */
   const handleClockOut = () => {
-    const effectiveIn = isClockedIn || readTimerStorage(currentUser, 'is_clocked_in') === 'true' || readTimerStorage(currentUser, 'is_clocked_in') === true;
-    if (!effectiveIn) {
+    const today = getTodayStr();
+    let attRec = null;
+    try {
+      const attRaw = localStorage.getItem('hrms_attendance');
+      if (attRaw) {
+        const att = JSON.parse(attRaw);
+        attRec = att.find(a => isRecordForUser(a, today));
+      }
+    } catch (_) {}
+
+    const telem = getCachedTelemRecord();
+    const effectiveIn = Boolean(
+      isClockedIn ||
+      readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
+      readTimerStorage(currentUser, 'is_clocked_in') === true ||
+      (attRec && (attRec.clockInTime || attRec.clockIn) && !attRec.clockOutTime && attRec.status !== 'on_leave') ||
+      (telem?.isClockedIn && !telem?.clockOutTime)
+    );
+
+    if (!effectiveIn && !attRec) {
       addToast({ title: 'Not Clocked In', message: 'You are not currently clocked in. Please clock in first.', type: 'warning' });
       return;
     }
-    const today = getTodayStr();
     const logoutStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const logoutTs = Date.now();
 
@@ -2414,7 +2439,29 @@ export const TimerProvider = ({ children }) => {
       localStorage.setItem(`ems_timer_${uk}_last_clock_out_timestamp`, logoutTs.toString());
       localStorage.setItem(`ems_timer_${uk}_clockout_time`, logoutStr);
       localStorage.setItem(`ems_timer_${uk}_clock_out`, logoutStr);
+      localStorage.setItem(`ems_timer_${uk}_clock_out_timestamp`, logoutTs.toString());
+      localStorage.setItem(`ems_timer_${uk}_had_clocked_out`, 'true');
+      localStorage.setItem(`ems_timer_${uk}_is_clocked_in`, 'false');
+      localStorage.setItem(`ems_timer_${uk}_is_running`, 'false');
+      localStorage.setItem(`ems_timer_${uk}_is_on_break`, 'false');
     }
+
+    // Update local telemetry cache so telemetry queries immediately reflect clock out
+    try {
+      const rawTelem = localStorage.getItem('ems_live_telemetry_cache');
+      if (rawTelem) {
+        const parsed = JSON.parse(rawTelem);
+        mirrorKeys.forEach(k => {
+          if (parsed[k]) {
+            parsed[k].isClockedIn = false;
+            parsed[k].isClockedOut = true;
+            parsed[k].clockOutTime = logoutStr;
+            parsed[k].clockOutTimestamp = logoutTs;
+          }
+        });
+        localStorage.setItem('ems_live_telemetry_cache', JSON.stringify(parsed));
+      }
+    } catch (_) {}
 
     try {
       const rawSess = readTimerStorage(currentUser, 'punch_sessions');

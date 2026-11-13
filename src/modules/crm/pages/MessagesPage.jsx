@@ -5,39 +5,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import {
-  Search,
-  Plus,
-  Send,
-  Paperclip,
-  Smile,
-  MoreVertical,
-  Check,
-  CheckCheck,
-  User,
-  MessageSquare,
-  Sparkles,
-  Phone,
-  Video,
-  Info,
-  Hash,
-  Users,
-  FileText,
-  FileSpreadsheet,
-  Download,
-  X,
-  Image as ImageIcon,
-  Archive,
-  FileCode,
-  Maximize2,
-  Lock,
-  Pin,
-  ChevronLeft,
-  Monitor,
-  Radio,
-  Mic,
-  Eye
-} from 'lucide-react';
+import { Search, Plus, Send, Paperclip, Smile, Check, CheckCheck, MessageSquare, Sparkles, Hash, FileText, FileSpreadsheet, Download, X, Archive, FileCode, Maximize2, Lock, ChevronLeft, Monitor, Eye } from 'lucide-react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useHR } from '../../hr/context/HRContext';

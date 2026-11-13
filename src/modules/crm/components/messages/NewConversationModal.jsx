@@ -5,20 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Search,
-  MessageSquare,
-  Users,
-  Hash,
-  Plus,
-  Building2,
-  Sparkles,
-  ShieldCheck,
-  Check,
-  Lock,
-  UserCheck
-} from 'lucide-react';
+import { X, Search, MessageSquare, Users, Hash, Building2, Check, Lock, UserCheck } from 'lucide-react';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { useHR } from '../../../hr/context/HRContext';
 import { useCRM } from '../../../../shared/context/CRMContext';

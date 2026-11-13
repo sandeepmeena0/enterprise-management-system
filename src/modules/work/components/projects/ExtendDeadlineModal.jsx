@@ -4,18 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Calendar,
-  AlertTriangle,
-  Clock,
-  ArrowRight,
-  CheckCircle2,
-  FileText,
-  User,
-  History,
-  Sparkles
-} from 'lucide-react';
+import { X, Calendar, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { useToast } from '../../../../shared/context/ToastContext';

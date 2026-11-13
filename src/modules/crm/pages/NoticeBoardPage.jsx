@@ -4,21 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import {
-  BellRing,
-  Plus,
-  Search,
-  Filter,
-  Download,
-  Eye,
-  Trash2,
-  Calendar,
-  Users,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  FileText
-} from 'lucide-react';
+import { BellRing, Plus, Search, Download, Trash2, X } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';

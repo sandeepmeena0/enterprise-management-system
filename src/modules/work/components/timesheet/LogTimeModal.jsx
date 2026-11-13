@@ -8,17 +8,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  X,
-  Clock,
-  Calendar,
-  User,
-  FolderGit2,
-  Check,
-  Zap,
-  Layers,
-  FileText
-} from 'lucide-react';
+import { X, Check } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { isHRorAdmin, isProjectVisibleToUser, isTaskVisibleToUser } from '../../../../shared/utils/permissionUtils';

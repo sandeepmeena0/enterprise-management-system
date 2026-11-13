@@ -17,7 +17,7 @@ import { useToast } from '../../../shared/context/ToastContext';
 import { useConfirm } from '../../../shared/context/ConfirmContext';
 import { HolidayCalendar } from '../components/holidays/HolidayCalendar';
 import { AddHolidayModal } from '../components/holidays/AddHolidayModal';
-import { isHRorAdmin, canManageCompanyHolidays } from '../../../shared/utils/permissionUtils';
+import { canManageCompanyHolidays } from '../../../shared/utils/permissionUtils';
 import { holidaySyncService } from '../services/holidaySyncService';
 
 export const HolidayPage = () => {

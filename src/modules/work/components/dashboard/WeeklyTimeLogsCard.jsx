@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Clock, Eye } from 'lucide-react';
-import { getCollection, saveCollection, KEYS } from '../../../../shared/services/storageService';
+import { KEYS } from '../../../../shared/services/storageService';
 import { getTaskTodaySeconds, readTimerStorage } from '../../../../shared/utils/timerUtils';
 
 export const WeeklyTimeLogsCard = ({

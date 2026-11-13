@@ -4,22 +4,7 @@
  */
 
 import React, { useState, useRef, useMemo } from 'react';
-import {
-  X,
-  DollarSign,
-  Building,
-  Calendar,
-  User,
-  FileText,
-  Upload,
-  Sparkles,
-  Check,
-  Tag,
-  Paperclip,
-  Trash2,
-  ShieldCheck,
-  AlertCircle
-} from 'lucide-react';
+import { X, DollarSign, FileText, Upload, Check, Trash2, AlertCircle } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useHR } from '../../hr/context/HRContext';

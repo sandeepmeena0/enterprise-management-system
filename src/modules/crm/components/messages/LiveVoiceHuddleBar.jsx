@@ -1,18 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
-  PhoneOff,
-  Users,
-  Radio,
-  Lock,
-  Coffee,
-  Sparkles,
-  PhoneCall,
-  Volume1
-} from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, PhoneOff, Users, Radio, Coffee } from 'lucide-react';
 import { useTimer } from '../../../../shared/context/TimerContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { API_BASE } from '../../../../shared/config/apiConfig';

@@ -6,29 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Plus,
-  Upload,
-  Download,
-  Search,
-  Filter,
-  SlidersHorizontal,
-  Table as TableIcon,
-  Kanban as KanbanIcon,
-  Calendar,
-  Layers,
-  User,
-  Building,
-  CheckCircle2,
-  Trash2,
-  X,
-  Sparkles,
-  ChevronDown,
-  RefreshCw,
-  TrendingUp,
-  FileSpreadsheet,
-  Lock
-} from 'lucide-react';
+import { Plus, Upload, Download, Search, Filter, Table as TableIcon, Kanban as KanbanIcon, Building, CheckCircle2, Trash2, X, RefreshCw, Lock } from 'lucide-react';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useHR } from '../../hr/context/HRContext';
 import { useAuth } from '../../../shared/context/AuthContext';

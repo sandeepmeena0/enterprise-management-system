@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, X, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { LogOut, X, AlertTriangle } from 'lucide-react';
 
 export const LogoutConfirmModal = ({ isOpen, onClose, onConfirm, user = null, isShiftActive = false }) => {
   if (!isOpen) return null;

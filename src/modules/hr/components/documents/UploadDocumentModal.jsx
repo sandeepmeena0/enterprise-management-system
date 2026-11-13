@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, FileText, CheckCircle2 } from 'lucide-react';
+import { X, UploadCloud, CheckCircle2 } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 

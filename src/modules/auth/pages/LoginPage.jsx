@@ -1,18 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  ShieldCheck,
-  Building2,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  ArrowRight,
-  Sparkles,
-  User,
-  Briefcase,
-  Zap
-} from 'lucide-react';
+import { Building2, Mail, Lock, Eye, EyeOff, ArrowRight, Sparkles, Zap } from 'lucide-react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { useToast } from '../../../shared/context/ToastContext';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';

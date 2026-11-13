@@ -4,20 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Download,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  FileText,
-  Video,
-  Image as ImageIcon,
-  ExternalLink,
-  FileSpreadsheet,
-  FileCode,
-  Archive
-} from 'lucide-react';
+import { X, Download, ZoomIn, ZoomOut, RotateCw, FileText, Video, Image as ImageIcon, FileSpreadsheet, FileCode, Archive } from 'lucide-react';
 import { downloadChatAttachment } from '../../utils/chatMediaUtils';
 
 export const ChatMediaViewerModal = ({ isOpen, attachment, onClose }) => {

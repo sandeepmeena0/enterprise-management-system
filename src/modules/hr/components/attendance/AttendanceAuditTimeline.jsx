@@ -1,20 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Clock,
-  Calendar,
-  Coffee,
-  Utensils,
-  LogIn,
-  LogOut,
-  ShieldAlert,
-  Search,
-  Filter,
-  CheckCircle2,
-  AlertTriangle,
-  User,
-  FileText,
-  RotateCcw
-} from 'lucide-react';
+import { Clock, Coffee, Utensils, LogIn, LogOut, ShieldAlert, CheckCircle2, AlertTriangle, User, RotateCcw } from 'lucide-react';
 import { useHR } from '../../context/HRContext';
 
 export const AttendanceAuditTimeline = ({ initialEmployeeId = 'all', allowEmployeeSwitch = true }) => {

@@ -4,18 +4,7 @@
  */
 
 import React from 'react';
-import {
-  Users,
-  Sparkles,
-  Flame,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  TrendingUp,
-  DollarSign,
-  ArrowUpRight,
-  PieChart
-} from 'lucide-react';
+import { Users, Sparkles, Flame, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 export const LeadsKPIOverview = ({ leads = [] }) => {
   const totalLeads = leads.length;

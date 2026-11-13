@@ -4,16 +4,7 @@
  */
 
 import React from 'react';
-import {
-  Clock,
-  Play,
-  Pause,
-  Square,
-  MoreVertical,
-  CheckCircle2,
-  AlertCircle,
-  Trash2
-} from 'lucide-react';
+import { Play, CheckCircle2, Trash2 } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 import { useAuth } from '../../../../shared/context/AuthContext';
 import { confirmDialog } from '../../../../shared/context/ConfirmContext';

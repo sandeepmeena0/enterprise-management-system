@@ -4,15 +4,7 @@
  */
 
 import React from 'react';
-import {
-  DollarSign,
-  TrendingUp,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  PieChart,
-  ArrowUpRight
-} from 'lucide-react';
+import { DollarSign, CheckCircle2, Clock, XCircle } from 'lucide-react';
 
 export const ExpenseKPIOverview = ({ expenses = [] }) => {
   const totalAmount = expenses.reduce((sum, e) => sum + (Number(e.price || e.amount) || 0), 0);

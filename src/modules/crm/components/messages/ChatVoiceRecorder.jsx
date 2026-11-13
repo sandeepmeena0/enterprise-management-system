@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Trash2, Send, Radio } from 'lucide-react';
+import { Mic, Trash2, Send, Radio } from 'lucide-react';
 import { useTimer } from '../../../../shared/context/TimerContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 

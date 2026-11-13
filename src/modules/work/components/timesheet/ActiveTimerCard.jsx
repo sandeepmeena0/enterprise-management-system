@@ -4,15 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import {
-  Clock,
-  Square,
-  Eye,
-  Pause,
-  Play,
-  CheckCircle,
-  Zap
-} from 'lucide-react';
+import { Clock, Square, Eye, Pause, Play, Zap } from 'lucide-react';
 import { useWork } from '../../context/WorkContext';
 
 export const ActiveTimerCard = ({ onSelectTask }) => {
