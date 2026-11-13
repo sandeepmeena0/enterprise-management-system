@@ -284,11 +284,27 @@ export const TimerProvider = ({ children }) => {
     return () => window.removeEventListener('ems_force_clock_out', handleForceClockOutEvent);
   }, [userKey, currentUser, addToast]);
 
-  // ── 1. Daily Clock In / Out State (User-Scoped & Validated against Today) ──
+  // Zero-Flicker Telemetry Cache Resolver
+  const getCachedTelemRecord = () => {
+    try {
+      const raw = localStorage.getItem('ems_last_telemetry');
+      if (!raw) return null;
+      const map = JSON.parse(raw);
+      const today = getTodayStr();
+      const keys = [userKey, targetEmpId, targetEmpCode, currentUser?._id, currentUser?.employeeCode, currentUser?.email].filter(Boolean);
+      for (const k of keys) {
+        const r = map[String(k)] || map[String(k).toUpperCase()] || map[String(k).toLowerCase()];
+        if (r && r.date === today) return r;
+      }
+    } catch (_) {}
+    return null;
+  };
+
   // ── 1. Daily Clock In / Out State (User-Scoped & Validated against Today) ──
   const [sessionDate, setSessionDate] = useState(() => {
     const today = getTodayStr();
     const mirrorKeys = getTimerMirrorKeys(userKey, targetEmpId, targetEmpCode);
+    const cachedTelem = getCachedTelemRecord();
     let hasStaleSession = false;
     for (const mk of mirrorKeys) {
       const stored = localStorage.getItem(`ems_timer_${mk}_work_session_date`);
@@ -298,6 +314,16 @@ export const TimerProvider = ({ children }) => {
       }
     }
     if (hasStaleSession) {
+      if (cachedTelem?.isClockedIn && !cachedTelem?.clockOutTime) {
+        for (const mk of mirrorKeys) {
+          localStorage.setItem(`ems_timer_${mk}_work_session_date`, today);
+          localStorage.setItem(`ems_timer_${mk}_is_clocked_in`, 'true');
+          localStorage.setItem(`ems_timer_${mk}_is_running`, cachedTelem.isOnBreak ? 'false' : 'true');
+          if (cachedTelem.clockInTime) localStorage.setItem(`ems_timer_${mk}_login_time`, cachedTelem.clockInTime);
+          if (cachedTelem.workSeconds) localStorage.setItem(`ems_timer_${mk}_work_seconds`, String(cachedTelem.workSeconds));
+        }
+        return today;
+      }
       for (const mk of mirrorKeys) {
         localStorage.removeItem(`ems_timer_${mk}_login_time`);
         localStorage.removeItem(`ems_timer_${mk}_clockout_time`);
@@ -326,22 +352,6 @@ export const TimerProvider = ({ children }) => {
   });
 
   const isTodaySession = sessionDate === getTodayStr();
-
-  // Zero-Flicker Telemetry Cache Resolver
-  const getCachedTelemRecord = () => {
-    try {
-      const raw = localStorage.getItem('ems_last_telemetry');
-      if (!raw) return null;
-      const map = JSON.parse(raw);
-      const today = getTodayStr();
-      const keys = [userKey, targetEmpId, targetEmpCode, currentUser?._id, currentUser?.employeeCode, currentUser?.email].filter(Boolean);
-      for (const k of keys) {
-        const r = map[String(k)] || map[String(k).toUpperCase()] || map[String(k).toLowerCase()];
-        if (r && r.date === today) return r;
-      }
-    } catch (_) {}
-    return null;
-  };
 
   const [loginTime, setLoginTime] = useState(() => {
     if (!currentUser || !userKey) return null;
@@ -612,38 +622,58 @@ export const TimerProvider = ({ children }) => {
     const today = getTodayStr();
     const storedDate = readTimerStorage(currentUser, 'work_session_date') || today;
     const isToday = storedDate === today;
+    const cachedTelem = getCachedTelemRecord();
 
     setSessionDate(storedDate);
     if (!isToday) {
-      setWorkSeconds(0);
-      setBreakSeconds(0);
-      setIsClockedIn(false);
-      setIsRunning(false);
-      setIsOnBreak(false);
-      setLoginTime(null);
-      setClockOutTime(null);
-      setHadClockedOutToday(false);
-      setReclockStatus('none');
-      setReclockSessionSeconds(0);
-      setSavedOfficialWorkSeconds(0);
+      if (cachedTelem?.isClockedIn && !cachedTelem?.clockOutTime) {
+        // Cloud has active shift today! Hydrate state immediately without wiping
+        setSessionDate(today);
+        setIsClockedIn(true);
+        setIsRunning(!cachedTelem.isOnBreak);
+        setIsOnBreak(Boolean(cachedTelem.isOnBreak));
+        if (cachedTelem.clockInTime) setLoginTime(cachedTelem.clockInTime);
+        if (cachedTelem.workSeconds) setWorkSeconds(Number(cachedTelem.workSeconds));
+        setClockOutTime(null);
+        setHadClockedOutToday(false);
 
-      writeTimerStorage(currentUser, 'work_session_date', today);
-      writeTimerStorage(currentUser, 'work_seconds', '0');
-      writeTimerStorage(currentUser, 'break_seconds', '0');
-      writeTimerStorage(currentUser, 'current_break_seconds', '0');
-      writeTimerStorage(currentUser, 'is_clocked_in', 'false');
-      writeTimerStorage(currentUser, 'is_running', 'false');
-      writeTimerStorage(currentUser, 'is_on_break', 'false');
-      writeTimerStorage(currentUser, 'had_clocked_out', 'false');
-      removeTimerStorage(currentUser, 'login_time');
-      removeTimerStorage(currentUser, 'clockout_time');
-      removeTimerStorage(currentUser, 'clock_out');
-      removeTimerStorage(currentUser, 'clock_in_timestamp');
-      removeTimerStorage(currentUser, 'clock_out_timestamp');
-      removeTimerStorage(currentUser, 'break_start_time');
-      removeTimerStorage(currentUser, 'break_start_timestamp');
+        writeTimerStorage(currentUser, 'work_session_date', today);
+        writeTimerStorage(currentUser, 'is_clocked_in', 'true');
+        writeTimerStorage(currentUser, 'is_running', cachedTelem.isOnBreak ? 'false' : 'true');
+        writeTimerStorage(currentUser, 'is_on_break', cachedTelem.isOnBreak ? 'true' : 'false');
+        if (cachedTelem.clockInTime) writeTimerStorage(currentUser, 'login_time', cachedTelem.clockInTime);
+        if (cachedTelem.workSeconds) writeTimerStorage(currentUser, 'work_seconds', String(cachedTelem.workSeconds));
+      } else {
+        setWorkSeconds(0);
+        setBreakSeconds(0);
+        setIsClockedIn(false);
+        setIsRunning(false);
+        setIsOnBreak(false);
+        setLoginTime(null);
+        setClockOutTime(null);
+        setHadClockedOutToday(false);
+        setReclockStatus('none');
+        setReclockSessionSeconds(0);
+        setSavedOfficialWorkSeconds(0);
+
+        writeTimerStorage(currentUser, 'work_session_date', today);
+        writeTimerStorage(currentUser, 'work_seconds', '0');
+        writeTimerStorage(currentUser, 'break_seconds', '0');
+        writeTimerStorage(currentUser, 'current_break_seconds', '0');
+        writeTimerStorage(currentUser, 'is_clocked_in', 'false');
+        writeTimerStorage(currentUser, 'is_running', 'false');
+        writeTimerStorage(currentUser, 'is_on_break', 'false');
+        writeTimerStorage(currentUser, 'had_clocked_out', 'false');
+        removeTimerStorage(currentUser, 'login_time');
+        removeTimerStorage(currentUser, 'clockout_time');
+        removeTimerStorage(currentUser, 'clock_out');
+        removeTimerStorage(currentUser, 'clock_in_timestamp');
+        removeTimerStorage(currentUser, 'clock_out_timestamp');
+        removeTimerStorage(currentUser, 'break_start_time');
+        removeTimerStorage(currentUser, 'break_start_timestamp');
+      }
     } else {
-      // Authoritative cross-check with hrms_attendance
+      // Authoritative cross-check with hrms_attendance & telemetry
       let attRec = null;
       try {
         const attRaw = localStorage.getItem('hrms_attendance');
@@ -657,20 +687,20 @@ export const TimerProvider = ({ children }) => {
       const hasAttClockIn = Boolean(attRec && (attRec.clockInTime || attRec.clockIn) && attRec.clockInTime !== '--' && attRec.clockIn !== '--');
       const hasAttClockOut = Boolean(attRec && (attRec.clockOutTime || attRec.clockOut) && attRec.clockOutTime !== '--' && attRec.clockOut !== '--');
       const isAttClockedIn = Boolean(hasAttClockIn && !hasAttClockOut && attRec?.isClockedIn !== false && attRec?.status !== 'on_leave' && attRec?.status !== 'absent');
-      const resolvedIsClockedIn = isAttClockedIn || (inVal === 'true' || inVal === true);
+      const resolvedIsClockedIn = Boolean(cachedTelem?.isClockedIn || isAttClockedIn || (inVal === 'true' || inVal === true));
       setIsClockedIn(resolvedIsClockedIn);
 
       const runVal = readTimerStorage(currentUser, 'is_running');
       setIsRunning(runVal !== null ? (runVal === 'true' || runVal === true) : resolvedIsClockedIn);
 
       const onBrkVal = readTimerStorage(currentUser, 'is_on_break');
-      const resolvedIsOnBreak = onBrkVal !== null ? (onBrkVal === 'true' || onBrkVal === true) : Boolean(attRec?.isOnBreak);
+      const resolvedIsOnBreak = onBrkVal !== null ? (onBrkVal === 'true' || onBrkVal === true) : Boolean(cachedTelem?.isOnBreak || attRec?.isOnBreak);
       setIsOnBreak(resolvedIsOnBreak);
 
       const brkType = readTimerStorage(currentUser, 'break_type');
-      setBreakType(brkType || attRec?.breakType || null);
+      setBreakType(brkType || cachedTelem?.breakType || attRec?.breakType || null);
 
-      const lTime = readTimerStorage(currentUser, 'login_time') || attRec?.clockInTime || attRec?.clockIn || null;
+      const lTime = readTimerStorage(currentUser, 'login_time') || cachedTelem?.clockInTime || attRec?.clockInTime || attRec?.clockIn || null;
       setLoginTime(lTime);
 
       const cTime = resolvedIsClockedIn ? null : (readTimerStorage(currentUser, 'clockout_time') || readTimerStorage(currentUser, 'clock_out') || attRec?.clockOutTime || attRec?.clockOut || null);
@@ -866,31 +896,6 @@ export const TimerProvider = ({ children }) => {
         }
       } catch (err) {}
 
-      const localSessionDate = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
-
-      // If localSessionDate is from a previous calendar day, reset all live timer keys for fresh day start
-      if (localSessionDate && localSessionDate !== today) {
-        localStorage.removeItem(`ems_timer_${userKey}_login_time`);
-        localStorage.removeItem(`ems_timer_${userKey}_clockout_time`);
-        localStorage.removeItem(`ems_timer_${userKey}_clock_in_timestamp`);
-        localStorage.removeItem(`ems_timer_${userKey}_clock_out_timestamp`);
-        localStorage.removeItem(`ems_timer_${userKey}_break_start_time`);
-        localStorage.removeItem(`ems_timer_${userKey}_break_start_timestamp`);
-        localStorage.removeItem(`ems_timer_${userKey}_punch_sessions`);
-        localStorage.removeItem(`ems_timer_${userKey}_current_session_start_timestamp`);
-        localStorage.setItem(`ems_timer_${userKey}_work_seconds`, '0');
-        localStorage.setItem(`ems_timer_${userKey}_break_seconds`, '0');
-        localStorage.setItem(`ems_timer_${userKey}_current_break_seconds`, '0');
-        localStorage.setItem(`ems_timer_${userKey}_is_clocked_in`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_is_running`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_is_on_break`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_had_clocked_out`, 'false');
-        localStorage.setItem(`ems_timer_${userKey}_work_session_date`, today);
-      }
-
-      const localIsClockedIn = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true';
-      const localHadClockedOut = localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true';
-
       // 🌟 Remote MongoDB is authoritative over stale local cache:
       // If remote record shows isClockedIn is true for today, employee is actively working regardless of local stale clock-out flag!
       const hasClockIn = Boolean(rec && (rec.clockInTime || rec.clockIn || rec.firstClockInTime) && rec.clockInTime !== '--' && rec.clockIn !== '--');
@@ -911,6 +916,34 @@ export const TimerProvider = ({ children }) => {
         rec.status !== 'on_leave' &&
         rec.status !== 'absent'
       );
+
+      const localSessionDate = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
+
+      // If localSessionDate is from a previous calendar day, reset all live timer keys for fresh day start
+      // BUT if remote MongoDB Atlas has an active shift today, DO NOT wipe it to 0/false!
+      if (localSessionDate && localSessionDate !== today) {
+        if (!remoteIsClockedIn) {
+          localStorage.removeItem(`ems_timer_${userKey}_login_time`);
+          localStorage.removeItem(`ems_timer_${userKey}_clockout_time`);
+          localStorage.removeItem(`ems_timer_${userKey}_clock_in_timestamp`);
+          localStorage.removeItem(`ems_timer_${userKey}_clock_out_timestamp`);
+          localStorage.removeItem(`ems_timer_${userKey}_break_start_time`);
+          localStorage.removeItem(`ems_timer_${userKey}_break_start_timestamp`);
+          localStorage.removeItem(`ems_timer_${userKey}_punch_sessions`);
+          localStorage.removeItem(`ems_timer_${userKey}_current_session_start_timestamp`);
+          localStorage.setItem(`ems_timer_${userKey}_work_seconds`, '0');
+          localStorage.setItem(`ems_timer_${userKey}_break_seconds`, '0');
+          localStorage.setItem(`ems_timer_${userKey}_current_break_seconds`, '0');
+          localStorage.setItem(`ems_timer_${userKey}_is_clocked_in`, 'false');
+          localStorage.setItem(`ems_timer_${userKey}_is_running`, 'false');
+          localStorage.setItem(`ems_timer_${userKey}_is_on_break`, 'false');
+          localStorage.setItem(`ems_timer_${userKey}_had_clocked_out`, 'false');
+        }
+        localStorage.setItem(`ems_timer_${userKey}_work_session_date`, today);
+      }
+
+      const localIsClockedIn = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true';
+      const localHadClockedOut = localStorage.getItem(`ems_timer_${userKey}_had_clocked_out`) === 'true';
       // 🌟 Check if employee is on approved leave today
       const isRecordOnLeave = Boolean(rec && rec.date === today && rec.status === 'on_leave');
       if (isRecordOnLeave) {
@@ -1048,6 +1081,10 @@ export const TimerProvider = ({ children }) => {
         if (!localIsClockedIn) {
           window.dispatchEvent(new CustomEvent('ems_clocked_in', { detail: { empKey: userKey, userKey } }));
           window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: `ems_timer_${userKey}_is_clocked_in` } }));
+        }
+
+        if (rec?.activeTask) {
+          window.dispatchEvent(new CustomEvent('ems_shift_telemetry_synced', { detail: { user: currentUser, telemRec: rec } }));
         }
       } else if (isActuallyClockedOut) {
         const outTime = rec?.clockOutTime || rec?.clockOut || localStorage.getItem(`ems_timer_${userKey}_clockout_time`) || null;

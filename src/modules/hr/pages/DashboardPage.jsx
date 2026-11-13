@@ -561,22 +561,59 @@ export const DashboardPage = () => {
       if (storedBreakHistoryRaw) storedBreakHistory = JSON.parse(storedBreakHistoryRaw);
     } catch { }
 
+    // Multi-source Authoritative Telemetry SSOT Resolution (live state + zero-flicker cached disk)
+    let cachedTelemMap = {};
+    try {
+      const rawCachedTelem = localStorage.getItem('ems_last_telemetry');
+      if (rawCachedTelem) cachedTelemMap = JSON.parse(rawCachedTelem);
+    } catch (_) {}
+
+    const telem = liveTelemetryMap[String(empId)] ||
+                  (emp.employeeCode && (liveTelemetryMap[String(emp.employeeCode)] || liveTelemetryMap[String(emp.employeeCode).toUpperCase()] || liveTelemetryMap[String(emp.employeeCode).toLowerCase()])) ||
+                  (empKey && (liveTelemetryMap[String(empKey)] || liveTelemetryMap[String(empKey).toUpperCase()] || liveTelemetryMap[String(empKey).toLowerCase()])) ||
+                  (emp.email && liveTelemetryMap[String(emp.email).toLowerCase()]) ||
+                  cachedTelemMap[String(empId)] ||
+                  (emp.employeeCode && (cachedTelemMap[String(emp.employeeCode)] || cachedTelemMap[String(emp.employeeCode).toUpperCase()] || cachedTelemMap[String(emp.employeeCode).toLowerCase()])) ||
+                  (empKey && (cachedTelemMap[String(empKey)] || cachedTelemMap[String(empKey).toUpperCase()] || cachedTelemMap[String(empKey).toLowerCase()])) ||
+                  (emp.email && cachedTelemMap[String(emp.email).toLowerCase()]) ||
+                  null;
+
+    const isCloudClockedInToday = Boolean(
+      telem?.isClockedIn ||
+      (attRec?.date === todayStr && (attRec?.clockInTime || attRec?.clockIn) && !attRec?.clockOutTime && attRec?.isClockedIn !== false && attRec?.status !== 'absent')
+    );
+
     // Check if clockIn was from a previous calendar day (forgotten clock-out)
     const storedSessionDate = readTimerKey('work_session_date');
     const rawClockInTs = Number(readTimerKey('clock_in_timestamp')) || Number(attRec?.clockInTimestamp);
     let isStaleFromPreviousDay = false;
     let inDate = '';
-    if (storedSessionDate && storedSessionDate !== todayStr) {
-      isStaleFromPreviousDay = true;
-      inDate = storedSessionDate;
-    } else if (rawClockInTs > 0) {
-      inDate = getLocalDateStr(rawClockInTs);
-      if (inDate !== todayStr) {
+    if (!isCloudClockedInToday) {
+      if (storedSessionDate && storedSessionDate !== todayStr) {
         isStaleFromPreviousDay = true;
+        inDate = storedSessionDate;
+      } else if (rawClockInTs > 0) {
+        inDate = getLocalDateStr(rawClockInTs);
+        if (inDate !== todayStr) {
+          isStaleFromPreviousDay = true;
+        }
       }
+    } else if (storedSessionDate && storedSessionDate !== todayStr) {
+      // Cloud has active shift today! Hydrate local session date and active status
+      try {
+        writeTimerStorage(emp, 'work_session_date', todayStr);
+        writeTimerStorage(emp, 'is_clocked_in', 'true');
+        writeTimerStorage(emp, 'is_running', telem?.isOnBreak ? 'false' : 'true');
+        if (telem?.clockInTime || attRec?.clockInTime) {
+          writeTimerStorage(emp, 'login_time', telem?.clockInTime || attRec?.clockInTime);
+        }
+        if (telem?.workSeconds) {
+          writeTimerStorage(emp, 'work_seconds', String(telem.workSeconds));
+        }
+      } catch (_) {}
     }
 
-    if (isStaleFromPreviousDay) {
+    if (isStaleFromPreviousDay && !isCloudClockedInToday) {
       // Auto-close stale yesterday session across all mirror keys in background
       try {
         writeTimerStorage(emp, 'is_clocked_in', 'false');
@@ -634,8 +671,8 @@ export const DashboardPage = () => {
     // Strict today-only attendance validation: employee is ONLY clocked in/out if they actively punched today!
     const hasTodayAttClockIn = Boolean(attRec?.date === todayStr && (attRec?.clockInTime || attRec?.clockIn));
     const hasTodayAttClockOut = Boolean(attRec?.date === todayStr && (attRec?.clockOutTime || attRec?.clockOut));
-    const hasTodayStoredSession = !isStaleFromPreviousDay && (storedSessionDate === todayStr);
-    const hasTodayStoredClockIn = Boolean(hasTodayStoredSession && (storedLogin || rawClockInTs > 0));
+    const hasTodayStoredSession = !isStaleFromPreviousDay && (storedSessionDate === todayStr || isCloudClockedInToday);
+    const hasTodayStoredClockIn = Boolean(hasTodayStoredSession && (storedLogin || rawClockInTs > 0 || isCloudClockedInToday));
     const hasTodayStoredClockOut = Boolean(hasTodayStoredSession && (storedClockOut || readTimerKey('had_clocked_out') === 'true' || readTimerKey('had_clocked_out') === true));
 
     const isExplicitlyStoredClockedOut = !storedClockedIn && hasTodayStoredSession && (
@@ -644,29 +681,27 @@ export const DashboardPage = () => {
       Boolean(storedClockOut)
     );
 
-    const telem = liveTelemetryMap[String(empId)] ||
-                  (emp.employeeCode && (liveTelemetryMap[String(emp.employeeCode)] || liveTelemetryMap[String(emp.employeeCode).toUpperCase()] || liveTelemetryMap[String(emp.employeeCode).toLowerCase()])) ||
-                  (empKey && (liveTelemetryMap[String(empKey)] || liveTelemetryMap[String(empKey).toUpperCase()] || liveTelemetryMap[String(empKey).toLowerCase()])) ||
-                  (emp.email && liveTelemetryMap[String(emp.email).toLowerCase()]) ||
-                  null;
-
     const isSelf = Boolean(currentUser && (
       String(empId) === String(currentUser._id) ||
       String(emp.employeeCode) === String(currentUser.employeeCode)
     ));
 
     // Strict Clock-In validation: Local browser state & telemetry unified
-    const isClockedIn = !isStaleFromPreviousDay && Boolean(
-      (hasTodayStoredSession && storedClockedIn) ||
-      (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.status !== 'absent' && attRec?.isClockedIn !== false) ||
-      telem?.isClockedIn
+    const isClockedIn = Boolean(
+      telem?.isClockedIn ||
+      (!isStaleFromPreviousDay && (
+        (hasTodayStoredSession && storedClockedIn) ||
+        (hasTodayAttClockIn && !hasTodayAttClockOut && attRec?.status !== 'absent' && attRec?.isClockedIn !== false)
+      ))
     );
 
-    const isClockedOut = !isClockedIn && !isStaleFromPreviousDay && Boolean(
-      isExplicitlyStoredClockedOut ||
-      (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
-      (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn) ||
-      telem?.clockOutTime
+    const isClockedOut = !isClockedIn && Boolean(
+      telem?.clockOutTime ||
+      (!isStaleFromPreviousDay && (
+        isExplicitlyStoredClockedOut ||
+        (hasTodayAttClockIn && (hasTodayAttClockOut || attRec?.isClockedIn === false)) ||
+        (hasTodayStoredClockIn && hasTodayStoredClockOut && !storedClockedIn)
+      ))
     );
 
     const effectiveOnBreak = telem ? Boolean(telem.isOnBreak) : storedOnBreak;

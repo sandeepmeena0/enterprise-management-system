@@ -718,10 +718,27 @@ export const WorkProvider = ({ children }) => {
   // Derived reactive active running task strictly scoped to current logged-in user
   const activeRunningTask = useMemo(() => {
     if (!currentUser) return null;
-    const isShiftClockedIn = readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
+    const cachedTelem = (() => {
+      try {
+        const raw = localStorage.getItem('ems_last_telemetry');
+        if (!raw) return null;
+        const map = JSON.parse(raw);
+        const keys = [userKey, currentUser?._id, currentUser?.employeeCode, currentUser?.email].filter(Boolean);
+        for (const k of keys) {
+          const r = map[String(k)] || map[String(k).toUpperCase()] || map[String(k).toLowerCase()];
+          if (r) return r;
+        }
+      } catch (_) {}
+      return null;
+    })();
+
+    const isShiftClockedIn = Boolean(
+      cachedTelem?.isClockedIn ||
+      readTimerStorage(currentUser, 'is_clocked_in') === 'true' ||
       readTimerStorage(currentUser, 'is_clocked_in') === true ||
       (userKey && localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`) === 'true') ||
-      (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true');
+      (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true')
+    );
     if (!isShiftClockedIn) return null;
 
     return tasks.find(t => t.timerRunning && t.status !== 'completed' && !t.completedAt && isTaskAssignedToMe(t)) || null;
@@ -818,6 +835,24 @@ export const WorkProvider = ({ children }) => {
         (currentUser?.employeeCode && localStorage.getItem(`ems_timer_${currentUser.employeeCode}_is_clocked_in`) === 'true')
       );
 
+      const cachedTelem = (() => {
+        try {
+          const raw = localStorage.getItem('ems_last_telemetry');
+          if (!raw) return null;
+          const map = JSON.parse(raw);
+          const keys = [userKey, currentUser?._id, currentUser?.employeeCode, currentUser?.email].filter(Boolean);
+          for (const k of keys) {
+            const r = map[String(k)] || map[String(k).toUpperCase()] || map[String(k).toLowerCase()];
+            if (r) return r;
+          }
+        } catch (_) {}
+        return null;
+      })();
+
+      if (!isShiftClockedIn && cachedTelem?.isClockedIn) {
+        isShiftClockedIn = true;
+      }
+
       if (!isShiftClockedIn) {
         try {
           const attRaw = localStorage.getItem('hrms_attendance');
@@ -837,11 +872,16 @@ export const WorkProvider = ({ children }) => {
         } catch (_) {}
       }
 
-      const hasExplicitClockOut = Boolean(
-        readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-        readTimerStorage(currentUser, 'had_clocked_out') === true ||
-        readTimerStorage(currentUser, 'clockout_time') ||
-        readTimerStorage(currentUser, 'clock_out')
+      const todayStr = getTodayStr();
+      const storedSessionDate = readTimerStorage(currentUser, 'work_session_date');
+      const isTodaySession = storedSessionDate === todayStr;
+      const hasExplicitClockOut = !cachedTelem?.isClockedIn && Boolean(
+        isTodaySession && (
+          readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
+          readTimerStorage(currentUser, 'had_clocked_out') === true ||
+          readTimerStorage(currentUser, 'clockout_time') ||
+          readTimerStorage(currentUser, 'clock_out')
+        )
       );
 
       // Auto-pause task timer strictly when employee is on break OR explicitly clocked out today!
