@@ -344,7 +344,7 @@ export const WorkProvider = ({ children }) => {
             const isBackendActive = Boolean(bt.timerRunning && isStartedToday);
             const isLocalActive = Boolean(existing.timerRunning || (activeTimer && String(activeTimer.taskId) === id && activeTimer.timerRunning));
             const isExplicitlyPausedLocally = Boolean(
-              (activeTimer && String(activeTimer.taskId) === id && activeTimer.timerRunning === false) ||
+              (activeTimer && String(activeTimer.taskId) === id && activeTimer.timerRunning === false && Number(activeTimer.lastUpdated || 0) >= Number(bt.startedAt || 0)) ||
               (existing && existing.timerRunning === false && Number(existing.lastUpdated || 0) >= Number(bt.startedAt || 0))
             );
 
@@ -358,7 +358,7 @@ export const WorkProvider = ({ children }) => {
               } else if (isLocalActive) {
                 effectiveRunning = true;
                 effectiveStartedAt = existing.startedAt || activeTimer?.startedAt || Date.now();
-              } else if (isBackendActive && Number(bt.startedAt || 0) > Number(existing.lastUpdated || existing.updatedAt || 0)) {
+              } else if (isBackendActive && !isExplicitlyPausedLocally) {
                 effectiveRunning = true;
                 effectiveStartedAt = bt.startedAt;
               }
@@ -376,11 +376,13 @@ export const WorkProvider = ({ children }) => {
             const activeToday = (activeTimer && (String(activeTimer.taskId) === id || activeTimer.taskCode === bt.taskCode) && (!activeTimer.date || activeTimer.date === today))
               ? Math.max(Number(activeTimer.todayWorkSeconds || 0), Number(activeTimer.timerSeconds || 0))
               : 0;
+            const isExistingFromToday = existing && (existing.sessionDate === today || existing.startDate === today || String(existing.createdAt || '').startsWith(today));
+            const isBackendFromToday = bt.sessionDate === today || bt.startDate === today || String(bt.createdAt || '').startsWith(today);
             const resolvedTodaySecs = Math.max(
-              Number(existing.todayWorkSeconds || 0),
-              Number(bt.todayWorkSeconds || 0),
-              (existing.sessionDate === today ? Number(existing.timerSeconds || 0) : 0),
-              (bt.sessionDate === today ? Number(bt.timerSeconds || 0) : 0),
+              (isExistingFromToday ? Number(existing.todayWorkSeconds || 0) : 0),
+              (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
+              Number(bt.dailySessions?.[today] || 0),
+              Number(existing?.dailySessions?.[today] || 0),
               activeToday
             );
             if (resolvedTodaySecs > 0) {
@@ -405,9 +407,11 @@ export const WorkProvider = ({ children }) => {
             const activeToday = (activeTimer && (String(activeTimer.taskId) === id || activeTimer.taskCode === bt.taskCode) && (!activeTimer.date || activeTimer.date === today))
               ? Math.max(Number(activeTimer.todayWorkSeconds || 0), Number(activeTimer.timerSeconds || 0))
               : 0;
+            const isBackendFromToday = bt.sessionDate === today || bt.startDate === today || String(bt.createdAt || '').startsWith(today);
             const resolvedTodaySecs = Math.max(
-              Number(bt.todayWorkSeconds || 0),
+              (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
               (bt.sessionDate === today ? Number(bt.timerSeconds || 0) : 0),
+              Number(bt.dailySessions?.[today] || 0),
               activeToday
             );
             const mergedDailySessions = {
@@ -643,7 +647,8 @@ export const WorkProvider = ({ children }) => {
         const isLocallyPausedSnapshot = Boolean(
           curSnapshot &&
           (String(curSnapshot.taskId) === rTaskId || curSnapshot.taskCode === remoteRunningTask.taskCode) &&
-          curSnapshot.timerRunning === false
+          curSnapshot.timerRunning === false &&
+          Number(curSnapshot.lastUpdated || 0) >= Number(remoteRunningTask.startedAt || 0)
         );
         if (!isLocallyPausedSnapshot && (!curSnapshot || String(curSnapshot.taskId) !== rTaskId || !curSnapshot.timerRunning)) {
           saveActiveTimerSnapshot({
@@ -832,18 +837,21 @@ export const WorkProvider = ({ children }) => {
         } catch (_) {}
       }
 
-      const hadClockedOut = !isShiftClockedIn && Boolean(
+      const hasExplicitClockOut = Boolean(
         readTimerStorage(currentUser, 'had_clocked_out') === 'true' ||
-        readTimerStorage(currentUser, 'had_clocked_out') === true
+        readTimerStorage(currentUser, 'had_clocked_out') === true ||
+        readTimerStorage(currentUser, 'clockout_time') ||
+        readTimerStorage(currentUser, 'clock_out')
       );
 
-      // Auto-pause task timer strictly when employee is on break OR not clocked in OR clocked out!
-      if ((isShiftOnBreak || !isShiftClockedIn || hadClockedOut) && activeTimer?.timerRunning) {
+      // Auto-pause task timer strictly when employee is on break OR explicitly clocked out today!
+      // CRITICAL: NEVER auto-pause when !isShiftClockedIn is merely unhydrated on initial boot across devices!
+      if ((isShiftOnBreak || hasExplicitClockOut) && activeTimer?.timerRunning) {
         const today = getTodayStr();
         const pausedTimer = syncTaskPauseState(activeTimer, {
           nowMs: Date.now(),
           todayStr: today,
-          wasPausedForClockOut: Boolean(!isShiftClockedIn),
+          wasPausedForClockOut: Boolean(hasExplicitClockOut),
           wasPausedForBreak: Boolean(isShiftOnBreak)
         });
         const currentSecs = pausedTimer.accumulatedSeconds;
@@ -924,13 +932,14 @@ export const WorkProvider = ({ children }) => {
             (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
           );
 
-          if (isAssignedToMe && (!isMyActive || !isShiftClockedIn || isShiftOnBreak) && t.timerRunning) {
+          const isExplicitlyStopped = isShiftOnBreak || hasExplicitClockOut;
+          if (isAssignedToMe && isExplicitlyStopped && t.timerRunning) {
             changed = true;
             return { ...t, timerRunning: false, startedAt: null };
           }
 
           const isTaskRunning = isAssignedToMe
-            ? Boolean(isMyActive && isShiftClockedIn && !isShiftOnBreak)
+            ? Boolean(t.timerRunning && !isExplicitlyStopped)
             : Boolean(t.timerRunning && t.startedAt);
 
           if (isTaskRunning) {
@@ -942,6 +951,7 @@ export const WorkProvider = ({ children }) => {
             const safeStartTs = (startTs > 0 && (now - startTs) < 24 * 3600 * 1000) ? startTs : todayMidnightMs;
             const elapsed = Math.min(Math.max(0, Math.floor((now - safeStartTs) / 1000)), 14 * 3600);
             const liveSecs = Math.min(base + elapsed, 14 * 3600);
+            const todaySecs = Math.min((Number(t.todayWorkSeconds || 0)) + elapsed, liveSecs);
             const text = formatSeconds(liveSecs);
 
             return {
@@ -950,6 +960,8 @@ export const WorkProvider = ({ children }) => {
               startedAt: startTs,
               accumulatedSeconds: base,
               timerSeconds: liveSecs,
+              todayWorkSeconds: todaySecs,
+              dailySessions: { ...(t.dailySessions || {}), [getTodayStr()]: todaySecs },
               liveDurationText: text,
               hoursLoggedText: text,
               sessionDate: getTodayStr()
@@ -985,6 +997,54 @@ export const WorkProvider = ({ children }) => {
       window.removeEventListener('focus', handleVisibilityChange);
     };
   }, [getActiveTimerSnapshot, getElapsedSeconds, formatSeconds]);
+
+  // Fast cross-device telemetry listener: immediately hydrate running task from cloud
+  useEffect(() => {
+    const handleShiftTelem = (e) => {
+      const telemRec = e.detail?.telemRec;
+      if (!telemRec?.activeTask) return;
+      const at = telemRec.activeTask;
+      if (at.timerRunning && isTaskAssignedToMe(at)) {
+        const today = getTodayStr();
+        const curSnapshot = getActiveTimerSnapshot();
+        const atId = String(at._id || at.id || at.taskId);
+        if (!curSnapshot || String(curSnapshot.taskId) !== atId || !curSnapshot.timerRunning) {
+          saveActiveTimerSnapshot({
+            taskId: at._id || at.id || at.taskId,
+            taskCode: at.taskCode || 'TSK',
+            title: at.title,
+            projectName: at.projectName || 'General Work',
+            assignedToId: userKey,
+            assignedToName: at.assignedToName || currentUser?.name || 'User',
+            timerRunning: true,
+            startedAt: at.startedAt || Date.now(),
+            accumulatedSeconds: Number(at.accumulatedSeconds || 0),
+            todayWorkSeconds: Number(at.todayWorkSeconds || 0),
+            dailySessions: at.dailySessions || {},
+            sessionDate: at.sessionDate || today,
+            date: today,
+            lastUpdated: Date.now()
+          });
+        }
+        setTasks(prev => prev.map(t => {
+          if (String(t._id || t.id) === atId || (at.taskCode && t.taskCode === at.taskCode)) {
+            return {
+              ...t,
+              timerRunning: true,
+              startedAt: at.startedAt,
+              accumulatedSeconds: Number(at.accumulatedSeconds || t.accumulatedSeconds || 0),
+              todayWorkSeconds: Number(at.todayWorkSeconds || 0),
+              dailySessions: at.dailySessions || t.dailySessions,
+              sessionDate: at.sessionDate || today
+            };
+          }
+          return t;
+        }));
+      }
+    };
+    window.addEventListener('ems_shift_telemetry_synced', handleShiftTelem);
+    return () => window.removeEventListener('ems_shift_telemetry_synced', handleShiftTelem);
+  }, [isTaskAssignedToMe, userKey, currentUser, getActiveTimerSnapshot, saveActiveTimerSnapshot]);
 
   // ── Automatic Task Timer Pause & Resume on Break ──
   useEffect(() => {
@@ -1931,8 +1991,7 @@ export const WorkProvider = ({ children }) => {
       getTaskTodaySeconds(targetTask, today, now, false, false),
       Number(targetTask.dailySessions?.[today] || 0),
       (targetTask.sessionDate === today ? Number(targetTask.todayWorkSeconds || 0) : 0),
-      (isCreatedToday ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0),
-      Number(targetTask.todayWorkSeconds || 0)
+      (isCreatedToday ? Math.max(Number(targetTask.todayWorkSeconds || 0), Number(targetTask.timerSeconds || 0)) : 0)
     );
     if (activeTimer && (String(activeTimer.taskId) === String(taskId) || activeTimer.taskCode === targetTask.taskCode) && (!activeTimer.date || activeTimer.date === today) && !isForOtherEmployee) {
       const activeToday = Number(activeTimer.todayWorkSeconds || 0);

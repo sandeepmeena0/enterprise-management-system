@@ -1226,7 +1226,14 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       // Strict same-day isolation in backend telemetry: never count prior day's accumulated duration!
       let todayTaskBase = 0;
       if (matchedTask.dailySessions && typeof matchedTask.dailySessions === 'object' && matchedTask.dailySessions[today] !== undefined) {
-        todayTaskBase = Number(matchedTask.dailySessions[today]) || 0;
+        let baseVal = Number(matchedTask.dailySessions[today]) || 0;
+        const priorSum = Object.entries(matchedTask.dailySessions)
+          .filter(([d]) => d < today)
+          .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+        if (priorSum > 0 && baseVal >= priorSum + (Number(matchedTask.todayWorkSeconds) || 0)) {
+          baseVal = Math.max(0, baseVal - priorSum);
+        }
+        todayTaskBase = baseVal;
       } else if (matchedTask.sessionDate === today && matchedTask.todayWorkSeconds !== undefined && Number(matchedTask.todayWorkSeconds) > 0) {
         todayTaskBase = Number(matchedTask.todayWorkSeconds);
       } else if (matchedTask.startDate === today || String(matchedTask.createdAt || '').startsWith(today)) {
@@ -1259,7 +1266,14 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       const elapsedTask = isRunning ? Math.max(0, Math.floor((now - taskStart) / 1000)) : 0;
       let todayTaskBase = 0;
       if (r.activeTask.dailySessions && typeof r.activeTask.dailySessions === 'object' && r.activeTask.dailySessions[today] !== undefined) {
-        todayTaskBase = Number(r.activeTask.dailySessions[today]) || 0;
+        let baseVal = Number(r.activeTask.dailySessions[today]) || 0;
+        const priorSum = Object.entries(r.activeTask.dailySessions)
+          .filter(([d]) => d < today)
+          .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+        if (priorSum > 0 && baseVal >= priorSum + (Number(r.activeTask.todayWorkSeconds) || 0)) {
+          baseVal = Math.max(0, baseVal - priorSum);
+        }
+        todayTaskBase = baseVal;
       } else if (r.activeTask.sessionDate === today) {
         todayTaskBase = Math.max(Number(r.activeTask.todayWorkSeconds || 0), Number(r.activeTask.timerSeconds || 0));
       } else if (r.activeTask.startDate === today || String(r.activeTask.createdAt || '').startsWith(today)) {

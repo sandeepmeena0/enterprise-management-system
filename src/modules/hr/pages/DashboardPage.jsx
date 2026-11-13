@@ -184,7 +184,14 @@ export const DashboardPage = () => {
 
   const [currentDateStr, setCurrentDateStr] = useState(() => getLocalDateStr());
   const todayStr = currentDateStr;
-  const [liveTelemetryMap, setLiveTelemetryMap] = useState({});
+  const [liveTelemetryMap, setLiveTelemetryMap] = useState(() => {
+    try {
+      const raw = localStorage.getItem('ems_last_telemetry');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
   const liveTaskMemoryRef = React.useRef(new Map());
 
   // ── Multi-User Live Telemetry Poller (Every 3.5s for real-time remote/incognito sync) ──
@@ -199,6 +206,9 @@ export const DashboardPage = () => {
         if (isMounted && res) {
           const map = (res.data && typeof res.data === 'object') ? res.data : res;
           if (map && typeof map === 'object' && Object.keys(map).length > 0) {
+            try {
+              localStorage.setItem('ems_last_telemetry', JSON.stringify(map));
+            } catch (_) {}
             const now = Date.now();
             setLiveTelemetryMap(prev => {
               const next = { ...prev };

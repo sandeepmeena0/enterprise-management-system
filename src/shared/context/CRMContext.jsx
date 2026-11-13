@@ -1116,7 +1116,14 @@ export const CRMProvider = ({ children }) => {
           // Strictly calculate today's session duration, NOT all-time minus timesheets!
           let dayPortion = 0;
           if (activeTimer.dailySessions && typeof activeTimer.dailySessions === 'object' && activeTimer.dailySessions[dateStr] !== undefined) {
-            dayPortion = (Number(activeTimer.dailySessions[dateStr]) || 0) + runningElapsed;
+            let baseVal = Number(activeTimer.dailySessions[dateStr]) || 0;
+            const priorSum = Object.entries(activeTimer.dailySessions)
+              .filter(([d]) => d < dateStr)
+              .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+            if (priorSum > 0 && baseVal >= priorSum + (Number(activeTimer.todayWorkSeconds) || 0)) {
+              baseVal = Math.max(0, baseVal - priorSum);
+            }
+            dayPortion = baseVal + runningElapsed;
           } else if (activeTimer.sessionDate === dateStr && activeTimer.todayWorkSeconds !== undefined) {
             dayPortion = (Number(activeTimer.todayWorkSeconds) || 0) + runningElapsed;
           } else if (activeTimer.timerRunning) {
@@ -1152,7 +1159,14 @@ export const CRMProvider = ({ children }) => {
 
           let dayPortion = 0;
           if (t.dailySessions && typeof t.dailySessions === 'object' && t.dailySessions[dateStr] !== undefined) {
-            dayPortion = Number(t.dailySessions[dateStr]) || 0;
+            let baseVal = Number(t.dailySessions[dateStr]) || 0;
+            const priorSum = Object.entries(t.dailySessions)
+              .filter(([d]) => d < dateStr)
+              .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+            if (priorSum > 0 && baseVal >= priorSum + (Number(t.todayWorkSeconds) || 0)) {
+              baseVal = Math.max(0, baseVal - priorSum);
+            }
+            dayPortion = baseVal;
           } else if (t.sessionDate === dateStr && t.todayWorkSeconds !== undefined) {
             dayPortion = Number(t.todayWorkSeconds) || 0;
           } else if (isCompletedToday && (t.completedOn === dateStr || String(t.completedAt || '').startsWith(dateStr))) {

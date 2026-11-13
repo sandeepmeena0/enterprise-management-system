@@ -554,48 +554,60 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
  */
 export const sanitizeTaskDailySessions = (task) => {
   if (!task) return task;
-  const totalAccum = Math.max(0, Number(task.accumulatedSeconds ?? task.timerSeconds ?? 0));
-  if (totalAccum <= 0) {
-    return {
-      ...task,
-      todayWorkSeconds: 0,
-      dailySessions: {}
-    };
-  }
+  const todayStr = getLocalDateStr();
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const nowMs = Date.now();
+
+  const isRunning = Boolean(task.timerRunning && task.startedAt);
+  const runningElapsed = (isRunning && Number(task.startedAt) >= todayMidnight.getTime())
+    ? Math.max(0, Math.floor((nowMs - Number(task.startedAt)) / 1000))
+    : 0;
 
   const rawSessions = (task.dailySessions && typeof task.dailySessions === 'object') ? { ...task.dailySessions } : {};
   const cleanedSessions = {};
   const sessionDates = Object.keys(rawSessions).sort();
 
-  let runningSum = 0;
+  // Sum strictly prior days (excluding today) to preserve past days' historical truth
+  let priorDaysSum = 0;
   for (const d of sessionDates) {
-    const rawVal = Math.max(0, Number(rawSessions[d]) || 0);
-    // Each day's portion cannot exceed remaining totalAccum
-    const remaining = Math.max(0, totalAccum - runningSum);
-    const clampedDay = Math.min(rawVal, remaining);
-    cleanedSessions[d] = clampedDay;
-    runningSum += clampedDay;
+    if (d < todayStr) {
+      const val = Math.max(0, Number(rawSessions[d]) || 0);
+      cleanedSessions[d] = val;
+      priorDaysSum += val;
+    }
   }
 
-  const todayStr = getLocalDateStr();
-  let resolvedTodaySecs = 0;
-  if (cleanedSessions[todayStr] !== undefined) {
-    resolvedTodaySecs = cleanedSessions[todayStr];
+  // Today's baseline work seconds:
+  let todayBase = 0;
+  if (rawSessions[todayStr] !== undefined) {
+    todayBase = Math.max(0, Number(rawSessions[todayStr]) || 0);
   } else if (task.sessionDate === todayStr) {
-    resolvedTodaySecs = Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
+    todayBase = Math.max(0, Number(task.todayWorkSeconds || 0));
   } else if (task.startDate === todayStr || String(task.createdAt || '').startsWith(todayStr)) {
-    resolvedTodaySecs = Math.max(Number(task.todayWorkSeconds || 0), Number(task.timerSeconds || 0));
+    todayBase = Math.max(0, Number(task.todayWorkSeconds || task.timerSeconds || 0));
   }
-  const todaySecs = Math.min(resolvedTodaySecs, totalAccum);
-  if (todaySecs > 0) {
-    cleanedSessions[todayStr] = todaySecs;
+
+  // Auto-decouple if prior bugs caused today's session to equal or exceed the whole task duration
+  if (priorDaysSum > 0 && todayBase >= priorDaysSum + todayBase) {
+    todayBase = Math.max(0, todayBase - priorDaysSum);
   }
+
+  const effectiveToday = todayBase + runningElapsed;
+  if (effectiveToday > 0 || rawSessions[todayStr] !== undefined) {
+    cleanedSessions[todayStr] = effectiveToday;
+  }
+
+  const trueTotalAccum = Math.max(
+    Number(task.accumulatedSeconds || 0),
+    priorDaysSum + effectiveToday
+  );
 
   return {
     ...task,
-    accumulatedSeconds: totalAccum,
-    todayWorkSeconds: todaySecs,
-    timerSeconds: todaySecs,
+    accumulatedSeconds: trueTotalAccum,
+    todayWorkSeconds: effectiveToday,
+    timerSeconds: effectiveToday,
     dailySessions: cleanedSessions
   };
 };
@@ -1066,6 +1078,13 @@ export const hydrateUserCloudState = async (user) => {
     const telemRes = await hrService.getLiveTelemetry(today);
     const telemMap = (telemRes && typeof telemRes === 'object') ? (telemRes.data || telemRes) : {};
 
+    // 🌟 Instantly cache full telemetry map for 0ms boot hydration across devices
+    if (telemMap && Object.keys(telemMap).length > 0) {
+      try {
+        localStorage.setItem('ems_last_telemetry', JSON.stringify(telemMap));
+      } catch (_) {}
+    }
+
     const empKeys = [
       getCanonicalTimerKey(user),
       user.employeeCode,
@@ -1211,6 +1230,55 @@ export const hydrateUserCloudState = async (user) => {
       }
 
       if (telemRec.activeTask && telemRec.activeTask.timerRunning) {
+        const at = telemRec.activeTask;
+        const taskPayload = JSON.stringify({
+          taskId: at._id || at.id || at.taskId,
+          taskCode: at.taskCode,
+          title: at.title,
+          projectName: at.projectName || 'General Work',
+          assignedToId: at.assignedToId || user._id,
+          assignedToName: at.assignedToName || user.name,
+          timerRunning: true,
+          startedAt: at.startedAt,
+          accumulatedSeconds: Number(at.accumulatedSeconds || 0),
+          todayWorkSeconds: Number(at.todayWorkSeconds || 0),
+          timerSeconds: Number(at.timerSeconds || at.todayWorkSeconds || 0),
+          dailySessions: at.dailySessions || {},
+          sessionDate: at.sessionDate || today,
+          date: today,
+          lastUpdated: Date.now()
+        });
+        localStorage.setItem('ems_active_task_timer', taskPayload);
+        for (const uk of mirrorKeys) {
+          localStorage.setItem(`ems_active_task_timer_${uk}`, taskPayload);
+        }
+
+        // Also update ems_tasks in localStorage with the remote running state
+        try {
+          const rawTasks = localStorage.getItem('ems_tasks');
+          if (rawTasks) {
+            const parsedTasks = JSON.parse(rawTasks);
+            if (Array.isArray(parsedTasks)) {
+              const updatedTasks = parsedTasks.map(t => {
+                if (String(t._id || t.id) === String(at._id || at.id || at.taskId) || (at.taskCode && t.taskCode === at.taskCode)) {
+                  return {
+                    ...t,
+                    timerRunning: true,
+                    startedAt: at.startedAt,
+                    accumulatedSeconds: Number(at.accumulatedSeconds || t.accumulatedSeconds || 0),
+                    todayWorkSeconds: Number(at.todayWorkSeconds || 0),
+                    timerSeconds: Number(at.timerSeconds || at.todayWorkSeconds || 0),
+                    dailySessions: at.dailySessions || t.dailySessions,
+                    sessionDate: at.sessionDate || today
+                  };
+                }
+                return t;
+              });
+              localStorage.setItem('ems_tasks', JSON.stringify(updatedTasks));
+            }
+          }
+        } catch (_) {}
+
         window.dispatchEvent(new CustomEvent('ems_task_timer_started', {
           detail: { taskId: telemRec.activeTask._id || telemRec.activeTask.taskId }
         }));

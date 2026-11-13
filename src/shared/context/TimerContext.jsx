@@ -327,8 +327,26 @@ export const TimerProvider = ({ children }) => {
 
   const isTodaySession = sessionDate === getTodayStr();
 
+  // Zero-Flicker Telemetry Cache Resolver
+  const getCachedTelemRecord = () => {
+    try {
+      const raw = localStorage.getItem('ems_last_telemetry');
+      if (!raw) return null;
+      const map = JSON.parse(raw);
+      const today = getTodayStr();
+      const keys = [userKey, targetEmpId, targetEmpCode, currentUser?._id, currentUser?.employeeCode, currentUser?.email].filter(Boolean);
+      for (const k of keys) {
+        const r = map[String(k)] || map[String(k).toUpperCase()] || map[String(k).toLowerCase()];
+        if (r && r.date === today) return r;
+      }
+    } catch (_) {}
+    return null;
+  };
+
   const [loginTime, setLoginTime] = useState(() => {
-    if (!currentUser || !userKey || !isTodaySession) return null;
+    if (!currentUser || !userKey) return null;
+    const cached = getCachedTelemRecord();
+    if (cached?.clockInTime) return cached.clockInTime;
     const scoped = localStorage.getItem(`ems_timer_${userKey}_login_time`);
     if (scoped) return scoped;
     try {
@@ -344,7 +362,9 @@ export const TimerProvider = ({ children }) => {
   });
 
   const [clockOutTime, setClockOutTime] = useState(() => {
-    if (!currentUser || !userKey || !isTodaySession) return null;
+    if (!currentUser || !userKey) return null;
+    const cached = getCachedTelemRecord();
+    if (cached?.clockOutTime && cached.isClockedOut) return cached.clockOutTime;
     const scoped = localStorage.getItem(`ems_timer_${userKey}_clockout_time`) || localStorage.getItem(`ems_timer_${userKey}_clock_out`);
     if (scoped && scoped !== '--' && scoped !== '—' && scoped !== 'null') return scoped;
     try {
@@ -361,6 +381,11 @@ export const TimerProvider = ({ children }) => {
   });
 
   const [hadClockedOutToday, setHadClockedOutToday] = useState(() => {
+    const cached = getCachedTelemRecord();
+    if (cached) {
+      if (cached.isClockedIn) return false;
+      if (cached.isClockedOut) return true;
+    }
     if (!isTodaySession) return false;
     const sessionD = localStorage.getItem(`ems_timer_${userKey}_work_session_date`);
     if (sessionD && sessionD !== getTodayStr()) return false;
@@ -370,9 +395,11 @@ export const TimerProvider = ({ children }) => {
   });
 
   const [isClockedIn, setIsClockedIn] = useState(() => {
-    if (!isTodaySession) return false;
-    const saved = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`);
-    if (saved !== null) return saved === 'true';
+    const cached = getCachedTelemRecord();
+    if (cached) {
+      if (cached.isClockedIn) return true;
+      if (cached.isClockedOut) return false;
+    }
     try {
       const attRaw = localStorage.getItem('hrms_attendance');
       if (attRaw) {
@@ -384,10 +411,17 @@ export const TimerProvider = ({ children }) => {
         }
       }
     } catch (_) {}
+    if (!isTodaySession) return false;
+    const saved = localStorage.getItem(`ems_timer_${userKey}_is_clocked_in`);
+    if (saved !== null) return saved === 'true';
     return false;
   });
 
   const [isRunning, setIsRunning] = useState(() => {
+    const cached = getCachedTelemRecord();
+    if (cached) {
+      return Boolean(cached.isClockedIn && !cached.isOnBreak);
+    }
     if (!isTodaySession) return false;
     const saved = localStorage.getItem(`ems_timer_${userKey}_is_running`);
     if (saved !== null) return saved === 'true';
@@ -396,11 +430,17 @@ export const TimerProvider = ({ children }) => {
 
   // Active productive work seconds (starts strictly from 0 on a fresh day, hydrates from Atlas across devices)
   const [workSeconds, setWorkSeconds] = useState(() => {
-    if (!isTodaySession) return 0;
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
     const todayMidnightMs = todayMidnight.getTime();
     const maxGrossToday = Math.max(0, Math.floor((Date.now() - todayMidnightMs) / 1000));
+
+    const cached = getCachedTelemRecord();
+    if (cached && Number(cached.workSeconds || 0) > 0) {
+      return Math.min(maxGrossToday, Number(cached.workSeconds));
+    }
+
+    if (!isTodaySession) return 0;
     const saved = localStorage.getItem(`ems_timer_${userKey}_work_seconds`);
     if (saved) return Math.min(maxGrossToday, Math.max(0, parseInt(saved, 10)));
 
@@ -756,6 +796,11 @@ export const TimerProvider = ({ children }) => {
       try {
         const telemRes = await hrService.getLiveTelemetry(today);
         const telemMap = (telemRes && typeof telemRes === 'object') ? (telemRes.data || telemRes) : {};
+        if (telemMap && Object.keys(telemMap).length > 0) {
+          try {
+            localStorage.setItem('ems_last_telemetry', JSON.stringify(telemMap));
+          } catch (_) {}
+        }
         const empKeys = [
           userKey,
           targetEmpId,
