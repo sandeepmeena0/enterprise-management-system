@@ -161,6 +161,7 @@ export const AuthProvider = ({ children }) => {
         if (!query) return;
 
         const res = await fetch(`${API_BASE}/employees?search=${encodeURIComponent(query)}&_t=${Date.now()}`, {
+          headers: getAuthHeaders(),
           signal: AbortSignal.timeout(3500)
         });
         if (res.ok && isMounted) {
@@ -381,7 +382,10 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/employees?search=${encodeURIComponent(query)}`, { signal: AbortSignal.timeout(2500) });
+      const res = await fetch(`${API_BASE}/employees?search=${encodeURIComponent(query)}`, {
+        headers: getAuthHeaders(),
+        signal: AbortSignal.timeout(2500)
+      });
       if (res.ok) {
         const json = await res.json();
         const list = json.data || [];
@@ -423,7 +427,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const res = await fetch(`${API_BASE}/employees/switch/${userOrId}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           signal: AbortSignal.timeout(2500)
         });
         if (res.ok) {

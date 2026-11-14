@@ -93,13 +93,19 @@ const EmployeeSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      default: 'emp123'
+      default: 'emp123',
+      select: false
     },
     passwordHistory: {
       type: Array,
-      default: []
+      default: [],
+      select: false
     },
     passwordUpdatedAt: {
+      type: String,
+      default: null
+    },
+    passwordMigratedAt: {
       type: String,
       default: null
     },

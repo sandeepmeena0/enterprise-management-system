@@ -21,6 +21,7 @@ const Appreciation = require('../modules/hr/models/Appreciation');
 const Project = require('../modules/work/models/Project');
 const Task = require('../modules/work/models/Task');
 const Timesheet = require('../modules/work/models/Timesheet');
+const { hashPassword } = require('../shared/utils/passwordUtils');
 
 const MONGO_URI = process.env.MONGO_URI;
 
@@ -85,8 +86,19 @@ async function seedDatabase() {
       Timesheet.deleteMany({})
     ]);
 
-    console.log('Inserting Master Admin...');
-    await Employee.insertMany(EMPLOYEES);
+    console.log('Inserting Master Admin with hashed credentials...');
+    const hashedEmployees = await Promise.all(
+      EMPLOYEES.map(async (emp) => {
+        const hashed = await hashPassword(emp.password || 'admin123');
+        return {
+          ...emp,
+          password: hashed,
+          tokenVersion: 0,
+          permissionVersion: 0
+        };
+      })
+    );
+    await Employee.insertMany(hashedEmployees);
 
     console.log('Inserting Holidays...');
     await Holiday.insertMany(HOLIDAYS);

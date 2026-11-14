@@ -8,6 +8,8 @@ import React, { useState } from 'react';
 import { CheckCircle2, AlertCircle, HelpCircle, X } from 'lucide-react';
 import { getCollection, saveCollection, KEYS } from '../../services/storageService';
 import { useToast } from '../../context/ToastContext';
+import { API_BASE } from '../../config/apiConfig';
+import { getAuthHeaders } from '../../services/apiClient';
 
 export const ForgotPasswordModal = ({ isOpen, onClose, onAutoFillAdmin }) => {
   const { addToast } = useToast();
@@ -117,9 +119,9 @@ export const ForgotPasswordModal = ({ isOpen, onClose, onAutoFillAdmin }) => {
 
       try {
         if (targetAdminId) {
-          fetch(`/api/employees/${targetAdminId}`, {
+          fetch(`${API_BASE}/employees/${targetAdminId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ password: finalPass })
           }).catch(() => {});
         }

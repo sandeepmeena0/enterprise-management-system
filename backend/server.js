@@ -98,22 +98,51 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Database Seed / Reset Endpoint
-app.post('/api/seed', async (req, res) => {
-  try {
-    const { seedDatabase } = require('./src/seeders/seed');
-    await seedDatabase();
-    res.json({ success: true, message: 'Database successfully seeded with actual enterprise data!' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
 // ─── Public Authentication Routes (Login strictly against MongoDB Atlas) ────
 app.use('/api/auth', require('./src/modules/auth/routes/authRoutes'));
 
 // Authenticate user & tenant scoping middleware
 app.use('/api', authenticateUser);
+
+// Database Seed / Reset Endpoint (Strictly Master Admin only; disabled in production by default)
+app.post('/api/seed', async (req, res) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const allowResetInProd = process.env.ALLOW_DB_RESET === 'true';
+
+  if (isProd && !allowResetInProd) {
+    return res.status(403).json({
+      success: false,
+      code: 'RESET_DISABLED_IN_PRODUCTION',
+      message: 'Database reset endpoint is permanently disabled in production environment.'
+    });
+  }
+
+  const u = req.user;
+  const isMasterAdmin = u && Boolean(
+    u.employeeCode === 'ADM-001' ||
+    u.isSuperAdmin ||
+    u.email === 'admin@inforag.com' ||
+    u.email === 'avinash@inforag.com'
+  );
+
+  if (!isMasterAdmin) {
+    return res.status(403).json({
+      success: false,
+      code: 'FORBIDDEN',
+      message: 'Access denied: Database reset is restricted strictly to Master Administrator.'
+    });
+  }
+
+  try {
+    const { seedDatabase } = require('./src/seeders/seed');
+    const { clearUserAuthCache } = require('./src/shared/cache/userAuthCache');
+    await seedDatabase();
+    clearUserAuthCache();
+    res.json({ success: true, message: 'Database successfully seeded with actual enterprise data!' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ─── Mount Module Routes ────────────────────────────────────────────────────
 // HR Module
@@ -157,8 +186,12 @@ const server = http.createServer(app);
 const io = initSocketServer(server, allowedOrigins);
 app.set('io', io);
 
-server.listen(PORT, () => {
-  console.log(`🚀 Enterprise Management System (EMS) Backend Server running on port ${PORT}`);
-  console.log(`📡 API Endpoints ready at http://localhost:${PORT}/api/`);
-  console.log(`⚡ Socket.IO Real-time Engine mounted and ready`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`🚀 Enterprise Management System (EMS) Backend Server running on port ${PORT}`);
+    console.log(`📡 API Endpoints ready at http://localhost:${PORT}/api/`);
+    console.log(`⚡ Socket.IO Real-time Engine mounted and ready`);
+  });
+}
+
+module.exports = { app, server };

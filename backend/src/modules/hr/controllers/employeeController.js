@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 const Employee = require('../models/Employee');
 const asyncHandler = require('../../../shared/middleware/asyncHandler');
+const { invalidateUserAuthCache } = require('../../../shared/cache/userAuthCache');
+const { disconnectUserSockets } = require('../../../shared/socket/socketManager');
+const { hashPassword } = require('../../../shared/utils/passwordUtils');
 
 // ─── GET /api/employees ───────────────────────────────────────────────────────
 const getEmployees = asyncHandler(async (req, res) => {
@@ -18,7 +21,7 @@ const getEmployees = asyncHandler(async (req, res) => {
     ];
   }
 
-  const employees = await Employee.find(query).sort({ createdAt: 1 });
+  const employees = await Employee.find(query).select('-password -passwordHistory').sort({ createdAt: 1 });
 
   res.json({
     success: true,
@@ -31,18 +34,18 @@ const getEmployees = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
   let user = null;
   if (req.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
-    user = await Employee.findById(req.user._id);
+    user = await Employee.findById(req.user._id).select('-password -passwordHistory');
   }
   if (!user && req.user?.employeeCode) {
-    user = await Employee.findOne({ employeeCode: req.user.employeeCode });
+    user = await Employee.findOne({ employeeCode: req.user.employeeCode }).select('-password -passwordHistory');
   }
   if (!user) {
-    user = await Employee.findOne({ isCurrentUser: true });
+    user = await Employee.findOne({ isCurrentUser: true }).select('-password -passwordHistory');
   }
   if (!user) {
-    user = (await Employee.findOne({ employeeCode: 'ADM-001' })) ||
-           (await Employee.findOne({ isAdmin: true })) ||
-           (await Employee.findOne());
+    user = (await Employee.findOne({ employeeCode: 'ADM-001' }).select('-password -passwordHistory')) ||
+           (await Employee.findOne({ isAdmin: true }).select('-password -passwordHistory')) ||
+           (await Employee.findOne().select('-password -passwordHistory'));
     if (user) {
       user.isCurrentUser = true;
       await user.save();
@@ -59,15 +62,15 @@ const switchCurrentUser = asyncHandler(async (req, res) => {
   const { id } = req.params;
   let target = null;
   if (id === 'admin') {
-    target = await Employee.findOne({ $or: [{ employeeCode: 'ADM-001' }, { role: 'Administrator' }, { isAdmin: true }] });
+    target = await Employee.findOne({ $or: [{ employeeCode: 'ADM-001' }, { role: 'Administrator' }, { isAdmin: true }] }).select('-password -passwordHistory');
   } else if (id === 'hr') {
-    target = await Employee.findOne({ $or: [{ employeeCode: 'HR-001' }, { department: 'Human Resources' }] });
+    target = await Employee.findOne({ $or: [{ employeeCode: 'HR-001' }, { department: 'Human Resources' }] }).select('-password -passwordHistory');
   } else if (id === 'employee' || id === 'team_member') {
-    target = await Employee.findOne({ $or: [{ employeeCode: 'ENG-001' }, { department: 'Engineering' }] });
+    target = await Employee.findOne({ $or: [{ employeeCode: 'ENG-001' }, { department: 'Engineering' }] }).select('-password -passwordHistory');
   } else if (mongoose.Types.ObjectId.isValid(id)) {
-    target = await Employee.findById(id);
+    target = await Employee.findById(id).select('-password -passwordHistory');
   } else {
-    target = await Employee.findOne({ employeeCode: id.toUpperCase() });
+    target = await Employee.findOne({ employeeCode: id.toUpperCase() }).select('-password -passwordHistory');
   }
 
   if (!target) {
@@ -88,7 +91,7 @@ const getEmployeeById = asyncHandler(async (req, res) => {
     ? { _id: id }
     : { $or: [{ employeeCode: id.trim().toUpperCase() }, { email: id.trim().toLowerCase() }] };
 
-  const employee = await Employee.findOne(query);
+  const employee = await Employee.findOne(query).select('-password -passwordHistory');
   if (!employee) {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
@@ -135,13 +138,25 @@ const createEmployee = asyncHandler(async (req, res) => {
     delete payload._id;
   }
 
+  // Cryptographically hash newly created employee password with bcrypt
+  const rawPass = (payload.password || 'emp123').trim();
+  payload.password = await hashPassword(rawPass);
+  payload.passwordHistory = [];
+  payload.passwordUpdatedAt = new Date().toISOString();
+  payload.tokenVersion = 0;
+  payload.permissionVersion = 0;
+
   const employee = new Employee({
     ...payload,
     employeeCode: cleanCode,
     email: cleanEmail
   });
   await employee.save();
-  res.status(201).json({ success: true, data: employee });
+
+  const sanitized = employee.toObject();
+  delete sanitized.password;
+  delete sanitized.passwordHistory;
+  res.status(201).json({ success: true, data: sanitized });
 });
 
 // ─── PUT /api/employees/:id ───────────────────────────────────────────────────
@@ -202,6 +217,10 @@ const updateEmployee = asyncHandler(async (req, res) => {
     return 'team_member';
   };
 
+  let shouldRevokeTokens = false;
+  let shouldDisconnectSockets = false;
+  let permissionChanged = false;
+
   // Protect primary admin from losing admin rights
   if (isPrimaryEmp) {
     payload.isAdmin = true;
@@ -220,32 +239,82 @@ const updateEmployee = asyncHandler(async (req, res) => {
     if (!payload.systemRole || payload.systemRole === 'admin') {
       payload.systemRole = (existingEmployee.systemRole && existingEmployee.systemRole !== 'admin') ? existingEmployee.systemRole : baselineRole;
     }
+    permissionChanged = true;
+    if (existingEmployee.isAdmin) {
+      shouldDisconnectSockets = true;
+    }
   }
 
-  // Password History Audit for Super Admin (Save previous passwords whenever updated)
-  if (payload.password && payload.password !== existingEmployee.password) {
+  // Account Status Modification (Deactivation / Reactivation)
+  if (payload.status && payload.status !== existingEmployee.status) {
+    if (payload.status !== 'active') {
+      shouldRevokeTokens = true;
+      shouldDisconnectSockets = true;
+    }
+  }
+
+  // Role / Permission change detection
+  if (payload.systemRole && payload.systemRole !== existingEmployee.systemRole) {
+    permissionChanged = true;
+  }
+  if (payload.permissions && typeof payload.permissions === 'object') {
+    permissionChanged = true;
+  }
+
+  // Password Modification (Cryptographically hash and never store plaintext)
+  if (payload.password && typeof payload.password === 'string' && payload.password.trim() && payload.password !== '••••••••') {
+    const rawPass = payload.password.trim();
+    payload.password = await hashPassword(rawPass);
+    payload.passwordUpdatedAt = new Date().toISOString();
+
     const historyEntry = {
-      password: existingEmployee.password,
       changedAt: new Date().toISOString(),
       changedBy: req.user?.name || req.user?.email || 'User'
     };
     const prevHistory = Array.isArray(existingEmployee.passwordHistory)
       ? existingEmployee.passwordHistory
       : [];
-    payload.passwordHistory = [historyEntry, ...prevHistory];
-    payload.passwordUpdatedAt = new Date().toISOString();
-  } else if (payload.passwordHistory === undefined && Array.isArray(existingEmployee.passwordHistory)) {
-    payload.passwordHistory = existingEmployee.passwordHistory;
+    payload.passwordHistory = [historyEntry, ...prevHistory].slice(0, 10);
+
+    // Password change revokes existing active sessions across all devices
+    shouldRevokeTokens = true;
+    shouldDisconnectSockets = true;
+  } else {
+    delete payload.password;
+    if (payload.passwordHistory === undefined && Array.isArray(existingEmployee.passwordHistory)) {
+      payload.passwordHistory = existingEmployee.passwordHistory;
+    }
+  }
+
+  // Increment versions when security metadata changes
+  if (shouldRevokeTokens) {
+    payload.tokenVersion = (existingEmployee.tokenVersion || 0) + 1;
+  }
+  if (permissionChanged) {
+    payload.permissionVersion = (existingEmployee.permissionVersion || 0) + 1;
   }
 
   const employee = await Employee.findByIdAndUpdate(
     existingEmployee._id,
     { $set: payload },
     { new: true, runValidators: false }
-  );
+  ).select('-password -passwordHistory');
+
   if (!employee) {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
+
+  // Invalidate cache immediately after database update succeeds
+  const empIdStr = existingEmployee._id.toString();
+  invalidateUserAuthCache(empIdStr);
+  if (existingEmployee.employeeCode) invalidateUserAuthCache(existingEmployee.employeeCode);
+  if (existingEmployee.email) invalidateUserAuthCache(existingEmployee.email.toLowerCase());
+
+  // Force disconnect sockets if account deactivated or password changed
+  if (shouldDisconnectSockets) {
+    disconnectUserSockets(empIdStr);
+  }
+
   res.json({ success: true, data: employee });
 });
 
@@ -321,14 +390,28 @@ const updateEmployeePermissions = asyncHandler(async (req, res) => {
     }
   }
 
+  // Increment permissionVersion on every permission update
+  updateFields.permissionVersion = (existing.permissionVersion || 0) + 1;
+
   const employee = await Employee.findByIdAndUpdate(
     existing._id,
     { $set: updateFields },
     { new: true, runValidators: false }
-  );
+  ).select('-password -passwordHistory');
 
   if (!employee) {
     return res.status(404).json({ success: false, message: 'Employee not found' });
+  }
+
+  // Invalidate cache immediately after database update succeeds
+  const empIdStr = existing._id.toString();
+  invalidateUserAuthCache(empIdStr);
+  if (existing.employeeCode) invalidateUserAuthCache(existing.employeeCode);
+  if (existing.email) invalidateUserAuthCache(existing.email.toLowerCase());
+
+  // If administrative access was revoked, disconnect sockets so user leaves privileged admin rooms
+  if (!isDelegated && existing.isAdmin && !isPrimary) {
+    disconnectUserSockets(empIdStr);
   }
 
   res.json({
@@ -383,6 +466,14 @@ const deleteEmployee = asyncHandler(async (req, res) => {
   }
 
   await Employee.deleteOne({ _id: employee._id });
+
+  // Invalidate auth cache & force disconnect all sockets immediately
+  const empIdStr = employee._id.toString();
+  invalidateUserAuthCache(empIdStr);
+  if (employee.employeeCode) invalidateUserAuthCache(employee.employeeCode);
+  if (employee.email) invalidateUserAuthCache(employee.email.toLowerCase());
+  disconnectUserSockets(empIdStr);
+
   res.json({ success: true, message: 'Employee removed', data: {} });
 });
 

@@ -1469,7 +1469,7 @@ export const CRMProvider = ({ children }) => {
     delete payload._id;
     fetch(`${API_BASE}/expenses`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload)
     })
       .then(res => res.ok ? res.json() : null)
@@ -1508,7 +1508,7 @@ export const CRMProvider = ({ children }) => {
     // Asynchronous background sync
     fetch(`${API_BASE}/expenses/${expenseId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(updateData)
     }).catch(err => console.warn('[CRMContext] Sync expense update:', err));
 
@@ -1532,7 +1532,7 @@ export const CRMProvider = ({ children }) => {
     try {
       fetch(`${API_BASE}/expenses/${expenseId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status })
       }).catch(err => console.warn('[CRMContext] Sync expense update:', err));
     } catch (_) {}
@@ -1549,7 +1549,10 @@ export const CRMProvider = ({ children }) => {
 
     // Background sync
     try {
-      fetch(`${API_BASE}/expenses/${expenseId}`, { method: 'DELETE' }).catch(err => console.warn('[CRMContext] Sync expense deletion:', err));
+      fetch(`${API_BASE}/expenses/${expenseId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      }).catch(err => console.warn('[CRMContext] Sync expense deletion:', err));
     } catch (_) {}
   };
 

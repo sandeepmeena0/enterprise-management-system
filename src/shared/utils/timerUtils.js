@@ -4,6 +4,9 @@
  * for Shift Clock, Active Task Timer, and Attendance State.
  */
 
+import { API_BASE } from '../config/apiConfig';
+import { getAuthHeaders } from '../services/apiClient';
+
 /**
  * Universal canonical timer key resolver.
  * Bridges employeeCode, _id, id, and email so all timer reads/writes map to the same tenant.
@@ -1175,6 +1178,7 @@ export const hydrateUserCloudState = async (user) => {
     if (!telemRec) {
       try {
         const dailyRes = await fetch(`${API_BASE}/attendance/daily?date=${today}&_t=${Date.now()}`, {
+          headers: getAuthHeaders(),
           signal: AbortSignal.timeout(3500)
         });
         if (dailyRes.ok) {

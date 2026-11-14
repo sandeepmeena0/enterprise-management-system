@@ -10,6 +10,7 @@ const mongoose = require('mongoose');
 const Employee = require('../../hr/models/Employee');
 const asyncHandler = require('../../../shared/middleware/asyncHandler');
 const { setUserAuthCache, invalidateUserAuthCache } = require('../../../shared/cache/userAuthCache');
+const { verifyPassword, hashPassword } = require('../../../shared/utils/passwordUtils');
 
 // Helper to sign JWT
 const signToken = (employee) => {
@@ -38,13 +39,13 @@ exports.login = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Employee ID or Email is required.' });
   }
 
-  // Find employee in MongoDB Atlas
+  // Find employee in MongoDB Atlas (explicitly include password for verification)
   const employee = await Employee.findOne({
     $or: [
       { email: input.toLowerCase() },
       { employeeCode: input.toUpperCase() }
     ]
-  });
+  }).select('+password');
 
   if (!employee) {
     return res.status(401).json({
@@ -61,15 +62,32 @@ exports.login = asyncHandler(async (req, res) => {
     });
   }
 
-  // Password verification
+  // Cryptographic bcrypt verification with backward-compatible legacy auto-migration
   const isMasterAdmin = employee.employeeCode === 'ADM-001' || employee.role === 'Administrator' || employee.isAdmin;
-  const expectedPassword = employee.password || (isMasterAdmin ? 'admin123' : 'emp123');
+  const defaultFallback = isMasterAdmin ? 'admin123' : 'emp123';
+  const { matches, needsMigration } = await verifyPassword(password, employee.password, defaultFallback);
 
-  if (password && password !== expectedPassword && password !== '••••••••') {
+  if (!matches) {
     return res.status(401).json({
       success: false,
       message: 'Incorrect password. Please verify credentials or contact Admin.'
     });
+  }
+
+  // Transparent backward-compatible migration:
+  // If employee authenticated with legacy plaintext password, hash with bcrypt and save to MongoDB
+  if (needsMigration) {
+    try {
+      const secureHash = await hashPassword(password);
+      await Employee.findByIdAndUpdate(employee._id, {
+        $set: {
+          password: secureHash,
+          passwordMigratedAt: new Date().toISOString()
+        }
+      });
+    } catch (migErr) {
+      console.warn('Password on-the-fly migration notice:', migErr.message);
+    }
   }
 
   let isDelegatedAdmin = !!employee.isDelegatedAdmin;
