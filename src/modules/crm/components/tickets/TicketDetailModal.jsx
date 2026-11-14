@@ -15,18 +15,20 @@ export const TicketDetailModal = ({ ticket, isOpen, onClose }) => {
   const { currentUser = null, employees = [] } = useHR() || {};
   const { confirm = async () => true } = useConfirm() || {};
 
-  const canManage = canManageTickets(currentUser) || isHRorAdmin(currentUser);
-  const isRequester = currentUser && (
-    (ticket.requestedById && String(ticket.requestedById) === String(currentUser._id || currentUser.id || currentUser.employeeCode)) ||
-    (ticket.requestedByName && currentUser.name && ticket.requestedByName.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
-  );
-  const canChangeStatus = canManage || isRequester;
-
   const [replyText, setReplyText] = useState('');
   const [internalNoteText, setInternalNoteText] = useState('');
   const [activeTab, setActiveTab] = useState('conversation'); // 'conversation' | 'internal_notes'
 
   if (!isOpen || !ticket) return null;
+
+  const canManage = canManageTickets(currentUser) || isHRorAdmin(currentUser);
+  const isRequester = Boolean(
+    currentUser && ticket && (
+      (ticket.requestedById && String(ticket.requestedById) === String(currentUser._id || currentUser.id || currentUser.employeeCode)) ||
+      (ticket.requestedByName && currentUser.name && ticket.requestedByName.toLowerCase().trim() === currentUser.name.toLowerCase().trim())
+    )
+  );
+  const canChangeStatus = canManage || isRequester;
 
   const handleSendReply = (e) => {
     e.preventDefault();

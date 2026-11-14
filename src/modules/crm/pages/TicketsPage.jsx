@@ -50,18 +50,19 @@ export const TicketsPage = () => {
 
   // Scoped tickets based on Admin / HR privilege and viewAllTickets permission
   const scopedTickets = useMemo(() => {
-    if (canViewAllTickets) return tickets;
-    if (!currentUser) return tickets;
+    if (canViewAllTickets) return (tickets || []).filter(Boolean);
+    if (!currentUser) return (tickets || []).filter(Boolean);
     const uId = String(currentUser._id || '');
     const uCode = String(currentUser.employeeCode || '');
     const uName = (currentUser.name || '').toLowerCase().trim();
 
-    return tickets.filter(t => {
-      const isRequester = (uId && String(t.requestedById) === uId) ||
-        (uCode && String(t.requestedById) === uCode) ||
+    return (tickets || []).filter(t => {
+      if (!t) return false;
+      const isRequester = (uId && String(t.requestedById || '') === uId) ||
+        (uCode && String(t.requestedById || '') === uCode) ||
         (uName && t.requestedByName && t.requestedByName.toLowerCase().trim() === uName);
-      const isAssignee = (uId && String(t.assignedToId) === uId) ||
-        (uCode && String(t.assignedToId) === uCode) ||
+      const isAssignee = (uId && String(t.assignedToId || '') === uId) ||
+        (uCode && String(t.assignedToId || '') === uCode) ||
         (uName && t.assignedToName && t.assignedToName.toLowerCase().trim() === uName);
       return isRequester || isAssignee;
     });
