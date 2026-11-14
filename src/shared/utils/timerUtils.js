@@ -514,7 +514,26 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     return targetDate === actualToday ? Math.min(result, maxPhysicalSecs) : Math.min(result, 24 * 3600);
   }
 
-  // 2. If sessionDate is targetDate, use todayBaseSecs or non-running todayWorkSeconds:
+  // 2. If targetDate is in the past (< actualToday):
+  if (targetDate < actualToday) {
+    if (task.sessionDate === targetDate) {
+      return Math.min(Number(task.todayWorkSeconds || task.timerSeconds || 0), 24 * 3600);
+    }
+    if (task.completedOn === targetDate || (task.completedAt && String(task.completedAt).startsWith(targetDate))) {
+      const recorded = Math.max(0, Number(task.dailySessions?.[targetDate] ?? task.todayWorkSeconds ?? task.accumulatedSeconds ?? 0));
+      return Math.min(recorded, 24 * 3600);
+    }
+    if (task.startDate === targetDate && Number(task.accumulatedSeconds || 0) > 0) {
+      const claimedByOtherDates = Object.entries(task.dailySessions || {})
+        .filter(([d]) => d !== targetDate)
+        .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+      const unclaimed = Math.max(0, Number(task.accumulatedSeconds || 0) - claimedByOtherDates);
+      return Math.min(unclaimed, 24 * 3600);
+    }
+    return 0;
+  }
+
+  // 3. If sessionDate is actualToday:
   if (task.sessionDate === targetDate) {
     let baseSecs = (task.todayBaseSecs !== undefined)
       ? Math.max(0, Number(task.todayBaseSecs) || 0)
@@ -530,7 +549,7 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     return targetDate === actualToday ? Math.min(result, maxPhysicalSecs) : Math.min(result, 24 * 3600);
   }
 
-  // 3. Actively running task today with no prior recorded today session:
+  // 4. Actively running task today with no prior recorded today session:
   if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
     const startTs = Number(task.startedAt) || 0;
     const base = (task.todayBaseSecs !== undefined && task.sessionDate === actualToday) ? Math.max(0, Number(task.todayBaseSecs) || 0) : 0;
@@ -540,7 +559,7 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     return Math.min(base + liveSecs, maxPhysicalSecs);
   }
 
-  // 4. If task was completed on targetDate, strictly return todayWorkSeconds (never all-time timerSeconds!)
+  // 5. If task was completed today:
   if (task.completedOn === targetDate && (task.sessionDate === targetDate || (task.dailySessions && task.dailySessions[targetDate] !== undefined))) {
     const recorded = Math.max(0, Number(task.dailySessions?.[targetDate] ?? task.todayWorkSeconds ?? 0));
     return targetDate === actualToday ? Math.min(recorded, maxPhysicalSecs) : Math.min(recorded, 24 * 3600);
@@ -609,6 +628,17 @@ export const sanitizeTaskDailySessions = (task) => {
     }
   }
 
+  // If priorDaysSum === 0, but task has historical accumulated seconds and started on a prior date:
+  const taskAccum = Number(task.accumulatedSeconds || 0);
+  const priorDate = (task.sessionDate && task.sessionDate < todayStr)
+    ? task.sessionDate
+    : (task.startDate && task.startDate < todayStr ? task.startDate : null);
+
+  if (priorDaysSum === 0 && taskAccum > 0 && priorDate) {
+    cleanedSessions[priorDate] = taskAccum;
+    priorDaysSum = taskAccum;
+  }
+
   // Today's baseline work seconds:
   let todayBase = 0;
   if (rawSessions[todayStr] !== undefined) {
@@ -620,7 +650,7 @@ export const sanitizeTaskDailySessions = (task) => {
   }
 
   // Auto-decouple if prior bugs caused today's session to equal or exceed the whole task duration
-  if (priorDaysSum > 0 && todayBase >= priorDaysSum + todayBase) {
+  if (priorDaysSum > 0 && todayBase >= priorDaysSum) {
     todayBase = Math.max(0, todayBase - priorDaysSum);
   }
 

@@ -426,7 +426,7 @@ export const WorkProvider = ({ children }) => {
               todayWorkSeconds: resolvedTodaySecs,
               timerRunning: effectiveRunning,
               startedAt: effectiveStartedAt,
-              timerSeconds: (resolvedSessionDate === today && resolvedTodaySecs > 0) ? resolvedTodaySecs : Math.max(localSecs, backendSecs),
+              timerSeconds: (resolvedSessionDate === today) ? resolvedTodaySecs : 0,
               accumulatedSeconds: Math.max(localAccum, backendAccum, resolvedTodaySecs),
               status: finalCompleted ? 'completed' : (bt.status || existing.status),
               completedAt: bt.completedAt || existing.completedAt || (finalCompleted ? new Date().toISOString() : null),
@@ -457,7 +457,7 @@ export const WorkProvider = ({ children }) => {
               sessionDate: bt.sessionDate || today,
               todayWorkSeconds: resolvedTodaySecs,
               timerRunning: finalCompleted ? false : Boolean(bt.timerRunning),
-              timerSeconds: (bt.sessionDate === today && resolvedTodaySecs > 0) ? resolvedTodaySecs : Number(bt.timerSeconds || 0),
+              timerSeconds: (bt.sessionDate === today) ? resolvedTodaySecs : 0,
               accumulatedSeconds: Math.max(Number(bt.accumulatedSeconds || 0), resolvedTodaySecs),
               status: finalCompleted ? 'completed' : bt.status
             });
@@ -649,7 +649,7 @@ export const WorkProvider = ({ children }) => {
           ...t,
           timerRunning: false,
           startedAt: null,
-          timerSeconds: todayStaticSecs > 0 ? todayStaticSecs : staticTotalSecs,
+          timerSeconds: todayStaticSecs,
           todayWorkSeconds: todayStaticSecs,
           todayBaseSecs: todayStaticSecs,
           accumulatedSeconds: staticTotalSecs,

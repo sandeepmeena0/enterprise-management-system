@@ -109,11 +109,13 @@ export const sanitizeRunawayTimers = () => {
             }
 
             // If task was worked on a previous date, seal it into dailySessions and reset today fields
-            if (isDifferentDate) {
-              const prevDate = t.sessionDate;
-              const prevSecs = Number(t.todayWorkSeconds || 0);
+            if (isDifferentDate || (t.startDate && t.startDate < today && (!t.dailySessions || Object.keys(t.dailySessions).length === 0))) {
+              const prevDate = (t.sessionDate && t.sessionDate < today)
+                ? t.sessionDate
+                : (t.startDate && t.startDate < today ? t.startDate : null);
+              const prevSecs = Number(t.todayWorkSeconds || 0) || Number(t.timerSeconds || 0) || Number(t.accumulatedSeconds || 0);
               const ds = { ...(t.dailySessions && typeof t.dailySessions === 'object' ? t.dailySessions : {}) };
-              if (prevSecs > 0 && (!ds[prevDate] || ds[prevDate] < prevSecs)) {
+              if (prevDate && prevSecs > 0 && (!ds[prevDate] || ds[prevDate] < prevSecs)) {
                 ds[prevDate] = prevSecs;
               }
               // If today's session has no legitimate work yet, todayWorkSeconds starts strictly at 0
@@ -121,6 +123,7 @@ export const sanitizeRunawayTimers = () => {
               updated.dailySessions = ds;
               updated.todayWorkSeconds = todaySecs;
               updated.todayBaseSecs = todaySecs;
+              updated.timerSeconds = todaySecs;
               updated.sessionDate = today;
               changed = true;
             }

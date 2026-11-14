@@ -39,13 +39,19 @@ export const WeeklyTimeLogsCard = ({
     // Helper: check if a timesheet record belongs to the effective user
     const isMyTimesheet = (ts) => {
         if (!effectiveUser) return true;
-        const tsId = ts.employeeId ? String(ts.employeeId).toLowerCase() : (ts.employee ? String(ts.employee._id || ts.employee).toLowerCase() : '');
-        const tsCode = ts.employeeCode ? String(ts.employeeCode).toLowerCase() : '';
-        const tsName = ts.employeeName ? ts.employeeName.toLowerCase().trim() : '';
+        const tsEmp = ts.employee && typeof ts.employee === 'object' ? ts.employee : null;
+        const tsId = String(ts.employeeId || tsEmp?._id || ts.employee || '').toLowerCase();
+        const tsCode = String(ts.employeeCode || tsEmp?.employeeCode || '').toLowerCase();
+        const tsName = String(ts.employeeName || tsEmp?.name || '').toLowerCase().trim();
 
         if (uId && (tsId === uId || String(ts.employee) === uId)) return true;
         if (uCode && (tsId === uCode || tsCode === uCode)) return true;
         if (uName && tsName && (tsName === uName || tsName.includes(uName) || uName.includes(tsName))) return true;
+
+        if (ts.taskId || ts.taskCode) {
+            const matchedTask = (tasks || []).find(t => String(t._id || t.id) === String(ts.taskId) || (ts.taskCode && t.taskCode === ts.taskCode));
+            if (matchedTask && isMyTask(matchedTask)) return true;
+        }
         return false;
     };
 
@@ -144,12 +150,18 @@ export const WeeklyTimeLogsCard = ({
             });
 
             let dayBreakSecs = 0;
+            let dayWorkSecs = 0;
             if (isCurrentDay) {
                 const storedBreak = Number(readTimerStorage(effectiveUser, 'break_seconds')) || 0;
                 const attBreak = Number(attRec?.breakSeconds) || (Array.isArray(attRec?.breakHistory) ? attRec.breakHistory.filter(b => b.date === dateStr).reduce((acc, b) => acc + (Number(b.durationSeconds) || 0), 0) : 0);
                 dayBreakSecs = Math.max(storedBreak, attBreak);
+
+                const storedWork = Number(readTimerStorage(effectiveUser, 'work_seconds')) || 0;
+                const attWork = Number(attRec?.workSeconds) || Math.round((Number(attRec?.totalWorkingHours) || 0) * 3600);
+                dayWorkSecs = Math.max(storedWork, attWork);
             } else if (attRec) {
                 dayBreakSecs = Number(attRec.breakSeconds) || (Array.isArray(attRec?.breakHistory) ? attRec.breakHistory.filter(b => b.date === dateStr).reduce((acc, b) => acc + (Number(b.durationSeconds) || 0), 0) : 0);
+                dayWorkSecs = Number(attRec.workSeconds) || Math.round((Number(attRec.totalWorkingHours) || 0) * 3600);
             }
 
             const bHrs = Math.floor(dayBreakSecs / 3600);
@@ -180,7 +192,7 @@ export const WeeklyTimeLogsCard = ({
 
       // 1. Strictly filter timesheets recorded on this exact calendar date (prevent previous day leakage)
       const rawDayTs = (timesheets || []).filter(ts => {
-        const tsDate = ts.date || (ts.createdAt ? ts.createdAt.split('T')[0] : '');
+        const tsDate = (ts.date ? String(ts.date).split('T')[0] : '') || (ts.createdAt ? String(ts.createdAt).split('T')[0] : '');
         if (tsDate !== dateStr) return false;
         return isMyTimesheet(ts);
       });
@@ -295,11 +307,12 @@ export const WeeklyTimeLogsCard = ({
                     }
                 });
             } else if (isPastDay) {
-                // Include any tasks worked on this past date that have recorded dailySessions
+                // Include any tasks worked on this past date that have recorded dailySessions or completed on this date
+                const nowMs = Date.now();
                 (tasks || []).forEach(t => {
                     if (!isMyTask(t)) return;
                     const tId = String(t._id || t.id);
-                    const pastSecs = Number(t.dailySessions?.[dateStr]) || (t.sessionDate === dateStr ? Number(t.todayWorkSeconds) : 0);
+                    const pastSecs = getTaskTodaySeconds(t, dateStr, nowMs, false, false);
                     if (pastSecs > 0) {
                         const alreadyLogged = dayTs
                             .filter(ts => String(ts.taskId) === tId || (t.taskCode && ts.taskCode === t.taskCode) || (t.title && ts.taskTitle === t.title))
@@ -314,12 +327,21 @@ export const WeeklyTimeLogsCard = ({
                                 projectName: t.projectName || 'General Work',
                                 durationText: formatSeconds(pastSecs),
                                 durationSeconds: pastSecs,
-                                status: t.status || 'in_progress',
+                                status: t.status || 'completed',
                                 isCompleted: Boolean(t.status === 'completed' || t.completedAt)
                             });
                         }
                     }
                 });
+            }
+
+            // Physical reality clamp for current day: task time cannot exceed working shift time
+            if (isCurrentDay) {
+                if (dayWorkSecs > 0) {
+                    dayTotalSecs = Math.min(dayTotalSecs, dayWorkSecs + 120);
+                } else if (!isEffectiveClockedIn && !storedClockedIn) {
+                    dayTotalSecs = 0;
+                }
             }
 
             // Safety cap: a single day's task duration cannot exceed 14 hours

@@ -317,6 +317,8 @@ exports.stopTimer = async (req, res, next) => {
         }
       });
       const totalTaskSecs = Array.from(dateTaskMap.values()).reduce((sum, s) => sum + s, 0);
+      task.accumulatedSeconds = Math.max(totalTaskSecs, totalDurationSeconds);
+      task.todayWorkSeconds = totalDurationSeconds;
       task.hoursLogged = Number((totalTaskSecs / 3600).toFixed(2));
       const totalHrs = Math.floor(totalTaskSecs / 3600);
       const totalMins = Math.floor((totalTaskSecs % 3600) / 60);

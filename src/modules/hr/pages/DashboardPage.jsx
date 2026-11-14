@@ -1211,6 +1211,30 @@ export const DashboardPage = () => {
           });
         }
       });
+    } else {
+      const empTasks = (tasks || []).filter(t => isTaskAssignedToUser(t, emp));
+      empTasks.forEach(pt => {
+        const ptId = String(pt._id || pt.id);
+        const alreadyInTasksWorked = tasksWorked.some(t => String(t.taskId) === ptId || (pt.taskCode && t.taskCode === pt.taskCode));
+        if (alreadyInTasksWorked) return;
+
+        const pastSecs = getTaskTodaySeconds(pt, customDate, Date.now(), false, false);
+        if (pastSecs > 0) {
+          const isDone = isTaskActuallyCompleted(pt);
+          tasksWorked.push({
+            taskId: ptId,
+            taskCode: pt.taskCode || 'TSK',
+            taskTitle: pt.title,
+            projectName: pt.projectName || 'General Work',
+            durationText: formatSeconds(pastSecs),
+            durationSeconds: pastSecs,
+            status: isDone ? 'completed' : 'in_progress',
+            isCompleted: isDone,
+            timerRunning: false,
+            memo: isDone ? 'Completed on this day' : `Worked on ${customDate}`
+          });
+        }
+      });
     }
 
     const totalTaskSeconds = tasksWorked.reduce((sum, t) => sum + (Number(t.durationSeconds) || 0), 0);
@@ -1669,6 +1693,13 @@ export const DashboardPage = () => {
   let totalTaskTodaySecs = rawTotalTaskTodaySecs;
   if (totalTaskTodaySecs === 0 && todayTimesheets.length > 0) {
     totalTaskTodaySecs = totalLoggedTodaySecs;
+  }
+
+  // Physical reality clamp: Task time today cannot exceed working time today
+  if (displayedWorkSecs > 0) {
+    totalTaskTodaySecs = Math.min(totalTaskTodaySecs, displayedWorkSecs + 120);
+  } else if (!displayedIsClockedIn && !displayedHadClockedOut) {
+    totalTaskTodaySecs = 0;
   }
 
 
