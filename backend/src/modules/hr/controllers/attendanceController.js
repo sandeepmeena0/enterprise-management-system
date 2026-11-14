@@ -1307,8 +1307,13 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
 
     if (matchedTask && isClockedIn) {
       const isRunning = Boolean(matchedTask.timerRunning && !isOnBreak);
-      const taskStart = isRunning ? Number(matchedTask.startedAt || now) : null;
-      const elapsedTask = isRunning ? Math.max(0, Math.floor((now - (Number(matchedTask.startedAt) || now)) / 1000)) : 0;
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
+      const todayMidnightMs = todayMidnight.getTime();
+      const rawStartTs = Number(matchedTask.startedAt) || 0;
+      const isStartValid = isRunning && rawStartTs >= todayMidnightMs && rawStartTs <= now;
+      const taskStart = isStartValid ? rawStartTs : null;
+      const elapsedTask = isStartValid ? Math.floor((now - rawStartTs) / 1000) : 0;
       
       // Strict same-day isolation in backend telemetry: never count prior day's accumulated duration!
       let todayTaskBase = 0;
@@ -1323,8 +1328,6 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         todayTaskBase = baseVal;
       } else if (matchedTask.sessionDate === today && matchedTask.todayWorkSeconds !== undefined && Number(matchedTask.todayWorkSeconds) > 0) {
         todayTaskBase = Number(matchedTask.todayBaseSecs ?? matchedTask.todayWorkSeconds);
-      } else if (matchedTask.startDate === today || String(matchedTask.createdAt || '').startsWith(today)) {
-        todayTaskBase = Number(matchedTask.todayWorkSeconds || 0);
       } else {
         todayTaskBase = 0;
       }
@@ -1348,9 +1351,13 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         timerRunning: isRunning
       };
     } else if (r.activeTask && isClockedIn) {
-      const isRunning = Boolean(r.activeTask.timerRunning !== false && r.activeTask.startedAt && !isOnBreak);
-      const taskStart = isRunning ? Number(r.activeTask.startedAt) : null;
-      const elapsedTask = isRunning ? Math.max(0, Math.floor((now - taskStart) / 1000)) : 0;
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
+      const todayMidnightMs = todayMidnight.getTime();
+      const rawStartTs = Number(r.activeTask.startedAt) || 0;
+      const isRunning = Boolean(r.activeTask.timerRunning !== false && rawStartTs >= todayMidnightMs && rawStartTs <= now && !isOnBreak);
+      const taskStart = isRunning ? rawStartTs : null;
+      const elapsedTask = isRunning ? Math.floor((now - rawStartTs) / 1000) : 0;
       let todayTaskBase = 0;
       if (r.activeTask.dailySessions && typeof r.activeTask.dailySessions === 'object' && r.activeTask.dailySessions[today] !== undefined) {
         let baseVal = Number(r.activeTask.dailySessions[today]) || 0;
@@ -1363,8 +1370,6 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         todayTaskBase = baseVal;
       } else if (r.activeTask.sessionDate === today) {
         todayTaskBase = Math.max(Number(r.activeTask.todayBaseSecs ?? r.activeTask.todayWorkSeconds ?? 0), 0);
-      } else if (r.activeTask.startDate === today || String(r.activeTask.createdAt || '').startsWith(today)) {
-        todayTaskBase = Number(r.activeTask.todayWorkSeconds || 0);
       } else {
         todayTaskBase = 0;
       }

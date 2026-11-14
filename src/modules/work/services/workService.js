@@ -337,33 +337,34 @@ export const workService = {
 
                 const effectiveAccum = Math.max(localAccum, remoteAccum);
                 const todayStr = getLocalDateString();
-                const localToday = Math.max(
-                  Number(local.dailySessions?.[todayStr] || 0),
-                  Number(local.todayWorkSeconds || 0),
-                  (local.sessionDate === todayStr ? Number(local.timerSeconds || 0) : 0),
-                  ((local.startDate === todayStr || String(local.createdAt || '').startsWith(todayStr)) ? Number(local.timerSeconds || 0) : 0)
-                );
-                const remoteToday = Math.max(
-                  Number(rt.dailySessions?.[todayStr] || 0),
-                  Number(rt.todayWorkSeconds || 0),
-                  (rt.sessionDate === todayStr ? Number(rt.timerSeconds || 0) : 0),
-                  ((rt.startDate === todayStr || String(rt.createdAt || '').startsWith(todayStr)) ? Number(rt.timerSeconds || 0) : 0)
-                );
+                const localToday = (local.dailySessions && Number(local.dailySessions[todayStr]) > 0)
+                  ? Number(local.dailySessions[todayStr])
+                  : (local.sessionDate === todayStr ? Number(local.todayWorkSeconds || 0) : 0);
+                const remoteToday = (rt.dailySessions && Number(rt.dailySessions[todayStr]) > 0)
+                  ? Number(rt.dailySessions[todayStr])
+                  : (rt.sessionDate === todayStr ? Number(rt.todayWorkSeconds || 0) : 0);
                 const effectiveTodaySecs = Math.min(Math.max(localToday, remoteToday), effectiveAccum || Math.max(localToday, remoteToday));
                 const maxHours = Math.max(localHoursLogged, remoteHoursLogged, +(effectiveAccum / 3600).toFixed(2));
+
+                const mergedDailySessions = { ...(rt.dailySessions || {}), ...(local.dailySessions || {}) };
+                if (effectiveTodaySecs > 0) {
+                  mergedDailySessions[todayStr] = effectiveTodaySecs;
+                } else if (mergedDailySessions[todayStr] !== undefined && effectiveTodaySecs === 0) {
+                  delete mergedDailySessions[todayStr];
+                }
 
                 return {
                   ...local,
                   ...rt,
                   timerRunning: effectiveRunning,
                   startedAt: effectiveStartedAt,
-                  timerSeconds: effectiveTodaySecs,
+                  timerSeconds: effectiveTodaySecs > 0 ? effectiveTodaySecs : effectiveAccum,
                   accumulatedSeconds: effectiveAccum,
                   todayWorkSeconds: effectiveTodaySecs,
-                  dailySessions: { ...(rt.dailySessions || {}), ...(local.dailySessions || {}), [todayStr]: effectiveTodaySecs },
+                  dailySessions: mergedDailySessions,
                   hoursLogged: maxHours,
                   hoursLoggedText: maxHours > 0 ? (local.hoursLoggedText || `${maxHours}h`) : (local.hoursLoggedText || rt.hoursLoggedText || '0s'),
-                  sessionDate: rt.sessionDate || local.sessionDate,
+                  sessionDate: (effectiveTodaySecs > 0) ? todayStr : (rt.sessionDate || local.sessionDate),
                   status: (rt.status === 'completed' || !!rt.completedAt) ? 'completed' : (local.status || rt.status)
                 };
               }

@@ -191,12 +191,16 @@ export const TimerProvider = ({ children }) => {
         const at = JSON.parse(rawActiveTimer);
         if (at && (at.date === today || at.sessionDate === today)) {
           // Strictly take today's session seconds, NOT all-time lifetime accumulatedSeconds!
-          let atSecs = Number(at.todayWorkSeconds) || Number(at.dailySessions?.[today]) || 0;
+          let atSecs = (at.dailySessions && Number(at.dailySessions[today]) > 0)
+            ? Number(at.dailySessions[today])
+            : (at.sessionDate === today ? Number(at.todayWorkSeconds || 0) : 0);
           if (at.timerRunning && at.startedAt) {
+            const startTs = Number(at.startedAt) || 0;
             const todayMidnight = new Date();
             todayMidnight.setHours(0, 0, 0, 0);
-            const effStart = Math.max(Number(at.startedAt), todayMidnight.getTime());
-            atSecs += Math.max(0, Math.floor((Date.now() - effStart) / 1000));
+            if (startTs >= todayMidnight.getTime() && startTs <= Date.now()) {
+              atSecs += Math.floor((Date.now() - startTs) / 1000);
+            }
           }
           const loggedForAt = userTodayTs
             .filter(ts => String(ts.taskId) === String(at.taskId) || (at.taskCode && ts.taskCode === at.taskCode) || (at.title && ts.taskTitle === at.title))

@@ -66,13 +66,15 @@ export const sanitizeRunawayTimers = () => {
             if (parsed) {
               const startedAtMs = parsed.startedAt ? Number(parsed.startedAt) : null;
               const isStartedBeforeToday = startedAtMs && startedAtMs < todayMidnightMs;
-              const isDifferentDate = parsed.date && parsed.date !== today;
+              const isDifferentDate = (parsed.date && parsed.date !== today) || (parsed.sessionDate && parsed.sessionDate !== today);
 
               if (isStartedBeforeToday || isDifferentDate) {
                 parsed.timerRunning = false;
                 parsed.startedAt = null;
                 if (isDifferentDate) {
                   parsed.todayWorkSeconds = 0;
+                  parsed.todayBaseSecs = 0;
+                  parsed.timerSeconds = 0;
                   parsed.sessionDate = today;
                   parsed.date = today;
                 }
@@ -84,7 +86,7 @@ export const sanitizeRunawayTimers = () => {
       }
     }
 
-    // 2. Sanitize tasks collection in localStorage
+    // 2. Sanitize tasks collection in localStorage (both running and paused tasks across days)
     try {
       const tasksRaw = localStorage.getItem(KEYS.TASKS);
       if (tasksRaw) {
@@ -96,19 +98,35 @@ export const sanitizeRunawayTimers = () => {
             const isStartedBeforeToday = startedAtMs && startedAtMs < todayMidnightMs;
             const isDifferentDate = t.sessionDate && t.sessionDate !== today;
 
+            let updated = { ...t };
+            let changed = false;
+
+            // Stop timer if started before today
             if (t.timerRunning && (isStartedBeforeToday || isDifferentDate)) {
-              tasksChanged = true;
-              // Do NOT reset accumulatedSeconds - it holds total all-time seconds
-              // but DO reset session-scoped fields so today starts fresh
-              return {
-                ...t,
-                timerRunning: false,
-                startedAt: null,
-                // todayWorkSeconds reset to 0 for the new day (dailySessions preserves per-day truth)
-                todayWorkSeconds: isDifferentDate ? 0 : (t.todayWorkSeconds || 0)
-              };
+              updated.timerRunning = false;
+              updated.startedAt = null;
+              changed = true;
             }
-            return t;
+
+            // If task was worked on a previous date, seal it into dailySessions and reset today fields
+            if (isDifferentDate) {
+              const prevDate = t.sessionDate;
+              const prevSecs = Number(t.todayWorkSeconds || 0);
+              const ds = { ...(t.dailySessions && typeof t.dailySessions === 'object' ? t.dailySessions : {}) };
+              if (prevSecs > 0 && (!ds[prevDate] || ds[prevDate] < prevSecs)) {
+                ds[prevDate] = prevSecs;
+              }
+              // If today's session has no legitimate work yet, todayWorkSeconds starts strictly at 0
+              const todaySecs = Number(ds[today] || 0);
+              updated.dailySessions = ds;
+              updated.todayWorkSeconds = todaySecs;
+              updated.todayBaseSecs = todaySecs;
+              updated.sessionDate = today;
+              changed = true;
+            }
+
+            if (changed) tasksChanged = true;
+            return updated;
           });
           if (tasksChanged) {
             localStorage.setItem(KEYS.TASKS, JSON.stringify(cleanedTasks));
@@ -406,7 +424,7 @@ export const CANONICAL_FALLBACK_TASKS = [
     timerSeconds: 2697,
     startedAt: null,
     accumulatedSeconds: 2697,
-    todayWorkSeconds: 2697,
+    todayWorkSeconds: 0,
     sessionDate: "2026-11-12",
     dailySessions: { "2026-11-12": 2697 }
   },

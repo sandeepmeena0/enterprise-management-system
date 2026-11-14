@@ -32,10 +32,10 @@ export const ActiveTaskTimerCard = ({
 }) => {
   const effectiveTodayStr = todayStr || new Date().toISOString().split('T')[0];
   const activeTaskTodaySecs = displayActiveTask ? (
-    displayActiveTask.sessionDate === effectiveTodayStr
-      ? Number(displayActiveTask.timerSeconds ?? displayActiveTask.todayWorkSeconds ?? 0)
-      : (displayActiveTask.dailySessions && displayActiveTask.dailySessions[effectiveTodayStr] !== undefined
-          ? Number(displayActiveTask.dailySessions[effectiveTodayStr])
+    (displayActiveTask.dailySessions && displayActiveTask.dailySessions[effectiveTodayStr] !== undefined)
+      ? Number(displayActiveTask.dailySessions[effectiveTodayStr])
+      : (displayActiveTask.sessionDate === effectiveTodayStr
+          ? Number(displayActiveTask.todayWorkSeconds !== undefined ? displayActiveTask.todayWorkSeconds : (displayActiveTask.timerRunning ? displayActiveTask.timerSeconds : 0))
           : 0)
   ) : 0;
 

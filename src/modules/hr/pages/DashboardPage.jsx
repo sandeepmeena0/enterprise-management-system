@@ -744,7 +744,10 @@ export const DashboardPage = () => {
     } else if (telem?.activeTask) {
       candidateTask = telem.activeTask;
     } else {
-      candidateTask = empTasks.find(t => (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.timerSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) && !isTaskActuallyCompleted(t)) || null;
+      candidateTask = empTasks.find(t => (
+        (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) ||
+        Boolean(t.dailySessions?.[todayStr] && Number(t.dailySessions[todayStr]) > 0)
+      ) && !isTaskActuallyCompleted(t)) || null;
     }
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave && !isTaskActuallyCompleted(candidateTask)) {
@@ -775,8 +778,6 @@ export const DashboardPage = () => {
         todayTaskBase = Math.max(Number(candidateTask.todayBaseSecs), 0);
       } else if (!isTimerRunning && candidateTask.sessionDate === todayStr) {
         todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), 0);
-      } else if (!isTimerRunning && (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr))) {
-        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0), 0);
       } else {
         todayTaskBase = 0;
       }
@@ -1532,12 +1533,10 @@ export const DashboardPage = () => {
       task = myPendingTasks.find(t => !t.snoozed && !isTaskActuallyCompleted(t)) || myTasks.find(t => !isTaskActuallyCompleted(t)) || null;
     }
 
-    const resolvedTodaySecs = task ? Math.max(
-      Number(task.dailySessions?.[todayStr] || 0),
-      Number(task.todayWorkSeconds || 0),
-      (task.sessionDate === todayStr ? Number(task.timerSeconds || 0) : 0),
-      ((task.startDate === todayStr || String(task.createdAt || '').startsWith(todayStr)) ? Number(task.timerSeconds || 0) : 0),
-      Number(task.timerSeconds || 0)
+    const resolvedTodaySecs = task ? (
+      (task.dailySessions && Number(task.dailySessions[todayStr]) > 0)
+        ? Number(task.dailySessions[todayStr])
+        : (task.sessionDate === todayStr ? Number(task.todayWorkSeconds || 0) : 0)
     ) : 0;
 
     if (task && displayedHadClockedOut) {
@@ -1647,8 +1646,7 @@ export const DashboardPage = () => {
     const isRunningNow = Boolean(t.timerRunning) || Boolean(activeRunningTask && (String(activeRunningTask._id || activeRunningTask.id || activeRunningTask.taskId) === tId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode)));
     const isWorkedToday = isRunningNow ||
       (t.dailySessions && Number(t.dailySessions[todayStr]) > 0) ||
-      (t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0) ||
-      ((t.startDate === todayStr || String(t.createdAt || '').startsWith(todayStr)) && Number(t.todayWorkSeconds ?? t.timerSeconds) > 0);
+      (t.sessionDate === todayStr && Number(t.todayWorkSeconds) > 0);
     if (!isWorkedToday) return acc;
 
     const activeTaskObj = isRunningNow

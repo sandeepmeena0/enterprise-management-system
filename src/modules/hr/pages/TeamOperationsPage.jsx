@@ -535,7 +535,10 @@ export const TeamOperationsPage = () => {
     } else if (telem?.activeTask) {
       candidateTask = telem.activeTask;
     } else {
-      candidateTask = empTasks.find(t => (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.timerSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) && t.status !== 'completed') || null;
+      candidateTask = empTasks.find(t => (
+        (t.sessionDate === todayStr && (Number(t.todayWorkSeconds || 0) > 0 || Number(t.dailySessions?.[todayStr] || 0) > 0)) ||
+        Boolean(t.dailySessions?.[todayStr] && Number(t.dailySessions[todayStr]) > 0)
+      ) && t.status !== 'completed') || null;
     }
 
     if (candidateTask && isClockedIn && !isClockedOut && !isOnLeave) {
@@ -566,8 +569,6 @@ export const TeamOperationsPage = () => {
         todayTaskBase = Math.max(Number(candidateTask.todayBaseSecs), 0);
       } else if (!isTimerRunning && candidateTask.sessionDate === todayStr) {
         todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || 0), 0);
-      } else if (!isTimerRunning && (candidateTask.startDate === todayStr || String(candidateTask.createdAt || '').startsWith(todayStr))) {
-        todayTaskBase = Math.max(Number(candidateTask.todayWorkSeconds || candidateTask.timerSeconds || 0), 0);
       } else {
         todayTaskBase = 0;
       }
@@ -961,8 +962,6 @@ export const TeamOperationsPage = () => {
         existingTodaySecs = Math.max(0, Number(targetTask.todayBaseSecs) || 0);
       } else if (targetTask.sessionDate === todayStr && !targetTask.timerRunning) {
         existingTodaySecs = Math.max(0, Number(targetTask.todayWorkSeconds) || 0);
-      } else if ((targetTask.startDate === todayStr || String(targetTask.createdAt || '').startsWith(todayStr)) && !targetTask.timerRunning) {
-        existingTodaySecs = Math.max(0, Number(targetTask.todayWorkSeconds || targetTask.timerSeconds || 0));
       }
       const existingAccumSecs = Math.max(Number(targetTask.accumulatedSeconds || 0), Number(targetTask.timerSeconds || 0), existingTodaySecs);
 
