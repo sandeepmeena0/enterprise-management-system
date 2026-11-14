@@ -8,6 +8,8 @@ import { ShieldCheck, Mail, Smartphone, KeyRound, Laptop, LogOut, X, QrCode } fr
 import { useHR } from '../../hr/context/HRContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { useToast } from '../../../shared/context/ToastContext';
+import { API_BASE } from '../../../shared/config/apiConfig';
+import { getAuthHeaders } from '../../../shared/services/apiClient';
 
 export const SecuritySettingsTab = () => {
   const { currentUser, updateEmployee } = useHR();
@@ -79,15 +81,8 @@ export const SecuritySettingsTab = () => {
       return;
     }
 
-    // Security Verification: If a password exists on user, verify it
-    const actualPassword = currentUser?.password || localStorage.getItem('ems_master_password');
-    if (actualPassword && currentPassword !== actualPassword) {
-      addToast('🔒 Security Verification Failed: Current password incorrect.', 'error');
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      addToast('New password must be at least 8 characters', 'error');
+    if (newPassword.length < 6) {
+      addToast('New password must be at least 6 characters', 'error');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -97,63 +92,55 @@ export const SecuritySettingsTab = () => {
 
     setPasswordUpdating(true);
     try {
-      const oldPass = currentUser?.password || localStorage.getItem('ems_master_password') || currentPassword;
-      const historyEntry = {
-        password: oldPass,
-        changedAt: new Date().toISOString(),
-        changedBy: `${currentUser?.name || 'User'} (Self-Service)`
-      };
-      const prevHist = Array.isArray(currentUser?.passwordHistory) ? currentUser.passwordHistory : [];
-      const updatedHistory = [historyEntry, ...prevHist];
+      const res = await fetch(`${API_BASE}/auth/change-password`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          currentPassword: currentPassword.trim(),
+          newPassword: newPassword.trim()
+        })
+      });
 
-      if (currentUser?._id && updateEmployee) {
-        await updateEmployee(currentUser._id, {
-          password: newPassword,
-          passwordHistory: updatedHistory,
-          passwordUpdatedAt: new Date().toISOString()
-        });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(json.message || 'Failed to update password. Please check your credentials.', 'error');
+        return;
       }
-
-      // Update active auth session
-      const savedAuth = localStorage.getItem('ems_auth_session');
-      if (savedAuth) {
-        const parsed = JSON.parse(savedAuth);
-        parsed.password = newPassword;
-        parsed.passwordHistory = updatedHistory;
-        parsed.passwordUpdatedAt = new Date().toISOString();
-        localStorage.setItem('ems_auth_session', JSON.stringify(parsed));
-      }
-      localStorage.setItem('ems_master_password', newPassword);
-
-      // Audit and backup trail
-      try {
-        const logs = JSON.parse(localStorage.getItem('ems_credential_backup_log') || '[]');
-        logs.unshift({
-          action: 'PASSWORD_UPDATED',
-          userId: currentUser?._id,
-          employeeCode: currentUser?.employeeCode || 'ADM-001',
-          email: currentUser?.email || 'admin@inforag.com',
-          name: currentUser?.name || 'Administrator',
-          timestamp: new Date().toISOString(),
-          note: 'Password updated by user'
-        });
-        localStorage.setItem('ems_credential_backup_log', JSON.stringify(logs.slice(0, 50)));
-      } catch {}
 
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      addToast('🔒 Password updated successfully! Your account is secured with your new password.', 'success');
+      addToast('🔒 Password changed successfully! Please sign in with your new password.', 'success');
+
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('ems_auth_invalidation', {
+            detail: { code: 'PASSWORD_CHANGED', message: 'Password changed successfully. Please sign in with your new password.' }
+          })
+        );
+      }, 1500);
     } catch (err) {
-      addToast('Failed to update password', 'error');
+      addToast(err.message || 'Network error occurred while changing password.', 'error');
     } finally {
       setPasswordUpdating(false);
     }
   };
 
-  const handleLogoutOtherDevices = () => {
-    setSessions(prev => prev.filter(s => s.isCurrent));
-    addToast('Logged out from all other active devices!', 'success');
+  const handleLogoutOtherDevices = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/logout-all`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' })
+      });
+      if (res.ok) {
+        setSessions(prev => prev.filter(s => s.isCurrent));
+        addToast('Logged out from all other active devices!', 'success');
+      } else {
+        addToast('Failed to revoke other sessions. Please try again.', 'error');
+      }
+    } catch (err) {
+      addToast('Network error while revoking sessions.', 'error');
+    }
   };
 
   return (

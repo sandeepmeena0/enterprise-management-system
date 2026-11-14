@@ -22,6 +22,12 @@ exports.getCompanySettings = async (req, res) => {
 };
 
 exports.updateCompanySettings = async (req, res) => {
+  const u = req.user;
+  const canUpdate = u && Boolean(u.isAdmin || u.systemRole === 'admin' || u.isSuperAdmin || u.permissions?.allAccess);
+  if (!canUpdate) {
+    return res.status(403).json({ success: false, message: 'Access denied: Only Administrators can modify company settings.' });
+  }
+
   try {
     const data = req.body;
     let settings = await CompanySettings.findOne();

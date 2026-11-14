@@ -14,10 +14,12 @@ const { setUserAuthCache, invalidateUserAuthCache } = require('../../../shared/c
 const { verifyPassword, hashPassword } = require('../../../shared/utils/passwordUtils');
 const { disconnectUserSockets } = require('../../../shared/socket/socketManager');
 
-// Rate limiting map for forgot-password abuse prevention: identifierKey -> { count, resetTime }
-const forgotPasswordRateLimits = new Map();
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_REQUESTS_PER_WINDOW = 5;
+// Rate limiting maps for forgot-password abuse prevention: Dual-Bucket (IP-level + Identifier-level)
+const forgotPasswordIpLimits = new Map();
+const forgotPasswordIdentifierLimits = new Map();
+const IP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_REQUESTS_PER_IP = 15;
+const MAX_REQUESTS_PER_IDENTIFIER = 5;
 
 // Helper to sign JWT
 const signToken = (employee) => {
@@ -181,6 +183,9 @@ exports.getMe = asyncHandler(async (req, res) => {
 exports.logout = asyncHandler(async (req, res) => {
   if (req.user?.id) {
     invalidateUserAuthCache(req.user.id);
+    try {
+      disconnectUserSockets(req.user.id);
+    } catch (_) {}
   }
   res.status(200).json({
     success: true,
@@ -370,27 +375,46 @@ exports.adminResetPassword = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/forgot-password
 exports.forgotPassword = asyncHandler(async (req, res) => {
   const identifier = String(req.body.identifier || req.body.email || req.body.employeeCode || '').trim();
-  const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+  const forwarded = req.headers['x-forwarded-for'];
+  const clientIp = (typeof forwarded === 'string' && forwarded.trim())
+    ? forwarded.split(',')[0].trim()
+    : (req.ip || req.socket?.remoteAddress || 'unknown');
 
   if (!identifier) {
     return res.status(400).json({ success: false, message: 'Please provide your registered Email or Employee ID.' });
   }
 
-  // Rate Limiting Check (5 requests per 15 minutes per IP or identifier)
-  const rateLimitKey = `${clientIp}:${identifier.toLowerCase()}`;
   const now = Date.now();
-  const limitEntry = forgotPasswordRateLimits.get(rateLimitKey);
 
-  if (limitEntry && now < limitEntry.resetTime) {
-    if (limitEntry.count >= MAX_REQUESTS_PER_WINDOW) {
+  // 1. IP-level Rate Limit Check (Prevents identifier cycling attacks from a single IP)
+  const ipKey = `ip:${clientIp}`;
+  const ipLimitEntry = forgotPasswordIpLimits.get(ipKey);
+  if (ipLimitEntry && now < ipLimitEntry.resetTime) {
+    if (ipLimitEntry.count >= MAX_REQUESTS_PER_IP) {
       return res.status(429).json({
         success: false,
-        message: 'Too many password reset requests. Please try again in 15 minutes.'
+        message: 'Too many password reset requests from this network. Please try again in 15 minutes.'
       });
     }
-    limitEntry.count += 1;
+    ipLimitEntry.count += 1;
   } else {
-    forgotPasswordRateLimits.set(rateLimitKey, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    forgotPasswordIpLimits.set(ipKey, { count: 1, resetTime: now + IP_RATE_LIMIT_WINDOW_MS });
+  }
+
+  // 2. Identifier-level Rate Limit Check (Prevents targeted DoS on a specific account)
+  const cleanId = identifier.toLowerCase();
+  const idKey = `id:${cleanId}`;
+  const idLimitEntry = forgotPasswordIdentifierLimits.get(idKey);
+  if (idLimitEntry && now < idLimitEntry.resetTime) {
+    if (idLimitEntry.count >= MAX_REQUESTS_PER_IDENTIFIER) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many password reset requests for this account. Please try again in 15 minutes.'
+      });
+    }
+    idLimitEntry.count += 1;
+  } else {
+    forgotPasswordIdentifierLimits.set(idKey, { count: 1, resetTime: now + IP_RATE_LIMIT_WINDOW_MS });
   }
 
   // Standardized generic response text (Never reveal account existence)
@@ -400,7 +424,6 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
   };
 
   try {
-    const cleanId = identifier.toLowerCase();
     const employee = await Employee.findOne({
       $or: [
         { email: cleanId },

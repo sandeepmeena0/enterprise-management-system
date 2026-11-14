@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getTickets,
+  getTicketById,
   createTicket,
   updateTicket,
   addComment,
@@ -14,6 +15,7 @@ router.route('/')
   .post(authenticateUser, createTicket);
 
 router.route('/:id')
+  .get(getTicketById)
   .put(authenticateUser, updateTicket)
   .delete(authenticateUser, deleteTicket);
 

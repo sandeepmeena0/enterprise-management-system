@@ -341,21 +341,14 @@ export const hrService = {
         return newRecord;
       }
 
-      let updatedHistory = updateData.passwordHistory || employees[index].passwordHistory || [];
-      if (updateData.password && employees[index].password && employees[index].password !== updateData.password) {
-        const historyEntry = {
-          password: employees[index].password,
-          changedAt: new Date().toISOString(),
-          changedBy: 'User/Admin'
-        };
-        updatedHistory = [historyEntry, ...(Array.isArray(updatedHistory) ? updatedHistory : [])];
-      }
+      // Sanitize payload before saving to localStorage: do not persist plaintext password
+      const cleanPayload = { ...updateData };
+      delete cleanPayload.password;
+      delete cleanPayload.passwordHistory;
 
       employees[index] = {
         ...employees[index],
-        ...updateData,
-        passwordHistory: updatedHistory,
-        passwordUpdatedAt: updateData.password ? new Date().toISOString() : employees[index].passwordUpdatedAt,
+        ...cleanPayload,
         updatedAt: new Date().toISOString()
       };
       saveCollection(KEYS.EMPLOYEES, employees);

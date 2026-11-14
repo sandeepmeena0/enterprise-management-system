@@ -59,6 +59,12 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 
 // ─── POST /api/employees/switch/:id ──────────────────────────────────────────
 const switchCurrentUser = asyncHandler(async (req, res) => {
+  const u = req.user;
+  const canSwitch = u && Boolean(u.isAdmin || u.systemRole === 'admin' || u.isSuperAdmin || u.permissions?.allAccess);
+  if (!canSwitch) {
+    return res.status(403).json({ success: false, message: 'Access denied: Only Administrators can switch user perspective.' });
+  }
+
   const { id } = req.params;
   let target = null;
   if (id === 'admin') {
@@ -138,6 +144,19 @@ const createEmployee = asyncHandler(async (req, res) => {
     delete payload._id;
   }
 
+  // If creator is not Admin, prevent privilege escalation
+  const isCallerAdmin = u && Boolean(u.isAdmin || u.systemRole === 'admin' || u.isSuperAdmin || u.permissions?.allAccess);
+  if (!isCallerAdmin) {
+    payload.isAdmin = false;
+    payload.isDelegatedAdmin = false;
+    payload.isSuperAdmin = false;
+    payload.systemRole = payload.systemRole === 'admin' ? 'team_member' : (payload.systemRole || 'team_member');
+    if (payload.permissions) {
+      delete payload.permissions.allAccess;
+      delete payload.permissions.isDelegatedAdmin;
+    }
+  }
+
   // Cryptographically hash newly created employee password with bcrypt
   const rawPass = (payload.password || 'emp123').trim();
   payload.password = await hashPassword(rawPass);
@@ -161,142 +180,189 @@ const createEmployee = asyncHandler(async (req, res) => {
 
 // ─── PUT /api/employees/:id ───────────────────────────────────────────────────
 const updateEmployee = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const payload = { ...req.body };
-  delete payload._id; // Prevent modifying immutable _id
+  const u = req.user;
+  if (!u) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
 
-  // Multi-key query: id as ObjectId, id as employeeCode (with hyphen/underscore conversion), id as email, or payload identifiers
+  // Requirement D: Reject password / passwordHistory on general employee update endpoint
+  if (req.body.password !== undefined || req.body.passwordHistory !== undefined) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password modification is not permitted through this endpoint. Please use /api/auth/change-password for self-service or /api/auth/admin-reset-password for administrative reset.'
+    });
+  }
+
+  const { id } = req.params;
+  const cleanId = String(id).trim();
+
+  // Multi-key query: id as ObjectId, id as employeeCode, or id as email
   const orConditions = [];
   if (mongoose.Types.ObjectId.isValid(id)) {
     orConditions.push({ _id: id });
   }
-  const cleanId = String(id).trim();
   orConditions.push({ employeeCode: cleanId.toUpperCase() });
   orConditions.push({ employeeCode: cleanId.toUpperCase().replace(/_/g, '-') });
   orConditions.push({ employeeCode: cleanId.toUpperCase().replace(/-/g, '_') });
   orConditions.push({ email: cleanId.toLowerCase() });
-
-  if (payload.employeeCode) {
-    const cleanCode = String(payload.employeeCode).trim().toUpperCase();
-    orConditions.push({ employeeCode: cleanCode });
-    orConditions.push({ employeeCode: cleanCode.replace(/_/g, '-') });
-    orConditions.push({ employeeCode: cleanCode.replace(/-/g, '_') });
-  }
-  if (payload.email) {
-    orConditions.push({ email: String(payload.email).trim().toLowerCase() });
-  }
-
-  // Explicitly ensure permissions object and delegation flags are preserved
-  if (payload.permissions !== undefined) {
-    payload.permissions = typeof payload.permissions === 'object' ? payload.permissions : {};
-  }
-  if (payload.isDelegatedAdmin !== undefined) {
-    payload.isDelegatedAdmin = Boolean(payload.isDelegatedAdmin);
-  }
-  if (payload.delegationExpiresAt !== undefined) {
-    payload.delegationExpiresAt = payload.delegationExpiresAt || null;
-  }
 
   const existingEmployee = await Employee.findOne({ $or: orConditions });
   if (!existingEmployee) {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
 
-  const isPrimaryEmp = Boolean(
+  const empIdStr = existingEmployee._id.toString();
+  const isTargetMasterAdmin = Boolean(
     existingEmployee.employeeCode === 'ADM-001' ||
     existingEmployee.isSuperAdmin ||
     existingEmployee.email === 'admin@inforag.com' ||
     existingEmployee.email === 'avinash@inforag.com'
   );
+  const isCallerMasterAdmin = Boolean(
+    u.employeeCode === 'ADM-001' ||
+    u.isSuperAdmin ||
+    u.email === 'admin@inforag.com' ||
+    u.email === 'avinash@inforag.com'
+  );
+  const isCallerAdmin = Boolean(
+    isCallerMasterAdmin ||
+    u.isAdmin ||
+    u.systemRole === 'admin' ||
+    u.permissions?.allAccess
+  );
+  const isCallerHR = Boolean(
+    !isCallerAdmin &&
+    (u.systemRole === 'hr' || u.department === 'Human Resources' || u.permissions?.manageEmployees)
+  );
+  const isSelf = Boolean(
+    String(u._id) === empIdStr ||
+    String(u.id) === empIdStr ||
+    (u.employeeCode && existingEmployee.employeeCode && u.employeeCode.toUpperCase() === existingEmployee.employeeCode.toUpperCase())
+  );
 
-  const getBaseRoleHelper = (roleStr, deptStr) => {
-    const r = (roleStr || '').toLowerCase();
-    const d = (deptStr || '').toLowerCase();
-    if (r.includes('hr') || r.includes('human resource') || d.includes('human resource')) return 'hr';
-    if (r.includes('lead') || r.includes('manager') || r.includes('scrum master')) return 'team_leader';
-    return 'team_member';
-  };
+  // Access Authorization Matrix
+  if (!isCallerAdmin && !isCallerHR && !isSelf) {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: You are not authorized to modify another employee profile.'
+    });
+  }
 
+  if (isTargetMasterAdmin && !isCallerMasterAdmin) {
+    return res.status(403).json({
+      success: false,
+      message: 'Security Policy: Master Administrator account cannot be modified by other users.'
+    });
+  }
+
+  // Construct Explicit Allowlisted Update Fields
+  const updateFields = {};
   let shouldRevokeTokens = false;
   let shouldDisconnectSockets = false;
   let permissionChanged = false;
 
-  // Protect primary admin from losing admin rights
-  if (isPrimaryEmp) {
-    payload.isAdmin = true;
-    payload.systemRole = 'admin';
-  } else if (payload.isDelegatedAdmin === false || (payload.permissions && !payload.permissions.allAccess && !payload.isDelegatedAdmin)) {
-    // Clean revocation: non-primary employee must lose admin privileges
-    payload.isAdmin = false;
-    payload.isDelegatedAdmin = false;
-    payload.delegationExpiresAt = null;
-    if (payload.permissions) {
-      delete payload.permissions.allAccess;
-      delete payload.permissions.isDelegatedAdmin;
-      delete payload.permissions.delegationExpiresAt;
+  const b = req.body;
+
+  if (isSelf && !isCallerAdmin && !isCallerHR) {
+    // ── Self-Profile Update (Strict non-privileged fields only) ──
+    if (b.phone !== undefined) updateFields.phone = String(b.phone).trim();
+    if (b.phoneNumber !== undefined) updateFields.phoneNumber = String(b.phoneNumber).trim();
+    if (b.emergencyContact !== undefined) updateFields.emergencyContact = b.emergencyContact;
+    if (b.address !== undefined) updateFields.address = b.address;
+    if (b.avatar !== undefined) updateFields.avatar = b.avatar;
+    if (b.dob !== undefined) updateFields.dob = b.dob;
+    if (b.skills !== undefined) updateFields.skills = b.skills;
+    if (b.bio !== undefined) updateFields.bio = b.bio;
+  } else if (isCallerHR) {
+    // ── HR modifying employee ──
+    if (b.name !== undefined) updateFields.name = String(b.name).trim();
+    if (b.phone !== undefined) updateFields.phone = String(b.phone).trim();
+    if (b.phoneNumber !== undefined) updateFields.phoneNumber = String(b.phoneNumber).trim();
+    if (b.emergencyContact !== undefined) updateFields.emergencyContact = b.emergencyContact;
+    if (b.address !== undefined) updateFields.address = b.address;
+    if (b.avatar !== undefined) updateFields.avatar = b.avatar;
+    if (b.dob !== undefined) updateFields.dob = b.dob;
+    if (b.department !== undefined) updateFields.department = String(b.department).trim();
+    if (b.designation !== undefined) updateFields.designation = String(b.designation).trim();
+    if (b.role !== undefined) updateFields.role = String(b.role).trim();
+    if (b.skills !== undefined) updateFields.skills = b.skills;
+    if (b.bio !== undefined) updateFields.bio = b.bio;
+    if (b.joiningDate !== undefined) updateFields.joiningDate = b.joiningDate;
+    if (b.leaveBalance !== undefined && typeof b.leaveBalance === 'object') updateFields.leaveBalance = b.leaveBalance;
+    if (b.salary !== undefined) updateFields.salary = b.salary;
+    if (b.workShift !== undefined) updateFields.workShift = b.workShift;
+
+    // Status modification by HR
+    if (b.status && b.status !== existingEmployee.status) {
+      updateFields.status = b.status;
+      if (b.status !== 'active') {
+        shouldRevokeTokens = true;
+        shouldDisconnectSockets = true;
+      }
     }
-    const baselineRole = existingEmployee.baseRole || getBaseRoleHelper(payload.role || existingEmployee.role, payload.department || existingEmployee.department);
-    if (!payload.systemRole || payload.systemRole === 'admin') {
-      payload.systemRole = (existingEmployee.systemRole && existingEmployee.systemRole !== 'admin') ? existingEmployee.systemRole : baselineRole;
+  } else if (isCallerAdmin) {
+    // ── Admin modifying employee ──
+    const allowedKeys = [
+      'name', 'phone', 'phoneNumber', 'emergencyContact', 'address', 'avatar',
+      'dob', 'department', 'designation', 'role', 'skills', 'bio',
+      'joiningDate', 'leaveBalance', 'salary', 'workShift', 'baseRole', 'notes'
+    ];
+    for (const key of allowedKeys) {
+      if (b[key] !== undefined) updateFields[key] = b[key];
     }
-    permissionChanged = true;
-    if (existingEmployee.isAdmin) {
+
+    if (b.status && b.status !== existingEmployee.status) {
+      updateFields.status = b.status;
+      if (b.status !== 'active') {
+        shouldRevokeTokens = true;
+        shouldDisconnectSockets = true;
+      }
+    }
+
+    // Role / SystemRole changes
+    if (b.systemRole && b.systemRole !== existingEmployee.systemRole) {
+      if (isTargetMasterAdmin) {
+        updateFields.systemRole = 'admin';
+        updateFields.isAdmin = true;
+      } else {
+        updateFields.systemRole = b.systemRole;
+        updateFields.isAdmin = (b.systemRole === 'admin');
+        permissionChanged = true;
+        shouldDisconnectSockets = true;
+      }
+    }
+
+    // Permissions changes
+    if (b.permissions && typeof b.permissions === 'object') {
+      updateFields.permissions = { ...b.permissions };
+      permissionChanged = true;
+      shouldDisconnectSockets = true;
+    }
+
+    // Delegated admin changes
+    if (b.isDelegatedAdmin !== undefined && !isTargetMasterAdmin) {
+      updateFields.isDelegatedAdmin = Boolean(b.isDelegatedAdmin);
+      updateFields.delegationExpiresAt = b.delegationExpiresAt || null;
+      if (b.isDelegatedAdmin) {
+        updateFields.isAdmin = true;
+        updateFields.systemRole = 'admin';
+      }
+      permissionChanged = true;
       shouldDisconnectSockets = true;
     }
   }
 
-  // Account Status Modification (Deactivation / Reactivation)
-  if (payload.status && payload.status !== existingEmployee.status) {
-    if (payload.status !== 'active') {
-      shouldRevokeTokens = true;
-      shouldDisconnectSockets = true;
-    }
-  }
-
-  // Role / Permission change detection
-  if (payload.systemRole && payload.systemRole !== existingEmployee.systemRole) {
-    permissionChanged = true;
-  }
-  if (payload.permissions && typeof payload.permissions === 'object') {
-    permissionChanged = true;
-  }
-
-  // Password Modification (Cryptographically hash and never store plaintext)
-  if (payload.password && typeof payload.password === 'string' && payload.password.trim() && payload.password !== '••••••••') {
-    const rawPass = payload.password.trim();
-    payload.password = await hashPassword(rawPass);
-    payload.passwordUpdatedAt = new Date().toISOString();
-
-    const historyEntry = {
-      changedAt: new Date().toISOString(),
-      changedBy: req.user?.name || req.user?.email || 'User'
-    };
-    const prevHistory = Array.isArray(existingEmployee.passwordHistory)
-      ? existingEmployee.passwordHistory
-      : [];
-    payload.passwordHistory = [historyEntry, ...prevHistory].slice(0, 10);
-
-    // Password change revokes existing active sessions across all devices
-    shouldRevokeTokens = true;
-    shouldDisconnectSockets = true;
-  } else {
-    delete payload.password;
-    if (payload.passwordHistory === undefined && Array.isArray(existingEmployee.passwordHistory)) {
-      payload.passwordHistory = existingEmployee.passwordHistory;
-    }
-  }
-
-  // Increment versions when security metadata changes
+  // Version increments
   if (shouldRevokeTokens) {
-    payload.tokenVersion = (existingEmployee.tokenVersion || 0) + 1;
+    updateFields.tokenVersion = (existingEmployee.tokenVersion || 0) + 1;
   }
   if (permissionChanged) {
-    payload.permissionVersion = (existingEmployee.permissionVersion || 0) + 1;
+    updateFields.permissionVersion = (existingEmployee.permissionVersion || 0) + 1;
   }
 
   const employee = await Employee.findByIdAndUpdate(
     existingEmployee._id,
-    { $set: payload },
+    { $set: updateFields },
     { new: true, runValidators: false }
   ).select('-password -passwordHistory');
 
@@ -304,13 +370,12 @@ const updateEmployee = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
 
-  // Invalidate cache immediately after database update succeeds
-  const empIdStr = existingEmployee._id.toString();
+  // Invalidate cache immediately
   invalidateUserAuthCache(empIdStr);
   if (existingEmployee.employeeCode) invalidateUserAuthCache(existingEmployee.employeeCode);
   if (existingEmployee.email) invalidateUserAuthCache(existingEmployee.email.toLowerCase());
 
-  // Force disconnect sockets if account deactivated or password changed
+  // Force disconnect sockets if security-sensitive changes occurred
   if (shouldDisconnectSockets) {
     disconnectUserSockets(empIdStr);
   }
@@ -409,10 +474,8 @@ const updateEmployeePermissions = asyncHandler(async (req, res) => {
   if (existing.employeeCode) invalidateUserAuthCache(existing.employeeCode);
   if (existing.email) invalidateUserAuthCache(existing.email.toLowerCase());
 
-  // If administrative access was revoked, disconnect sockets so user leaves privileged admin rooms
-  if (!isDelegated && existing.isAdmin && !isPrimary) {
-    disconnectUserSockets(empIdStr);
-  }
+  // Force disconnect all active sockets so employee leaves old role/permission rooms and reconnects with fresh server-side permissions
+  disconnectUserSockets(empIdStr);
 
   res.json({
     success: true,

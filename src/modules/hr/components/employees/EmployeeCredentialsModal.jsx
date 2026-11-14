@@ -34,7 +34,10 @@ export const EmployeeCredentialsModal = ({ isOpen, onClose, employee }) => {
   const loginUrl = `${window.location.origin}/login`;
   const empCode = targetEmp.employeeCode || targetEmp.idNumber || 'EMP-001';
   const email = targetEmp.email || 'employee@inforag.com';
-  const password = targetEmp.password || 'emp123';
+  const isBcrypt = typeof targetEmp.password === 'string' && targetEmp.password.startsWith('$2');
+  const hasPlaintextPassword = typeof targetEmp.password === 'string' && targetEmp.password.length > 0 && !isBcrypt && targetEmp.password !== '••••••••';
+  const displayPassword = hasPlaintextPassword ? targetEmp.password : (targetEmp.initialPassword || null);
+  const password = displayPassword || '••••••••••••';
   const name = targetEmp.name || 'Team Member';
   const role = targetEmp.role || targetEmp.systemRole || 'Team Member';
   const department = targetEmp.department || 'General Operations';
@@ -238,26 +241,26 @@ export const EmployeeCredentialsModal = ({ isOpen, onClose, employee }) => {
                 </div>
               </div>
               <div className="font-mono text-sm text-blue-950 dark:text-blue-100 font-black bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-blue-200 dark:border-blue-800/60 flex items-center justify-between">
-                <span>{showPassword ? password : '••••••••••••'}</span>
+                <span>{displayPassword ? (showPassword ? displayPassword : '••••••••••••') : '•••••••••••• (Encrypted with Bcrypt)'}</span>
                 <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">
-                  Live DB Password
+                  {displayPassword ? 'Onboarding Password' : 'Bcrypt Hash Protected'}
                 </span>
               </div>
             </div>
 
-            {/* Field 5: Super Admin Vault & Historical Passwords Audit */}
+            {/* Field 5: Security Audit Trail & Password Revisions */}
             <div className="p-3.5 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-gradient-to-br from-purple-50/50 to-indigo-50/30 dark:from-purple-950/30 dark:to-indigo-950/20 flex flex-col gap-2.5">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">👑</span>
+                  <span className="text-base">🛡️</span>
                   <div>
                     <div className="text-xs font-black text-purple-950 dark:text-purple-200">
-                      Super Admin Password Vault & Archive
+                      Security Audit Trail & Password Revisions
                     </div>
                     <div className="text-[11px] text-purple-700 dark:text-purple-300">
                       {passwordHistory.length > 0
-                        ? `User has updated password ${passwordHistory.length} time(s). All past and current passwords are permanently archived.`
-                        : 'Initial password active. Whenever employee updates password, past passwords are saved here.'}
+                        ? `User has updated password ${passwordHistory.length} time(s). Revision timestamps and actors are audited below.`
+                        : 'Initial password active. Whenever employee or admin updates credentials, revision audits are logged here.'}
                     </div>
                   </div>
                 </div>
@@ -271,43 +274,27 @@ export const EmployeeCredentialsModal = ({ isOpen, onClose, employee }) => {
               {passwordHistory.length > 0 ? (
                 <div className="flex flex-col gap-1.5 mt-1">
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                    <span>Archived Previous Passwords ({passwordHistory.length}):</span>
-                    <span className="text-[10px] text-slate-500 font-normal">Stored for Super Admin recovery</span>
+                    <span>Audit Log Entries ({passwordHistory.length}):</span>
+                    <span className="text-[10px] text-slate-500 font-normal">Cryptographic audit log</span>
                   </div>
                   <div className="max-h-36 overflow-y-auto flex flex-col gap-1.5 pr-1">
                     {passwordHistory.map((item, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-2 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-900/60 text-xs font-mono shadow-2xs"
+                        className="flex items-center justify-between p-2 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-900/60 text-xs shadow-2xs"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-[9.5px] font-black text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950 px-1.5 py-0.5 rounded">
                             v{passwordHistory.length - idx}
                           </span>
-                          <span className="font-bold text-slate-900 dark:text-slate-100">
-                            {showHistPass[idx] ? item.password : '••••••••••••'}
+                          <span className="font-semibold text-slate-900 dark:text-slate-100 text-xs">
+                            Credential updated {item.changedBy ? `(${item.changedBy})` : ''}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                          <span className="hidden sm:inline font-sans text-[10.5px]">
-                            {item.changedAt ? new Date(item.changedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Previous'}
+                          <span className="font-sans text-[10.5px]">
+                            {item.changedAt ? new Date(item.changedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Recorded'}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowHistPass(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer bg-transparent border-0 p-0.5"
-                            title={showHistPass[idx] ? 'Hide' : 'Show password'}
-                          >
-                            {showHistPass[idx] ? <EyeOff size={13} /> : <Eye size={13} />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(item.password, `Previous Password v${passwordHistory.length - idx}`)}
-                            className="text-purple-600 hover:text-purple-700 dark:text-purple-400 cursor-pointer bg-transparent border-0 p-0.5"
-                            title="Copy previous password"
-                          >
-                            <Copy size={13} />
-                          </button>
                         </div>
                       </div>
                     ))}
@@ -315,7 +302,7 @@ export const EmployeeCredentialsModal = ({ isOpen, onClose, employee }) => {
                 </div>
               ) : (
                 <div className="text-[11px] text-purple-800 dark:text-purple-300 bg-white/70 dark:bg-slate-800/70 p-2 rounded-lg border border-purple-200 dark:border-purple-900/40">
-                  🔒 No previous passwords yet. Current password is the only active password. If employee or admin updates it, the old one will be safely kept in this vault.
+                  🔒 No previous password revisions yet. Active credentials are cryptographically protected via bcrypt.
                 </div>
               )}
             </div>

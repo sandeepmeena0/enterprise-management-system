@@ -28,6 +28,9 @@ mongoose.connection.once('open', () => {
 
 const app = express();
 
+// Enable reverse proxy trust for secure client IP extraction behind Render / Load Balancers
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',

@@ -50,19 +50,38 @@ exports.createNotice = asyncHandler(async (req, res) => {
 // @route   PUT /api/notices/:id
 exports.updateNotice = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const updateData = { ...req.body };
-  if (updateData._id) delete updateData._id;
-
   let notice = null;
   if (mongoose.Types.ObjectId.isValid(id)) {
-    notice = await Notice.findByIdAndUpdate(id, updateData, { new: true, runValidators: false });
+    notice = await Notice.findById(id);
   } else {
-    notice = await Notice.findOneAndUpdate({ noticeCode: id }, updateData, { new: true, runValidators: false });
+    notice = await Notice.findOne({ noticeCode: id });
   }
 
   if (!notice) {
     return res.status(404).json({ success: false, message: 'Notice not found' });
   }
+
+  const u = req.user;
+  if (u) {
+    const isLeader = (u.role || '').toLowerCase().includes('lead') || (u.role || '').toLowerCase().includes('manager');
+    const canUpdate = u.isAdmin || u.systemRole === 'admin' || u.systemRole === 'hr' || u.isDelegatedAdmin || isLeader || u.permissions?.notices || u.permissions?.postNotices || u.permissions?.allAccess;
+    const isCreator =
+      String(notice.createdById) === String(u._id) ||
+      String(notice.createdById) === String(u.id) ||
+      String(notice.createdById) === String(u.employeeCode);
+
+    if (!canUpdate && !isCreator) {
+      return res.status(403).json({ success: false, message: 'Access denied: You do not have permission to modify this notice.' });
+    }
+  }
+
+  const updateData = { ...req.body };
+  delete updateData._id;
+  delete updateData.noticeCode;
+
+  Object.assign(notice, updateData);
+  await notice.save();
+
   res.json({ success: true, data: notice });
 });
 
