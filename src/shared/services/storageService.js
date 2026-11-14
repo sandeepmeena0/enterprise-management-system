@@ -12,6 +12,7 @@
 import { API_BASE } from '../config/apiConfig';
 import { ensureHistoricalData } from '../utils/historicalDataSeeder';
 import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from './realtimeSyncService';
+import { getAuthHeaders } from './apiClient';
 
 export const KEYS = {
   EMPLOYEES: 'hrms_employees',
@@ -253,20 +254,24 @@ export const syncDatabaseToStorage = async () => {
 
     const authHeaders = (() => {
       try {
+        const headers = getAuthHeaders();
         const s = localStorage.getItem('ems_auth_session');
-        if (!s) return {};
+        if (!s) return headers;
         const parsed = JSON.parse(s);
         const u = parsed?.user || parsed;
         if (u) {
           return {
+            ...headers,
             'x-user-id': String(u._id || u.id || u.employeeCode || ''),
             'x-user-code': String(u.employeeCode || ''),
             'x-user-email': String(u.email || '').toLowerCase().trim(),
             'x-user-role': String(u.systemRole || (u.isAdmin ? 'admin' : (u.department === 'Human Resources' ? 'hr' : 'team_member')))
           };
         }
-      } catch {}
-      return {};
+        return headers;
+      } catch {
+        return getAuthHeaders();
+      }
     })();
 
     await Promise.all(

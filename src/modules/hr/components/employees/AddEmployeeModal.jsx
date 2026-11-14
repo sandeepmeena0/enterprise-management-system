@@ -6,6 +6,7 @@ import { getRoles } from '../../../../shared/services/roleManagementService';
 import { getCompanySettings } from '../../../../shared/services/companySettingsService';
 import { KEYS } from '../../../../shared/services/storageService';
 import { API_BASE } from '../../../../shared/config/apiConfig';
+import { getAuthHeaders } from '../../../../shared/services/apiClient';
 import { GRANULAR_PERMISSIONS_LIST, DEFAULT_MODULE_PERMISSIONS, canUserGrantPermissions } from '../../../../shared/utils/permissionUtils';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { EmployeeCredentialsModal } from './EmployeeCredentialsModal';
@@ -421,7 +422,7 @@ export const AddEmployeeModal = ({ isOpen, onClose }) => {
             // Also persist to MongoDB database
             fetch(`${API_BASE}/conversations/channel_general/messages`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
               body: JSON.stringify(welcomeMsg)
             }).catch(() => {});
           }

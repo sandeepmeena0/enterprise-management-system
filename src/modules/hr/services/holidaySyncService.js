@@ -6,6 +6,7 @@
 
 import { KEYS } from '../../../shared/services/storageService';
 import { API_BASE } from '../../../shared/config/apiConfig';
+import { getAuthHeaders } from '../../../shared/services/apiClient';
 
 // Master Curated Major Indian Festivals & National Holidays Across All 12 Months
 export const MAJOR_INDIAN_HOLIDAYS_MASTER = {
@@ -645,7 +646,7 @@ export const holidaySyncService = {
     // Asynchronous background cloud persistence
     fetch(`${API_BASE}/holidays`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload)
     }).catch(() => {});
 
@@ -689,7 +690,7 @@ export const holidaySyncService = {
         try {
           fetch(`${API_BASE}/holidays`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(newRecord)
           }).catch(() => {});
         } catch {}
@@ -732,7 +733,8 @@ export const holidaySyncService = {
     // 3. Asynchronous background cloud delete
     const delId = target?._id || holidayIdentifier;
     fetch(`${API_BASE}/holidays/${delId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: getAuthHeaders()
     }).catch(() => {});
 
     return { success: true, cancelledName: target?.name || 'Holiday' };

@@ -4,6 +4,8 @@ import { ROLES, getUserRole, isAdmin, isHR, isTeamMember, isHRorAdmin, isLeaderO
 import { API_BASE } from '../config/apiConfig';
 import { subscribeToSyncEvents } from '../services/realtimeSyncService';
 import { hydrateUserCloudState } from '../utils/timerUtils';
+import { getAuthToken, setAuthToken, clearAuthToken, getAuthHeaders } from '../services/apiClient';
+import { initSocket, disconnectSocket } from '../services/socketService';
 
 const AuthContext = createContext();
 
@@ -96,11 +98,12 @@ const AUTH_STORAGE_KEY = 'ems_auth_session';
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
+      const token = getAuthToken();
       const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (saved) {
+      if (saved && token) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.email && parsed._id !== 'emp_admin' && parsed._id !== 'emp_001') {
-          return parsed;
+          return { ...parsed, token };
         }
       }
     } catch (e) {
@@ -111,8 +114,9 @@ export const AuthProvider = ({ children }) => {
 
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     try {
+      const token = getAuthToken();
       const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (saved) {
+      if (saved && token) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.email && parsed._id !== 'emp_admin' && parsed._id !== 'emp_001') {
           return true;
@@ -121,6 +125,29 @@ export const AuthProvider = ({ children }) => {
     } catch {}
     return false;
   });
+
+  // Connect socket if authenticated on mount
+  useEffect(() => {
+    if (isAuthenticated && getAuthToken()) {
+      initSocket();
+    }
+  }, [isAuthenticated]);
+
+  // Handle centralized token upgrade or session revocation notifications
+  useEffect(() => {
+    const handleAuthInvalidation = (event) => {
+      console.warn('🔒 [AuthContext] Session invalidation received:', event?.detail);
+      clearAuthToken();
+      disconnectSocket();
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_auth_session' } }));
+    };
+
+    window.addEventListener('ems_auth_invalidation', handleAuthInvalidation);
+    return () => window.removeEventListener('ems_auth_invalidation', handleAuthInvalidation);
+  }, []);
 
     // 1. Initial Load & Active Real-Time Database Synchronizer across devices & tabs
   useEffect(() => {
@@ -447,14 +474,19 @@ export const AuthProvider = ({ children }) => {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.user) {
+          if (json.token) {
+            setAuthToken(json.token);
+          }
           const dbUser = {
             ...json.user,
+            token: json.token,
             isCurrentUser: true,
             isAdmin: json.user.systemRole === 'admin' || json.user.isAdmin
           };
           setCurrentUser(dbUser);
           setIsAuthenticated(true);
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(dbUser));
+          initSocket();
           // Mirror employee to local storage list
           const localEmps = getCollection(KEYS.EMPLOYEES) || [];
           const idx = localEmps.findIndex(e => e._id === dbUser._id || e.employeeCode === dbUser.employeeCode);
@@ -603,6 +635,17 @@ export const AuthProvider = ({ children }) => {
 
   // Logout handler: cleanly signs out session without terminating user shift workday
   const logout = useCallback(() => {
+    // Notify backend logout asynchronously
+    try {
+      fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' })
+      }).catch(() => {});
+    } catch (_) {}
+
+    clearAuthToken();
+    disconnectSocket();
+
     // Clean up temporary unscoped keys so shared computers have clean slate
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);

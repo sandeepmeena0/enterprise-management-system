@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
@@ -8,6 +9,7 @@ const mongoose = require('mongoose');
 const connectDB = require('./src/shared/config/database');
 const { errorHandler, notFound } = require('./src/shared/middleware/errorHandler');
 const { authenticateUser } = require('./src/shared/middleware/authMiddleware');
+const { initSocketServer } = require('./src/shared/socket/socketManager');
 
 // Load environment variables
 const path = require('path');
@@ -150,7 +152,13 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+// Wrap Express with HTTP Server for Socket.IO Integration
+const server = http.createServer(app);
+const io = initSocketServer(server, allowedOrigins);
+app.set('io', io);
+
+server.listen(PORT, () => {
   console.log(`🚀 Enterprise Management System (EMS) Backend Server running on port ${PORT}`);
   console.log(`📡 API Endpoints ready at http://localhost:${PORT}/api/`);
+  console.log(`⚡ Socket.IO Real-time Engine mounted and ready`);
 });

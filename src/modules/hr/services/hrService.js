@@ -13,6 +13,7 @@ import { getCollection, saveCollection, KEYS, initStorage } from '../../../share
 import { API_BASE } from '../../../shared/config/apiConfig';
 import { holidaySyncService } from './holidaySyncService';
 import { getCompanySettings } from '../../../shared/services/companySettingsService';
+import { getAuthToken } from '../../../shared/services/apiClient';
 
 // Ensure storage is initialized
 initStorage();
@@ -30,6 +31,10 @@ const getAuthUser = () => {
 
 const getAuthHeaders = () => {
   const headers = {};
+  const token = getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const u = getAuthUser();
   if (u) {
     headers['x-user-id'] = String(u._id || u.id || u.employeeCode || u.email || '');

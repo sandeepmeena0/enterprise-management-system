@@ -3,6 +3,7 @@ import { Mic, MicOff, Volume2, VolumeX, PhoneOff, Users, Radio, Coffee } from 'l
 import { useTimer } from '../../../../shared/context/TimerContext';
 import { useToast } from '../../../../shared/context/ToastContext';
 import { API_BASE } from '../../../../shared/config/apiConfig';
+import { getAuthHeaders } from '../../../../shared/services/apiClient';
 
 const RTC_CONFIG = {
   iceServers: [
@@ -73,7 +74,7 @@ export const LiveVoiceHuddleBar = ({
     try {
       await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle/signal`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ from: myId, to, type, payload })
       });
     } catch (err) {
@@ -139,7 +140,9 @@ export const LiveVoiceHuddleBar = ({
       try {
         const since = Math.max(0, lastSignalTsRef.current - 12000);
         const userCode = encodeURIComponent(currentUser?.employeeCode || '');
-        const res = await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle/signals?userId=${encodeURIComponent(myId)}&userCode=${userCode}&since=${since}`);
+        const res = await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle/signals?userId=${encodeURIComponent(myId)}&userCode=${userCode}&since=${since}`, {
+          headers: getAuthHeaders()
+        });
         if (!res.ok) return;
 
         const data = await res.json();
@@ -205,7 +208,7 @@ export const LiveVoiceHuddleBar = ({
       try {
         await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             action: 'heartbeat',
             member: {
@@ -383,7 +386,7 @@ export const LiveVoiceHuddleBar = ({
       try {
         await fetch(`${API_BASE}/conversations/${activeConv.id}/huddle`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             action: 'leave',
             member: { id: myId }
@@ -406,7 +409,7 @@ export const LiveVoiceHuddleBar = ({
       if (activeConv?.id) {
         fetch(`${API_BASE}/conversations/${activeConv.id}/huddle`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             action: 'mute',
             member: { id: myId },

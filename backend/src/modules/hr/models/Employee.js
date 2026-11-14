@@ -123,6 +123,14 @@ const EmployeeSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {}
     },
+    tokenVersion: {
+      type: Number,
+      default: 0
+    },
+    permissionVersion: {
+      type: Number,
+      default: 0
+    },
     isCurrentUser: {
       type: Boolean,
       default: false

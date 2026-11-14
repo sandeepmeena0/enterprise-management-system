@@ -4,6 +4,7 @@
  */
 
 import { API_BASE } from '../config/apiConfig';
+import { getAuthHeaders } from './apiClient';
 
 const STORAGE_KEY = 'EMS_COMPANY_SETTINGS';
 
@@ -53,7 +54,9 @@ export const getCompanySettings = () => {
 // Fetch from MongoDB database on app start and cache in localStorage
 export const fetchCompanySettingsFromDB = async () => {
   try {
-    const res = await fetch(`${API_BASE}/company-settings`);
+    const res = await fetch(`${API_BASE}/company-settings`, {
+      headers: getAuthHeaders()
+    });
     if (res.ok) {
       const json = await res.json();
       if (json.data) {
@@ -79,7 +82,7 @@ export const saveCompanySettings = async (newSettings) => {
     try {
       fetch(`${API_BASE}/company-settings`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(updated)
       }).catch(err => console.warn('[companySettingsService] Offline queued:', err));
     } catch (_) {}

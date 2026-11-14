@@ -8,6 +8,7 @@ import { getCollection, saveCollection, KEYS } from '../../../shared/services/st
 import { API_BASE as API_BASE_URL } from '../../../shared/config/apiConfig';
 import { getUserModulePermissions, isHRorAdmin, isProjectVisibleToUser } from '../../../shared/utils/permissionUtils';
 import { matchesFilter, matchesAssignee, matchesProject, matchesSearch, matchesDateRange } from '../../../shared/utils/filterUtils';
+import { getAuthToken } from '../../../shared/services/apiClient';
 
 let backendOnlineCache = null;
 let lastCheckTime = 0;
@@ -59,6 +60,10 @@ const getAuthUser = () => {
 
 const getAuthHeaders = () => {
   const headers = {};
+  const token = getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const u = getAuthUser();
   if (u) {
     headers['x-user-id'] = String(u._id || u.id || u.employeeCode || u.email || '');

@@ -11,6 +11,7 @@ import { useAuth } from './AuthContext';
 import { useHR } from '../../modules/hr/context/HRContext';
 import { getCompanySettings } from '../services/companySettingsService';
 import { API_BASE } from '../config/apiConfig';
+import { getAuthToken } from '../services/apiClient';
 
 import { calculateComputedBirthdays, calculateComputedAnniversaries } from '../../modules/crm/utils/celebrationUtils';
 import {
@@ -424,12 +425,17 @@ export const CRMProvider = ({ children }) => {
 
   const getAuthHeaders = () => {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = getAuthToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const s = localStorage.getItem('ems_auth_session');
-      if (!s) return { 'Content-Type': 'application/json' };
+      if (!s) return headers;
       const parsed = JSON.parse(s);
       const u = parsed?.user || parsed;
       return {
-        'Content-Type': 'application/json',
+        ...headers,
         'x-user-id': String(u?._id || u?.id || u?.employeeCode || ''),
         'x-user-code': String(u?.employeeCode || ''),
         'x-user-email': String(u?.email || '').toLowerCase().trim(),
