@@ -461,6 +461,8 @@ export const WorkProvider = ({ children }) => {
       const todayMidnightMs = todayMidnight.getTime();
 
       const mergedList = Array.from(taskMap.values()).map(t => {
+        const today = getTodayStr();
+        const isCreatedToday = (t.startDate === today || String(t.createdAt || '').startsWith(today));
         const tId = String(t._id || t.id);
         const isCompleted = t.status === 'completed' || !!t.completedAt;
 
@@ -534,9 +536,6 @@ export const WorkProvider = ({ children }) => {
           const safeStartTs = (startedAtTs > 0 && startedAtTs >= todayMidnightMs) ? startedAtTs : todayMidnightMs;
           const elapsed = Math.max(0, Math.floor((Date.now() - safeStartTs) / 1000));
 
-          const today = getTodayStr();
-          const isCreatedToday = (t.startDate === today || String(t.createdAt || '').startsWith(today));
-
           // Determine today's baseline (frozen before this active running stretch began)
           let todayBaseSecs = 0;
           if (isActive && activeTimer.todayBaseSecs !== undefined && (!activeTimer.date || activeTimer.date === today)) {
@@ -581,8 +580,6 @@ export const WorkProvider = ({ children }) => {
           };
         }
 
-        const today = getTodayStr();
-        const isCreatedToday = (t.startDate === today || String(t.createdAt || '').startsWith(today));
         const activeSecs = (isActive && (!activeTimer.date || activeTimer.date === today))
           ? Number(activeTimer.todayWorkSeconds || activeTimer.timerSeconds || 0)
           : 0;
@@ -598,14 +595,14 @@ export const WorkProvider = ({ children }) => {
           todayStaticSecs = 0;
         }
 
-        let priorDaysSum = 0;
+        let staticPriorDaysSum = 0;
         if (t.dailySessions && typeof t.dailySessions === 'object') {
           for (const [d, val] of Object.entries(t.dailySessions)) {
-            if (d < today) priorDaysSum += Math.max(0, Number(val) || 0);
+            if (d < today) staticPriorDaysSum += Math.max(0, Number(val) || 0);
           }
         }
         const staticTotalSecs = Math.max(
-          priorDaysSum + todayStaticSecs,
+          staticPriorDaysSum + todayStaticSecs,
           (t.accumulatedSeconds !== undefined && t.accumulatedSeconds !== null) ? Number(t.accumulatedSeconds) : todayStaticSecs,
           todayStaticSecs
         );
