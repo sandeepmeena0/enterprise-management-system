@@ -20,7 +20,7 @@ import { SubmitResignationModal } from '../../../modules/hr/components/resignati
 import { ChangePasswordModal } from '../modals/ChangePasswordModal';
 import { LogoutConfirmModal } from '../modals/LogoutConfirmModal';
 import { DashboardOverviewModal } from '../modals/DashboardOverviewModal';
-import { getTaskDisplayTime } from '../../utils/timerUtils';
+import { getTaskDisplayTime, formatSeconds } from '../../utils/timerUtils';
 
 export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
   const location = useLocation();
@@ -62,10 +62,10 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
     return () => clearInterval(interval);
   }, [activeRunningTask?.timerRunning, activeRunningTask?._id]);
 
-  const liveTaskSecs = useMemo(() => {
-    if (!activeRunningTask) return 0;
+  const liveTaskDisplay = useMemo(() => {
+    if (!activeRunningTask) return { todaySecs: 0, todayFormatted: '00:00:00' };
     const today = new Date().toISOString().split('T')[0];
-    return getTaskDisplayTime(activeRunningTask, today).todaySecs;
+    return getTaskDisplayTime(activeRunningTask, today);
   }, [activeRunningTask, taskTick]);
 
   // Dropdown States
@@ -237,7 +237,7 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
               Task: {activeRunningTask.taskCode || 'Active'}
             </span>
             <span className="font-mono text-[12.5px] font-extrabold text-blue-950 dark:text-blue-100 tracking-wide">
-              {formatSeconds ? formatSeconds(liveTaskSecs) : '00:00:00'}
+              {liveTaskDisplay.todayFormatted}
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
           </div>

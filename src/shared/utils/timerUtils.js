@@ -101,6 +101,11 @@ export const formatSecondsToDigital = (secs = 0) => {
 };
 
 /**
+ * Universal seconds formatter: "HH:MM:SS"
+ */
+export const formatSeconds = (secs = 0) => formatSecondsToDigital(secs);
+
+/**
  * Canonical Non-Overlapping Punch Session Normalizer.
  * Sorts all sessions chronologically, merges overlapping/nested sessions,
  * and eliminates duplicate time counting.
