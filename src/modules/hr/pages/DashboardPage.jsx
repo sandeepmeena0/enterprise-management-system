@@ -16,7 +16,7 @@ import { useTimer } from '../../../shared/context/TimerContext';
 import { useCRM } from '../../../shared/context/CRMContext';
 import { ROLES, ROLE_CONFIGS, getUserRole, canAccessModule, canApproveLeaves, isAdmin, isHR, getUserModulePermissions, isLeaveApplicant, isLeaveDesignatedApprover, isProjectVisibleToUser, canDeleteTask as checkCanDeleteTask } from '../../../shared/utils/permissionUtils';
 import { hrService } from '../services/hrService';
-import { getCanonicalTimerKey, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, normalizePunchSessions, getLocalDateStr } from '../../../shared/utils/timerUtils';
+import { getCanonicalTimerKey, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, getTaskTodaySeconds, getTaskDisplayTime, normalizePunchSessions, getLocalDateStr } from '../../../shared/utils/timerUtils';
 
 // Modals
 import { BreakModal } from '../../../shared/components/modals/BreakModal';
@@ -1533,11 +1533,8 @@ export const DashboardPage = () => {
       task = myPendingTasks.find(t => !t.snoozed && !isTaskActuallyCompleted(t)) || myTasks.find(t => !isTaskActuallyCompleted(t)) || null;
     }
 
-    const resolvedTodaySecs = task ? (
-      (task.dailySessions && Number(task.dailySessions[todayStr]) > 0)
-        ? Number(task.dailySessions[todayStr])
-        : (task.sessionDate === todayStr ? Number(task.todayWorkSeconds || 0) : 0)
-    ) : 0;
+    const taskTime = getTaskDisplayTime(task, todayStr, Date.now(), isClockedIn, displayedIsOnBreak);
+    const resolvedTodaySecs = taskTime.todaySecs;
 
     if (task && displayedHadClockedOut) {
       return {
@@ -1545,7 +1542,7 @@ export const DashboardPage = () => {
         timerRunning: false,
         timerSeconds: resolvedTodaySecs,
         todayWorkSeconds: resolvedTodaySecs,
-        liveDurationText: formatSeconds(resolvedTodaySecs)
+        liveDurationText: taskTime.todayFormatted
       };
     }
 
@@ -1555,7 +1552,7 @@ export const DashboardPage = () => {
         timerRunning: false,
         timerSeconds: resolvedTodaySecs,
         todayWorkSeconds: resolvedTodaySecs,
-        liveDurationText: formatSeconds(resolvedTodaySecs)
+        liveDurationText: taskTime.todayFormatted
       };
     }
     return task;

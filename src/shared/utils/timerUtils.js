@@ -545,6 +545,35 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
 };
 
 /**
+ * Universal Single Source of Truth for Task Time Display.
+ * Every card, navbar, modal, and table MUST use this function.
+ * Eliminates divergent formulas and guarantees 100% consistent numbers everywhere.
+ */
+export const getTaskDisplayTime = (task, dateStr, nowMs = Date.now(), isEffectiveClockedIn = true, isEffectiveOnBreak = false) => {
+  if (!task) {
+    return {
+      todaySecs: 0,
+      todayFormatted: '00:00:00',
+      totalSecs: 0,
+      totalFormatted: '00:00:00',
+      isRunning: false
+    };
+  }
+
+  const todaySecs = getTaskTodaySeconds(task, dateStr, nowMs, isEffectiveClockedIn, isEffectiveOnBreak);
+  const totalSecs = Math.max(Number(task.accumulatedSeconds || 0), todaySecs);
+  const isRunning = Boolean(task.timerRunning && isEffectiveClockedIn && !isEffectiveOnBreak);
+
+  return {
+    todaySecs,
+    todayFormatted: formatSeconds(todaySecs),
+    totalSecs,
+    totalFormatted: formatSeconds(totalSecs),
+    isRunning
+  };
+};
+
+/**
  * Auto-healer: Sanitizes and repairs a task's dailySessions map to prevent multi-day leakage.
  * If prior bugs caused total accumulated seconds to be copied into dailySessions[today],
  * this repairs it so dailySessions strictly sum up to task.accumulatedSeconds without overflow.

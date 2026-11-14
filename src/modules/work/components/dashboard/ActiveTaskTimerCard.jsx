@@ -1,5 +1,6 @@
 import React from 'react';
 import { Play, Pause, Square, CheckCircle2, Bell, Coffee, Plus } from 'lucide-react';
+import { getTaskDisplayTime } from '../../../../shared/utils/timerUtils';
 
 export const ActiveTaskTimerCard = ({
   currentDateFormatted,
@@ -31,13 +32,7 @@ export const ActiveTaskTimerCard = ({
   navigate
 }) => {
   const effectiveTodayStr = todayStr || new Date().toISOString().split('T')[0];
-  const activeTaskTodaySecs = displayActiveTask ? (
-    (displayActiveTask.dailySessions && displayActiveTask.dailySessions[effectiveTodayStr] !== undefined)
-      ? Number(displayActiveTask.dailySessions[effectiveTodayStr])
-      : (displayActiveTask.sessionDate === effectiveTodayStr
-          ? Number(displayActiveTask.todayWorkSeconds !== undefined ? displayActiveTask.todayWorkSeconds : (displayActiveTask.timerRunning ? displayActiveTask.timerSeconds : 0))
-          : 0)
-  ) : 0;
+  const taskTime = getTaskDisplayTime(displayActiveTask, effectiveTodayStr, Date.now(), isClockedIn, displayedIsOnBreak);
 
   return (
     <div id="active-timer-card" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 sm:px-[18px] flex flex-col justify-between gap-2.5 shadow-xs">
@@ -139,10 +134,10 @@ export const ActiveTaskTimerCard = ({
                           ? 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60' 
                           : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800'
                       }`}>
-                        ⏱️ Task: {displayActiveTask.timerRunning
-                          ? (displayActiveTask.liveDurationText || formatTimeDurationSafe(activeTaskTodaySecs))
-                          : (activeTaskTodaySecs > 0
-                            ? `${formatTimeDurationSafe(activeTaskTodaySecs)} (paused)`
+                        ⏱️ Task: {taskTime.isRunning
+                          ? (displayActiveTask.liveDurationText || taskTime.todayFormatted)
+                          : (taskTime.todaySecs > 0
+                            ? `${taskTime.todayFormatted} (paused)`
                             : '00:00:00')}
                       </span>
                     </div>

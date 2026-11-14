@@ -20,6 +20,7 @@ import { SubmitResignationModal } from '../../../modules/hr/components/resignati
 import { ChangePasswordModal } from '../modals/ChangePasswordModal';
 import { LogoutConfirmModal } from '../modals/LogoutConfirmModal';
 import { DashboardOverviewModal } from '../modals/DashboardOverviewModal';
+import { getTaskDisplayTime } from '../../utils/timerUtils';
 
 export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
   const location = useLocation();
@@ -64,19 +65,7 @@ export const TopNavbar = ({ onToggleMobileMenu = () => {} }) => {
   const liveTaskSecs = useMemo(() => {
     if (!activeRunningTask) return 0;
     const today = new Date().toISOString().split('T')[0];
-    const baseToday = (activeRunningTask.dailySessions && Number(activeRunningTask.dailySessions[today]) > 0)
-      ? Number(activeRunningTask.dailySessions[today])
-      : (activeRunningTask.sessionDate === today ? Number(activeRunningTask.todayWorkSeconds || 0) : 0);
-    if (!activeRunningTask.timerRunning) {
-      return baseToday;
-    }
-    const started = Number(activeRunningTask.startedAt) || 0;
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
-    const elapsed = (started >= todayMidnight.getTime() && started <= Date.now())
-      ? Math.floor((Date.now() - started) / 1000)
-      : 0;
-    return baseToday + elapsed;
+    return getTaskDisplayTime(activeRunningTask, today).todaySecs;
   }, [activeRunningTask, taskTick]);
 
   // Dropdown States

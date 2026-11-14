@@ -1331,8 +1331,9 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       } else {
         todayTaskBase = 0;
       }
-      const liveTaskTodaySecs = todayTaskBase + elapsedTask;
-      const totalAccum = Number(matchedTask.accumulatedSeconds !== undefined ? matchedTask.accumulatedSeconds : (matchedTask.timerSeconds || 0));
+      todayTaskBase = Math.min(todayTaskBase, maxPossibleGrossToday);
+      const liveTaskTodaySecs = Math.min(todayTaskBase + elapsedTask, maxPossibleGrossToday);
+      const totalAccum = Math.max(Number(matchedTask.accumulatedSeconds !== undefined ? matchedTask.accumulatedSeconds : (matchedTask.timerSeconds || 0)), liveTaskTodaySecs);
 
       runningTask = {
         _id: matchedTask._id,
@@ -1373,8 +1374,9 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
       } else {
         todayTaskBase = 0;
       }
-      const liveTaskTodaySecs = todayTaskBase + elapsedTask;
-      const totalAccum = Number(r.activeTask.accumulatedSeconds !== undefined ? r.activeTask.accumulatedSeconds : (r.activeTask.timerSeconds || todayTaskBase));
+      todayTaskBase = Math.min(todayTaskBase, maxPossibleGrossToday);
+      const liveTaskTodaySecs = Math.min(todayTaskBase + elapsedTask, maxPossibleGrossToday);
+      const totalAccum = Math.max(Number(r.activeTask.accumulatedSeconds !== undefined ? r.activeTask.accumulatedSeconds : (r.activeTask.timerSeconds || todayTaskBase)), liveTaskTodaySecs);
 
       runningTask = {
         ...r.activeTask,

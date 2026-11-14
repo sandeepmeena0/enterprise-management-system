@@ -33,6 +33,15 @@ const errorHandler = (err, req, res, next) => {
     message = 'Resource not found (invalid ID)';
   }
 
+  // Guarantee CORS headers on error responses
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+
   // Development: include stack trace
   const response = {
     success: false,
