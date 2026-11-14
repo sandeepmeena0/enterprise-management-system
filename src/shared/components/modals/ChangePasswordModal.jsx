@@ -10,7 +10,6 @@ import React, { useState } from 'react';
 import { Lock, Eye, EyeOff, Key, CheckCircle2, AlertCircle, RefreshCw, Copy, Check, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { getCollection, saveCollection, KEYS } from '../../services/storageService';
 import { API_BASE } from '../../config/apiConfig';
 import { getAuthHeaders } from '../../services/apiClient';
 
@@ -55,10 +54,15 @@ export const ChangePasswordModal = ({ isOpen, onClose, targetUser = null }) => {
     addToast('Password copied to clipboard!', 'success');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+
+    if (isSelf && !currentPassword) {
+      setErrorMsg('Please enter your current password.');
+      return;
+    }
 
     if (newPassword.length < 6) {
       setErrorMsg('New password must be at least 6 characters long.');
@@ -73,120 +77,82 @@ export const ChangePasswordModal = ({ isOpen, onClose, targetUser = null }) => {
     setIsSubmitting(true);
 
     try {
-      const employees = getCollection(KEYS.EMPLOYEES, []);
-      const uId = String(effectiveUser?._id || '');
-      const uCode = String(effectiveUser?.employeeCode || '');
-      const uEmail = String(effectiveUser?.email || '').toLowerCase().trim();
-
-      // Find user index in employees list
-      let empIndex = employees.findIndex(e =>
-        (e._id && String(e._id) === uId) ||
-        (e.employeeCode && String(e.employeeCode) === uCode) ||
-        (e.email && String(e.email).toLowerCase().trim() === uEmail)
-      );
-
-      // If self-service, verify current password
       if (isSelf) {
-        if (!currentPassword) {
-          setErrorMsg('Please enter your current password.');
-          setIsSubmitting(false);
-          return;
-        }
-
-        let existingPass = 'admin123';
-        if (empIndex >= 0 && employees[empIndex].password) {
-          existingPass = employees[empIndex].password;
-        } else if (currentUser?.password) {
-          existingPass = currentUser.password;
-        } else if (effectiveUser?.isAdmin || effectiveUser?.role?.toLowerCase().includes('admin')) {
-          existingPass = 'admin123';
-        } else {
-          existingPass = 'emp123';
-        }
-
-        if (currentPassword !== existingPass) {
-          setErrorMsg('Incorrect current password. Please enter your valid existing password.');
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // Old password archive for Super Admin history
-      const oldPass = empIndex >= 0 ? employees[empIndex].password : (effectiveUser?.password || currentPassword || 'emp123');
-      const historyEntry = {
-        password: oldPass,
-        changedAt: new Date().toISOString(),
-        changedBy: isSelf ? 'User (Self-Service)' : `Super Admin (${currentUser?.name || 'Administrator'})`
-      };
-
-      let finalHistory = [];
-      // Update employee record
-      if (empIndex >= 0) {
-        const prevHist = Array.isArray(employees[empIndex].passwordHistory) ? employees[empIndex].passwordHistory : [];
-        finalHistory = [historyEntry, ...prevHist];
-        employees[empIndex] = {
-          ...employees[empIndex],
-          password: newPassword,
-          passwordHistory: finalHistory,
-          passwordUpdatedAt: new Date().toISOString()
-        };
-      } else {
-        // Fallback create / push record
-        finalHistory = [historyEntry];
-        employees.push({
-          ...effectiveUser,
-          password: newPassword,
-          passwordHistory: finalHistory,
-          passwordUpdatedAt: new Date().toISOString()
-        });
-      }
-
-      saveCollection(KEYS.EMPLOYEES, employees);
-
-      // Persist to MongoDB backend so Super Admin gets updated immediately
-      const targetId = effectiveUser?._id || employees[empIndex]?._id || effectiveUser?.employeeCode;
-      if (targetId) {
-        fetch(`${API_BASE}/employees/${targetId}`, {
-          method: 'PUT',
+        // Self-service: backend verifies current password and derives identity from authenticated session
+        const res = await fetch(`${API_BASE}/auth/change-password`, {
+          method: 'POST',
           headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
-            password: newPassword,
-            passwordHistory: finalHistory,
-            passwordUpdatedAt: new Date().toISOString()
+            currentPassword: currentPassword.trim(),
+            newPassword: newPassword.trim()
           })
-        }).catch(err => console.warn('Backend password sync notice:', err));
-      }
+        });
 
-      // If updating self, update active session
-      if (isSelf) {
-        const updatedUser = {
-          ...(currentUser || {}),
-          password: newPassword,
-          passwordHistory: finalHistory,
-          passwordUpdatedAt: new Date().toISOString()
-        };
-        setCurrentUser?.(updatedUser);
-        localStorage.setItem('ems_auth_session', JSON.stringify(updatedUser));
-      }
+        const json = await res.json().catch(() => ({}));
 
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.EMPLOYEES } }));
+        if (!res.ok) {
+          setErrorMsg(json.message || 'Failed to update password. Please check your credentials.');
+          setIsSubmitting(false);
+          return;
+        }
 
-      setSuccessMsg(`Password successfully updated for ${effectiveUser?.name || 'Account'}!`);
-      addToast('Password updated successfully!', 'success');
+        setSuccessMsg(json.message || 'Password updated successfully! Please sign in again.');
+        addToast('Password changed successfully. Please sign in with your new password.', 'success');
 
-      setTimeout(() => {
-        onClose();
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
-        setErrorMsg('');
-        setSuccessMsg('');
-      }, 1400);
+        setIsSubmitting(false);
 
+        // Prompt re-login since session token was invalidated
+        setTimeout(() => {
+          onClose();
+          window.dispatchEvent(
+            new CustomEvent('ems_auth_invalidation', {
+              detail: { code: 'PASSWORD_CHANGED', message: 'Password changed successfully. Please sign in with your new password.' }
+            })
+          );
+        }, 1500);
+
+      } else {
+        // Admin resetting another employee's password
+        const targetId = effectiveUser?._id || effectiveUser?.employeeCode;
+        if (!targetId) {
+          setErrorMsg('Target employee identity not found.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const res = await fetch(`${API_BASE}/auth/admin-reset-password`, {
+          method: 'POST',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            employeeId: targetId,
+            newPassword: newPassword.trim()
+          })
+        });
+
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          setErrorMsg(json.message || 'Failed to reset employee password.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        setSuccessMsg(`Password successfully updated for ${effectiveUser?.name || 'Account'}!`);
+        addToast(`Password updated for ${effectiveUser?.name || 'employee'}!`, 'success');
+        setIsSubmitting(false);
+
+        setTimeout(() => {
+          onClose();
+          setCurrentPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+        }, 1200);
+      }
     } catch (err) {
-      console.error('Password change error:', err);
-      setErrorMsg('An unexpected error occurred while saving password. Please try again.');
-    } finally {
+      setErrorMsg(err.message || 'Network error occurred while changing password.');
       setIsSubmitting(false);
     }
   };

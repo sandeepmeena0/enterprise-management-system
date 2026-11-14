@@ -104,12 +104,12 @@ app.use('/api/auth', require('./src/modules/auth/routes/authRoutes'));
 // Authenticate user & tenant scoping middleware
 app.use('/api', authenticateUser);
 
-// Database Seed / Reset Endpoint (Strictly Master Admin only; disabled in production by default)
+// Database Seed / Reset Endpoint (Strictly Master Admin only in development; permanently disabled in production)
 app.post('/api/seed', async (req, res) => {
   const isProd = process.env.NODE_ENV === 'production';
-  const allowResetInProd = process.env.ALLOW_DB_RESET === 'true';
 
-  if (isProd && !allowResetInProd) {
+  // Production Security Policy: Endpoint is permanently disabled in production regardless of environment variables
+  if (isProd) {
     return res.status(403).json({
       success: false,
       code: 'RESET_DISABLED_IN_PRODUCTION',
@@ -146,34 +146,34 @@ app.post('/api/seed', async (req, res) => {
 
 // ─── Mount Module Routes ────────────────────────────────────────────────────
 // HR Module
-app.use('/api/employees',    require('./src/modules/hr/routes/employeeRoutes'));
-app.use('/api/leaves',       require('./src/modules/hr/routes/leaveRoutes'));
-app.use('/api/attendance',   require('./src/modules/hr/routes/attendanceRoutes'));
-app.use('/api/holidays',     require('./src/modules/hr/routes/holidayRoutes'));
+app.use('/api/employees', require('./src/modules/hr/routes/employeeRoutes'));
+app.use('/api/leaves', require('./src/modules/hr/routes/leaveRoutes'));
+app.use('/api/attendance', require('./src/modules/hr/routes/attendanceRoutes'));
+app.use('/api/holidays', require('./src/modules/hr/routes/holidayRoutes'));
 app.use('/api/appreciations', require('./src/modules/hr/routes/appreciationRoutes'));
 
 // Work Module (Projects, Tasks, Timesheets)
-app.use('/api/projects',     require('./src/modules/work/routes/projectRoutes'));
-app.use('/api/tasks',        require('./src/modules/work/routes/taskRoutes'));
-app.use('/api/timesheet',    require('./src/modules/work/routes/timesheetRoutes'));
-app.use('/api/timesheets',   require('./src/modules/work/routes/timesheetRoutes'));
-app.use('/api/timer',        require('./src/modules/work/routes/timesheetRoutes'));
-app.use('/api/timelogs',     require('./src/modules/work/routes/timesheetRoutes'));
-app.use('/api/timelog',      require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/projects', require('./src/modules/work/routes/projectRoutes'));
+app.use('/api/tasks', require('./src/modules/work/routes/taskRoutes'));
+app.use('/api/timesheet', require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timesheets', require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timer', require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timelogs', require('./src/modules/work/routes/timesheetRoutes'));
+app.use('/api/timelog', require('./src/modules/work/routes/timesheetRoutes'));
 
 // CRM Module (Leads, Notices, Tickets, Events, Conversations)
-app.use('/api/leads',         require('./src/modules/crm/routes/leadRoutes'));
+app.use('/api/leads', require('./src/modules/crm/routes/leadRoutes'));
 app.use('/api/conversations', require('./src/modules/crm/routes/conversationRoutes'));
-app.use('/api/notices',       require('./src/modules/notices/routes/noticeRoutes'));
-app.use('/api/tickets',       require('./src/modules/tickets/routes/ticketRoutes'));
-app.use('/api/events',        require('./src/modules/events/routes/eventRoutes'));
+app.use('/api/notices', require('./src/modules/notices/routes/noticeRoutes'));
+app.use('/api/tickets', require('./src/modules/tickets/routes/ticketRoutes'));
+app.use('/api/events', require('./src/modules/events/routes/eventRoutes'));
 
 // Finance Module (Expenses)
-app.use('/api/expenses',     require('./src/modules/finance/routes/expenseRoutes'));
+app.use('/api/expenses', require('./src/modules/finance/routes/expenseRoutes'));
 
 // Company Settings & Resignations Module
 app.use('/api/company-settings', require('./src/modules/settings/routes/companySettingsRoutes'));
-app.use('/api/resignations',     require('./src/modules/hr/routes/resignationRoutes'));
+app.use('/api/resignations', require('./src/modules/hr/routes/resignationRoutes'));
 
 // 404 & Error Handlers
 app.use(notFound);

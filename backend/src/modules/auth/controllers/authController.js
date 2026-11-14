@@ -8,9 +8,16 @@
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const Employee = require('../../hr/models/Employee');
+const Ticket = require('../../tickets/models/Ticket');
 const asyncHandler = require('../../../shared/middleware/asyncHandler');
 const { setUserAuthCache, invalidateUserAuthCache } = require('../../../shared/cache/userAuthCache');
 const { verifyPassword, hashPassword } = require('../../../shared/utils/passwordUtils');
+const { disconnectUserSockets } = require('../../../shared/socket/socketManager');
+
+// Rate limiting map for forgot-password abuse prevention: identifierKey -> { count, resetTime }
+const forgotPasswordRateLimits = new Map();
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_REQUESTS_PER_WINDOW = 5;
 
 // Helper to sign JWT
 const signToken = (employee) => {
@@ -209,4 +216,224 @@ exports.logoutAll = asyncHandler(async (req, res) => {
     message: 'All active sessions on all devices have been invalidated',
     tokenVersion: updated?.tokenVersion || 0
   });
+});
+
+// @desc    Self-service authenticated password change
+// @route   POST /api/auth/change-password
+exports.changePassword = asyncHandler(async (req, res) => {
+  if (!req.user?.id) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const { currentPassword, newPassword } = req.body;
+  const cleanCurrent = (currentPassword || '').trim();
+  const cleanNew = (newPassword || '').trim();
+
+  if (!cleanCurrent) {
+    return res.status(400).json({ success: false, message: 'Please enter your current password.' });
+  }
+  if (!cleanNew || cleanNew.length < 6) {
+    return res.status(400).json({ success: false, message: 'New password must be at least 6 characters long.' });
+  }
+  if (cleanNew === '••••••••') {
+    return res.status(400).json({ success: false, message: 'Invalid password format.' });
+  }
+
+  // Load employee record selecting password explicitly
+  const employee = await Employee.findById(req.user.id).select('+password +passwordHistory');
+  if (!employee) {
+    return res.status(404).json({ success: false, message: 'Employee record not found.' });
+  }
+
+  const isMasterAdmin = employee.employeeCode === 'ADM-001' || employee.role === 'Administrator' || employee.isAdmin;
+  const defaultFallback = isMasterAdmin ? 'admin123' : 'emp123';
+  const { matches } = await verifyPassword(cleanCurrent, employee.password, defaultFallback);
+
+  if (!matches) {
+    return res.status(400).json({
+      success: false,
+      message: 'Incorrect current password. Please enter your valid existing password.'
+    });
+  }
+
+  // Cryptographically hash new password with bcrypt (10 rounds)
+  const secureHash = await hashPassword(cleanNew);
+
+  const historyEntry = {
+    changedAt: new Date().toISOString(),
+    changedBy: `${employee.name || 'User'} (Self-Service)`
+  };
+  const prevHistory = Array.isArray(employee.passwordHistory) ? employee.passwordHistory : [];
+  const passwordHistory = [historyEntry, ...prevHistory].slice(0, 10);
+
+  // Update employee: hash password, update history, and increment tokenVersion to revoke old sessions
+  await Employee.findByIdAndUpdate(employee._id, {
+    $set: {
+      password: secureHash,
+      passwordHistory,
+      passwordUpdatedAt: new Date().toISOString()
+    },
+    $inc: { tokenVersion: 1 }
+  });
+
+  // Invalidate cache immediately
+  const empIdStr = employee._id.toString();
+  invalidateUserAuthCache(empIdStr);
+  if (employee.employeeCode) invalidateUserAuthCache(employee.employeeCode);
+  if (employee.email) invalidateUserAuthCache(employee.email.toLowerCase());
+
+  // Disconnect active sockets
+  try {
+    disconnectUserSockets(empIdStr);
+  } catch (_) {}
+
+  res.status(200).json({
+    success: true,
+    message: 'Password changed successfully. Your sessions have been updated. Please sign in with your new password.'
+  });
+});
+
+// @desc    Admin-authorized password reset for another employee
+// @route   POST /api/auth/admin-reset-password
+exports.adminResetPassword = asyncHandler(async (req, res) => {
+  const u = req.user;
+  if (!u) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const canReset = u.isAdmin || u.systemRole === 'admin' || u.isSuperAdmin || u.permissions?.allAccess || u.permissions?.manageEmployees;
+  if (!canReset) {
+    return res.status(403).json({ success: false, message: 'Access denied: Only Administrators can reset employee passwords.' });
+  }
+
+  const { employeeId, newPassword } = req.body;
+  const cleanPass = (newPassword || '').trim();
+  if (!employeeId) {
+    return res.status(400).json({ success: false, message: 'Target employee ID is required.' });
+  }
+  if (!cleanPass || cleanPass.length < 6) {
+    return res.status(400).json({ success: false, message: 'New password must be at least 6 characters long.' });
+  }
+  if (cleanPass === '••••••••') {
+    return res.status(400).json({ success: false, message: 'Invalid password format.' });
+  }
+
+  const query = mongoose.Types.ObjectId.isValid(employeeId)
+    ? { _id: employeeId }
+    : { $or: [{ employeeCode: String(employeeId).trim().toUpperCase() }, { email: String(employeeId).trim().toLowerCase() }] };
+
+  const target = await Employee.findOne(query).select('+password +passwordHistory');
+  if (!target) {
+    return res.status(404).json({ success: false, message: 'Target employee not found.' });
+  }
+
+  // Protect Super Admin from being reset by non-master admins
+  const isTargetSuper = target.employeeCode === 'ADM-001' || target.isSuperAdmin || target.email === 'admin@inforag.com' || target.email === 'avinash@inforag.com';
+  const isCallerSuper = u.employeeCode === 'ADM-001' || u.isSuperAdmin || u.email === 'admin@inforag.com' || u.email === 'avinash@inforag.com';
+  if (isTargetSuper && !isCallerSuper) {
+    return res.status(403).json({ success: false, message: 'Security Policy: Master Administrator account cannot be reset by other administrators.' });
+  }
+
+  const secureHash = await hashPassword(cleanPass);
+  const historyEntry = {
+    changedAt: new Date().toISOString(),
+    changedBy: `Administrator (${u.name || u.email || 'Admin'})`
+  };
+  const prevHistory = Array.isArray(target.passwordHistory) ? target.passwordHistory : [];
+  const passwordHistory = [historyEntry, ...prevHistory].slice(0, 10);
+
+  await Employee.findByIdAndUpdate(target._id, {
+    $set: {
+      password: secureHash,
+      passwordHistory,
+      passwordUpdatedAt: new Date().toISOString()
+    },
+    $inc: { tokenVersion: 1 }
+  });
+
+  const targetIdStr = target._id.toString();
+  invalidateUserAuthCache(targetIdStr);
+  if (target.employeeCode) invalidateUserAuthCache(target.employeeCode);
+  if (target.email) invalidateUserAuthCache(target.email.toLowerCase());
+
+  try {
+    disconnectUserSockets(targetIdStr);
+  } catch (_) {}
+
+  res.status(200).json({
+    success: true,
+    message: `Password has been reset successfully for ${target.name} (${target.employeeCode}).`
+  });
+});
+
+// @desc    Public password reset request (creates Admin review ticket without exposing credentials)
+// @route   POST /api/auth/forgot-password
+exports.forgotPassword = asyncHandler(async (req, res) => {
+  const identifier = String(req.body.identifier || req.body.email || req.body.employeeCode || '').trim();
+  const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+
+  if (!identifier) {
+    return res.status(400).json({ success: false, message: 'Please provide your registered Email or Employee ID.' });
+  }
+
+  // Rate Limiting Check (5 requests per 15 minutes per IP or identifier)
+  const rateLimitKey = `${clientIp}:${identifier.toLowerCase()}`;
+  const now = Date.now();
+  const limitEntry = forgotPasswordRateLimits.get(rateLimitKey);
+
+  if (limitEntry && now < limitEntry.resetTime) {
+    if (limitEntry.count >= MAX_REQUESTS_PER_WINDOW) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many password reset requests. Please try again in 15 minutes.'
+      });
+    }
+    limitEntry.count += 1;
+  } else {
+    forgotPasswordRateLimits.set(rateLimitKey, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+  }
+
+  // Standardized generic response text (Never reveal account existence)
+  const genericResponse = {
+    success: true,
+    message: 'If an active account matches that identifier, a password reset request has been submitted to the Administrator.'
+  };
+
+  try {
+    const cleanId = identifier.toLowerCase();
+    const employee = await Employee.findOne({
+      $or: [
+        { email: cleanId },
+        { employeeCode: identifier.toUpperCase() }
+      ]
+    });
+
+    if (employee && employee.status === 'active') {
+      const count = await Ticket.countDocuments();
+      const ticketCode = `TKT-${1000 + count + 1}`;
+
+      await Ticket.create({
+        ticketCode,
+        subject: `🔐 Password Reset Request: ${employee.name} (${employee.employeeCode})`,
+        description: `Employee ${employee.name} (${employee.employeeCode}, ${employee.role}, ${employee.department}) has requested a password reset. Please open the Employee Directory and set a new secure password.`,
+        category: 'Account Access',
+        priority: 'urgent',
+        status: 'open',
+        department: 'Human Resources',
+        requestedById: employee._id.toString(),
+        requestedByName: employee.name,
+        requestedByEmail: employee.email,
+        requestedByRole: employee.role,
+        requestedOn: new Date().toISOString().split('T')[0],
+        createdBy: employee._id.toString(),
+        createdByName: employee.name,
+        createdByRole: employee.role
+      });
+    }
+  } catch (err) {
+    console.warn('[ForgotPassword] Ticket creation notice:', err.message);
+  }
+
+  // Always return the generic message
+  res.status(200).json(genericResponse);
 });
