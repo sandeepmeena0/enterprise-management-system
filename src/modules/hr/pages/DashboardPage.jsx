@@ -687,8 +687,7 @@ export const DashboardPage = () => {
       const keysToTry = [
         `ems_active_task_timer_${empKey}`,
         emp._id ? `ems_active_task_timer_${emp._id}` : null,
-        emp.employeeCode ? `ems_active_task_timer_${emp.employeeCode}` : null,
-        isSelf ? 'ems_active_task_timer' : null
+        emp.employeeCode ? `ems_active_task_timer_${emp.employeeCode}` : null
       ].filter(Boolean);
       for (const k of keysToTry) {
         const rawTimer = localStorage.getItem(k);
@@ -721,7 +720,14 @@ export const DashboardPage = () => {
     if (activeTimer && activeTimer.timerRunning && !isTimerTaskCompleted) {
       localRunningTask = activeTimer;
     } else if (!isExplicitlyPausedLocally) {
-      localRunningTask = empTasks.find(t => t.timerRunning && !isTaskActuallyCompleted(t)) || null;
+      localRunningTask = empTasks.find(t => {
+        if (!t.timerRunning || isTaskActuallyCompleted(t)) return false;
+        if (t.activeUserId) {
+          const act = String(t.activeUserId).toLowerCase().trim();
+          return act === String(empId).toLowerCase().trim() || act === String(emp.employeeCode || '').toLowerCase().trim();
+        }
+        return true;
+      }) || null;
     }
 
     const telemRunningTask = (!isExplicitlyPausedLocally && telem?.activeTask && (telem.activeTask.timerRunning || telem.activeTask.startedAt))
@@ -755,8 +761,8 @@ export const DashboardPage = () => {
         }
       }
 
-      const elapsed = isTimerRunning
-        ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000))
+      const elapsed = (isTimerRunning && startedAtMs >= todayMidnightMs && startedAtMs <= Date.now())
+        ? Math.floor((Date.now() - startedAtMs) / 1000)
         : 0;
 
       // STRICT SAME-DAY TASK ISOLATION:

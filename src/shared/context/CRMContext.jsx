@@ -1081,11 +1081,19 @@ export const CRMProvider = ({ children }) => {
         dayTeaBreaks = todayBreakHistory.filter(b => b.type?.toLowerCase().includes('tea')).length;
         dayLunchBreaks = todayBreakHistory.filter(b => b.type?.toLowerCase().includes('lunch')).length;
 
-        // 1. Check live active task timer from localStorage
+        // 1. Check live active task timer from localStorage strictly scoped to current user
         const activeTimerKey = `ems_active_task_timer_${userKey}`;
         let activeTimer = null;
         try {
-          activeTimer = JSON.parse(localStorage.getItem(activeTimerKey) || localStorage.getItem('ems_active_task_timer') || 'null');
+          const raw = localStorage.getItem(activeTimerKey) ||
+            (currentUser?.employeeCode ? localStorage.getItem(`ems_active_task_timer_${currentUser.employeeCode}`) : null) ||
+            (currentUser?._id ? localStorage.getItem(`ems_active_task_timer_${currentUser._id}`) : null);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && isTaskForMe(parsed)) {
+              activeTimer = parsed;
+            }
+          }
         } catch (e) {}
 
         const todayMidnight = new Date();
@@ -1094,7 +1102,7 @@ export const CRMProvider = ({ children }) => {
 
         if (activeTimer && (activeTimer.date === dateStr || activeTimer.sessionDate === dateStr || activeTimer.timerRunning)) {
           const nowMs = Date.now();
-          const isStartedToday = activeTimer.startedAt && Number(activeTimer.startedAt) >= todayMidnightMs;
+          const isStartedToday = activeTimer.startedAt && Number(activeTimer.startedAt) >= todayMidnightMs && Number(activeTimer.startedAt) <= nowMs;
           const runningElapsed = (activeTimer.timerRunning && isStartedToday)
             ? Math.max(0, Math.floor((nowMs - Number(activeTimer.startedAt)) / 1000))
             : 0;
@@ -1131,6 +1139,12 @@ export const CRMProvider = ({ children }) => {
         // 2. Check any other paused or worked tasks today (strictly tasks worked today!)
         allTasks.forEach(t => {
           if (!isTaskForMe(t)) return;
+          // If task has another active user running it, do not attribute it to this user
+          if (t.timerRunning && t.activeUserId) {
+            const actId = String(t.activeUserId).toLowerCase().trim();
+            const myIds = [userKey, currentUser?._id, currentUser?.employeeCode].filter(Boolean).map(s => String(s).toLowerCase().trim());
+            if (!myIds.includes(actId)) return;
+          }
           const tId = String(t._id || t.id);
           if (activeTimerTask && (String(activeTimerTask.taskId) === tId || String(activeTimerTask._id) === tId || (t.taskCode && activeTimerTask.taskCode === t.taskCode))) return;
 

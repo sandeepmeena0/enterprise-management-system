@@ -185,35 +185,49 @@ export const TasksTable = ({ tasks: propTasks, onSelectTask }) => {
                         <span>Done ({task.hoursLoggedText || formatSeconds(task.timerSeconds || 0)})</span>
                       </span>
                     ) : task.timerRunning ? (
-                      <div className="inline-flex items-center gap-1 bg-sky-600 text-white py-0.5 px-2 rounded-full text-[11px] font-bold shadow-[0_2px_4px_rgba(2,132,199,0.3)]">
-                        {/* Pause button */}
-                        <button
-                          title="Pause Timer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            pauseTaskTimer(task._id || task.id);
-                          }}
-                          className="bg-white/25 border-none rounded-full w-4 h-4 flex items-center justify-center text-white cursor-pointer hover:bg-white/40 transition-colors"
-                        >
-                          <Pause size={8} fill="#ffffff" />
-                        </button>
+                      (() => {
+                        const myIds = [currentUser?._id, currentUser?.id, currentUser?.employeeCode, currentUser?.email].filter(Boolean).map(s => String(s).toLowerCase().trim());
+                        const isRunningByMe = !task.activeUserId || myIds.includes(String(task.activeUserId).toLowerCase().trim());
+                        if (!isRunningByMe) {
+                          return (
+                            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 py-0.5 px-2 rounded-full text-[10.5px] font-semibold" title={`Active by ${task.activeUserName || 'teammate'}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              <span>{task.activeUserName ? `Working: ${task.activeUserName}` : 'In Progress'}</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <div className="inline-flex items-center gap-1 bg-sky-600 text-white py-0.5 px-2 rounded-full text-[11px] font-bold shadow-[0_2px_4px_rgba(2,132,199,0.3)]">
+                            {/* Pause button */}
+                            <button
+                              title="Pause Timer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                pauseTaskTimer(task._id || task.id);
+                              }}
+                              className="bg-white/25 border-none rounded-full w-4 h-4 flex items-center justify-center text-white cursor-pointer hover:bg-white/40 transition-colors"
+                            >
+                              <Pause size={8} fill="#ffffff" />
+                            </button>
 
-                        {/* Stop & Log button */}
-                        <button
-                          title="Stop Timer & Log to Timesheet"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            stopTaskTimer(task._id || task.id);
-                          }}
-                          className="bg-white/25 border-none rounded-full w-4 h-4 flex items-center justify-center text-white cursor-pointer hover:bg-white/40 transition-colors"
-                        >
-                          <Square size={7} fill="#ffffff" />
-                        </button>
+                            {/* Stop & Log button */}
+                            <button
+                              title="Stop Timer & Log to Timesheet"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                stopTaskTimer(task._id || task.id);
+                              }}
+                              className="bg-white/25 border-none rounded-full w-4 h-4 flex items-center justify-center text-white cursor-pointer hover:bg-white/40 transition-colors"
+                            >
+                              <Square size={7} fill="#ffffff" />
+                            </button>
 
-                        <span className="font-mono tracking-wide text-[11px]">
-                          ⏱️ {task.liveDurationText || formatSeconds(task.timerSeconds || 0)}
-                        </span>
-                      </div>
+                            <span className="font-mono tracking-wide text-[11px]">
+                              ⏱️ {task.liveDurationText || formatSeconds(task.timerSeconds || 0)}
+                            </span>
+                          </div>
+                        );
+                      })()
                     ) : task.snoozed ? (
                       <div className="inline-flex items-center gap-1">
                         <span

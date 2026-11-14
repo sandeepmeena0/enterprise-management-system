@@ -207,13 +207,56 @@ export const WorkProvider = ({ children }) => {
     }
   }, [activeTimerKey, currentUser]);
 
+  // Multi-user & Multi-assignee Active Task Guard:
+  // Verifies that a running task timer actually belongs to the given user,
+  // preventing one team member's active timer from leaking into another's personal dashboard/timer.
+  const isTaskActiveForUser = useCallback((t, targetUser = currentUser) => {
+    if (!t || !t.timerRunning || t.status === 'completed' || t.completedAt) return false;
+    const u = targetUser || currentUser;
+    if (!u) return false;
+    const uKeyStr = String(targetUser === currentUser ? userKey : (u._id || u.employeeCode || '')).toLowerCase().trim();
+    const myIds = [
+      uKeyStr,
+      u._id ? String(u._id).toLowerCase().trim() : null,
+      u.id ? String(u.id).toLowerCase().trim() : null,
+      u.employeeCode ? String(u.employeeCode).toLowerCase().trim() : null,
+      u.email ? String(u.email).toLowerCase().trim() : null
+    ].filter(Boolean);
+
+    // 1. If activeUserId is explicitly stamped, it MUST match this user
+    if (t.activeUserId) {
+      return myIds.includes(String(t.activeUserId).toLowerCase().trim());
+    }
+
+    // 2. If single-assignee task with assignedToId
+    if (t.assignedToId && (!Array.isArray(t.assignedToIds) || t.assignedToIds.length <= 1)) {
+      return myIds.includes(String(t.assignedToId).toLowerCase().trim());
+    }
+
+    // 3. Direct assignee object
+    const directAssigned = typeof t.assignedTo === 'object' ? (t.assignedTo?._id || t.assignedTo?.employeeCode) : t.assignedTo;
+    if (directAssigned && (!Array.isArray(t.assignedToIds) || t.assignedToIds.length <= 1)) {
+      return myIds.includes(String(directAssigned).toLowerCase().trim());
+    }
+
+    // 4. Multi-assignee task where activeUserId is not yet set: only consider active if local snapshot confirms it
+    const activeTimer = getActiveTimerSnapshot();
+    if (activeTimer && activeTimer.timerRunning && (String(activeTimer.taskId) === String(t._id || t.id) || activeTimer.taskCode === t.taskCode)) {
+      return true;
+    }
+
+    return false;
+  }, [currentUser, userKey, getActiveTimerSnapshot]);
+
   // Save active timer snapshot to storage strictly scoped to current user
   const saveActiveTimerSnapshot = useCallback((state) => {
     try {
       if (state) {
-        const payload = JSON.stringify(state);
+        const payload = JSON.stringify({
+          ...state,
+          activeUserId: state.activeUserId || userKey
+        });
         localStorage.setItem(activeTimerKey, payload);
-        localStorage.setItem('ems_active_task_timer', payload);
         if (currentUser?.employeeCode) {
           localStorage.setItem(`ems_active_task_timer_${currentUser.employeeCode}`, payload);
         }
@@ -224,12 +267,11 @@ export const WorkProvider = ({ children }) => {
         localStorage.removeItem(activeTimerKey);
         if (currentUser?.employeeCode) localStorage.removeItem(`ems_active_task_timer_${currentUser.employeeCode}`);
         if (currentUser?._id) localStorage.removeItem(`ems_active_task_timer_${currentUser._id}`);
-        localStorage.removeItem('ems_active_task_timer');
       }
     } catch (e) {
       console.error('Error saving active timer snapshot:', e);
     }
-  }, [activeTimerKey, currentUser]);
+  }, [activeTimerKey, currentUser, userKey]);
 
   // Calculate live elapsed seconds using real-world wall-clock timestamps
   const getElapsedSeconds = useCallback((timerState) => {
@@ -251,10 +293,8 @@ export const WorkProvider = ({ children }) => {
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
     const todayMidnightMs = todayMidnight.getTime();
-    if (startTs < todayMidnightMs) {
-      // Started on a previous day: cap to seconds before midnight so runaway ghost time is never added to today!
-      const elapsedBeforeMidnight = Math.max(0, Math.floor((todayMidnightMs - startTs) / 1000));
-      return base + Math.min(elapsedBeforeMidnight, 14 * 3600);
+    if (startTs < todayMidnightMs || startTs > Date.now()) {
+      return base;
     }
 
     const elapsedSinceStart = Math.min(Math.max(0, Math.floor((Date.now() - startTs) / 1000)), 14 * 3600);
@@ -488,8 +528,9 @@ export const WorkProvider = ({ children }) => {
         );
         const isActive = Boolean(activeTimer && activeTimer.timerRunning && isTaskIdMatch);
         const startTs = Number(t.startedAt) || (typeof t.startedAt === 'string' ? (isNaN(Number(t.startedAt)) ? new Date(t.startedAt).getTime() : Number(t.startedAt)) : 0);
-        const isStartedToday = startTs > 0 && startTs >= todayMidnightMs;
-        const isRemoteActive = Boolean(t.timerRunning && (isStartedToday || (!t.sessionDate || t.sessionDate === today)));
+        const isStartedToday = startTs > 0 && startTs >= todayMidnightMs && startTs <= Date.now();
+        const isMyRemoteTask = isTaskActiveForUser(t, currentUser);
+        const isRemoteActive = Boolean(t.timerRunning && isMyRemoteTask && (isStartedToday || (!t.sessionDate || t.sessionDate === today)));
 
         // For current user: ONLY the single active task timer is running!
         let isRunning = false;
@@ -515,7 +556,7 @@ export const WorkProvider = ({ children }) => {
               assignedToId: t.assignedToId || userKey,
               assignedToName: t.assignedToName || currentUser?.name,
               timerRunning: true,
-              startedAt: startTs || Date.now(),
+              startedAt: isStartedToday ? startTs : Date.now(),
               accumulatedSeconds: Number(t.accumulatedSeconds || t.timerSeconds || 0),
               timerSeconds: Number(t.todayWorkSeconds ?? t.timerSeconds ?? 0),
               todayWorkSeconds: Number(t.todayWorkSeconds || 0),
@@ -532,9 +573,10 @@ export const WorkProvider = ({ children }) => {
         }
 
         if (isRunning) {
-          const startedAtTs = (isActive && activeTimer.startedAt) ? Number(activeTimer.startedAt) : (Number(t.startedAt) || Date.now());
-          const safeStartTs = (startedAtTs > 0 && startedAtTs >= todayMidnightMs) ? startedAtTs : todayMidnightMs;
-          const elapsed = Math.max(0, Math.floor((Date.now() - safeStartTs) / 1000));
+          const startedAtTs = (isActive && activeTimer.startedAt) ? Number(activeTimer.startedAt) : (Number(t.startedAt) || 0);
+          const elapsed = (startedAtTs >= todayMidnightMs && startedAtTs <= Date.now())
+            ? Math.floor((Date.now() - startedAtTs) / 1000)
+            : 0;
 
           // Determine today's baseline (frozen before this active running stretch began)
           let todayBaseSecs = 0;
@@ -654,7 +696,7 @@ export const WorkProvider = ({ children }) => {
       localStorage.setItem(KEYS.TASKS, JSON.stringify(cleanMergedTasks));
 
       // Synchronize running task timer across devices / laptops
-      const remoteRunningTask = cleanMergedTasks.find(t => t.timerRunning && t.status !== 'completed' && !t.completedAt && isTaskAssignedToMe(t));
+      const remoteRunningTask = cleanMergedTasks.find(t => isTaskActiveForUser(t, currentUser));
       const curSnapshot = getActiveTimerSnapshot();
 
       if (remoteRunningTask) {
@@ -728,7 +770,7 @@ export const WorkProvider = ({ children }) => {
       isFetchingRef.current = false;
       if (!isSilent) setLoading(false);
     }
-  }, [projectFilter, taskFilter, timesheetFilter, getActiveTimerSnapshot, getElapsedSeconds, formatSeconds, addToast, isTaskAssignedToMe, saveActiveTimerSnapshot, userKey, currentUser]);
+  }, [projectFilter, taskFilter, timesheetFilter, getActiveTimerSnapshot, getElapsedSeconds, formatSeconds, addToast, isTaskAssignedToMe, isTaskActiveForUser, saveActiveTimerSnapshot, userKey, currentUser]);
 
   // Derived reactive active running task strictly scoped to current logged-in user
   const activeRunningTask = useMemo(() => {
@@ -756,8 +798,8 @@ export const WorkProvider = ({ children }) => {
     );
     if (!isShiftClockedIn) return null;
 
-    return tasks.find(t => t.timerRunning && t.status !== 'completed' && !t.completedAt && isTaskAssignedToMe(t)) || null;
-  }, [tasks, currentUser, isTaskAssignedToMe, userKey]);
+    return tasks.find(t => isTaskActiveForUser(t, currentUser)) || null;
+  }, [tasks, currentUser, isTaskActiveForUser, userKey]);
 
   useEffect(() => {
     loadWorkData(false);
@@ -988,20 +1030,19 @@ export const WorkProvider = ({ children }) => {
           );
 
           const isExplicitlyStopped = isShiftOnBreak || hasExplicitClockOut;
-          if (isAssignedToMe && isExplicitlyStopped && t.timerRunning) {
+          if (isAssignedToMe && isExplicitlyStopped && t.timerRunning && isTaskActiveForUser(t, currentUser)) {
             changed = true;
             return { ...t, timerRunning: false, startedAt: null };
           }
 
-          const isTaskRunning = isAssignedToMe
-            ? Boolean(t.timerRunning && !isExplicitlyStopped)
-            : Boolean(t.timerRunning && t.startedAt);
+          const isTaskRunning = isTaskActiveForUser(t, currentUser) && !isExplicitlyStopped;
 
           if (isTaskRunning) {
             changed = true;
             const startTs = (isMyActive && activeTimer.startedAt) ? Number(activeTimer.startedAt) : Number(t.startedAt);
-            const safeStartTs = (startTs > 0 && (now - startTs) < 24 * 3600 * 1000) ? startTs : todayMidnightMs;
-            const elapsed = Math.min(Math.max(0, Math.floor((now - safeStartTs) / 1000)), 14 * 3600);
+            const elapsed = (startTs >= todayMidnightMs && startTs <= now)
+              ? Math.floor((now - startTs) / 1000)
+              : 0;
 
             // Determine today's base (frozen before this active running stretch began)
             let baseToday = 0;
@@ -1053,7 +1094,7 @@ export const WorkProvider = ({ children }) => {
     }, 1000);
 
     return () => clearInterval(timerInterval);
-  }, [getActiveTimerSnapshot, getElapsedSeconds, formatSeconds, userKey, saveActiveTimerSnapshot, currentUser, isTaskAssignedToMe]);
+  }, [getActiveTimerSnapshot, getElapsedSeconds, formatSeconds, userKey, saveActiveTimerSnapshot, currentUser, isTaskAssignedToMe, isTaskActiveForUser]);
 
   // Catch up immediately when tab gains focus or visibility
   useEffect(() => {
@@ -2135,6 +2176,8 @@ export const WorkProvider = ({ children }) => {
       projectName: targetTask.projectName || 'General Work',
       assignedToId: assignedEmpId || userKey,
       assignedToName: assignedEmpName,
+      activeUserId: targetUserKey,
+      activeUserName: assignedEmpName,
       timerRunning: true,
       startedAt: now,
       accumulatedSeconds: existingSecs,
@@ -2358,6 +2401,9 @@ export const WorkProvider = ({ children }) => {
     const pausedTimerState = {
       ...pausedTask,
       taskId: targetTask._id,
+      timerRunning: false,
+      startedAt: null,
+      activeUserId: null,
       date: today
     };
 
@@ -2387,6 +2433,9 @@ export const WorkProvider = ({ children }) => {
         return {
           ...t,
           ...pausedTask,
+          timerRunning: false,
+          startedAt: null,
+          activeUserId: null,
           _id: t._id,
           id: t.id
         };
@@ -2411,6 +2460,9 @@ export const WorkProvider = ({ children }) => {
         return {
           ...t,
           ...pausedTask,
+          timerRunning: false,
+          startedAt: null,
+          activeUserId: null,
           _id: t._id,
           id: t.id
         };
@@ -2426,6 +2478,7 @@ export const WorkProvider = ({ children }) => {
         _id: targetTask._id,
         timerRunning: false,
         startedAt: null,
+        activeUserId: null,
         accumulatedSeconds: currentSecs,
         timerSeconds: updatedTodaySecs,
         todayWorkSeconds: updatedTodaySecs,
@@ -2547,6 +2600,7 @@ export const WorkProvider = ({ children }) => {
             ...t,
             timerRunning: false,
             startedAt: null,
+            activeUserId: null,
             accumulatedSeconds: totalSecs,
             timerSeconds: todaySessionSecs,
             durationSeconds: totalSecs,
@@ -2569,6 +2623,7 @@ export const WorkProvider = ({ children }) => {
             ...t,
             timerRunning: false,
             startedAt: null,
+            activeUserId: null,
             accumulatedSeconds: totalSecs,
             timerSeconds: todaySessionSecs,
             durationSeconds: totalSecs,
@@ -2801,6 +2856,8 @@ export const WorkProvider = ({ children }) => {
             status: 'completed',
             progress: 100,
             timerRunning: false,
+            startedAt: null,
+            activeUserId: null,
             timerSeconds: finalTaskDuration,
             durationSeconds: finalTaskDuration,
             accumulatedSeconds: finalTaskDuration,
@@ -2832,6 +2889,8 @@ export const WorkProvider = ({ children }) => {
         status: 'completed',
         progress: 100,
         timerRunning: false,
+        startedAt: null,
+        activeUserId: null,
         timerSeconds: finalTaskDuration,
         durationSeconds: finalTaskDuration,
         accumulatedSeconds: finalTaskDuration,

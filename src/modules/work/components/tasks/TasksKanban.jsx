@@ -139,27 +139,41 @@ export const TasksKanban = ({ tasks: propTasks, onSelectTask }) => {
                   {/* Action Bar (Timer Controls + Complete Button) */}
                   <div className="flex items-center justify-between gap-1.5">
                     {(task.timerRunning && task.status !== 'completed' && !task.completedAt) ? (
-                      <div className="flex items-center gap-1 bg-sky-600 text-white px-2 py-1 rounded-md text-[11px] font-bold">
-                        <span>⏱️ {task.liveDurationText || task.hoursLoggedText}</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            pauseTaskTimer(task._id || task.id);
-                          }}
-                          className="bg-white/25 hover:bg-white/35 border-none text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
-                        >
-                          Pause
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            stopTaskTimer(task._id || task.id);
-                          }}
-                          className="bg-white/25 hover:bg-white/35 border-none text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
-                        >
-                          Stop
-                        </button>
-                      </div>
+                      (() => {
+                        const myIds = [currentUser?._id, currentUser?.id, currentUser?.employeeCode, currentUser?.email].filter(Boolean).map(s => String(s).toLowerCase().trim());
+                        const isRunningByMe = !task.activeUserId || myIds.includes(String(task.activeUserId).toLowerCase().trim());
+                        if (!isRunningByMe) {
+                          return (
+                            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-semibold" title={`Active by ${task.activeUserName || 'teammate'}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              <span>{task.activeUserName ? `Working: ${task.activeUserName}` : 'In Progress'}</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <div className="flex items-center gap-1 bg-sky-600 text-white px-2 py-1 rounded-md text-[11px] font-bold">
+                            <span>⏱️ {task.liveDurationText || task.hoursLoggedText}</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                pauseTaskTimer(task._id || task.id);
+                              }}
+                              className="bg-white/25 hover:bg-white/35 border-none text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
+                            >
+                              Pause
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                stopTaskTimer(task._id || task.id);
+                              }}
+                              className="bg-white/25 hover:bg-white/35 border-none text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer transition-colors"
+                            >
+                              Stop
+                            </button>
+                          </div>
+                        );
+                      })()
                     ) : task.status !== 'completed' ? (
                       <button
                         onClick={(e) => {

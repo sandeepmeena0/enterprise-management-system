@@ -494,8 +494,7 @@ export const TeamOperationsPage = () => {
       const keysToTry = [
         `ems_active_task_timer_${empKey}`,
         empId ? `ems_active_task_timer_${empId}` : null,
-        emp.employeeCode ? `ems_active_task_timer_${emp.employeeCode}` : null,
-        isSelf ? 'ems_active_task_timer' : null
+        emp.employeeCode ? `ems_active_task_timer_${emp.employeeCode}` : null
       ].filter(Boolean);
       for (const k of keysToTry) {
         const rawTimer = localStorage.getItem(k);
@@ -513,7 +512,14 @@ export const TeamOperationsPage = () => {
 
     const localRunningTask = (activeTimer && activeTimer.timerRunning !== false)
       ? activeTimer
-      : (empTasks.find(t => t.timerRunning) || null);
+      : (empTasks.find(t => {
+          if (!t.timerRunning || t.status === 'completed') return false;
+          if (t.activeUserId) {
+            const act = String(t.activeUserId).toLowerCase().trim();
+            return act === String(empId).toLowerCase().trim() || act === String(emp.employeeCode || '').toLowerCase().trim();
+          }
+          return true;
+        }) || null);
 
     const telemRunningTask = telem?.activeTask && (telem.activeTask.timerRunning !== false || telem.activeTask.startedAt)
       ? telem.activeTask
@@ -546,8 +552,8 @@ export const TeamOperationsPage = () => {
         }
       }
 
-      const elapsed = isTimerRunning
-        ? Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
+      const elapsed = (isTimerRunning && startedAtMs >= todayMidnight.getTime() && startedAtMs <= nowMs)
+        ? Math.floor((nowMs - startedAtMs) / 1000)
         : 0;
 
       // STRICT SAME-DAY TASK ISOLATION:
@@ -965,6 +971,10 @@ export const TeamOperationsPage = () => {
         taskCode: targetTask.taskCode || 'TSK',
         title: targetTask.title,
         projectName: targetTask.projectName || 'General Work',
+        assignedToId: empId || empKey,
+        assignedToName: emp.name,
+        activeUserId: empId || empKey,
+        activeUserName: emp.name,
         timerRunning: true,
         startedAt: now,
         accumulatedSeconds: existingAccumSecs,

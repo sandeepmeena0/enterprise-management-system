@@ -221,15 +221,24 @@ export const WeeklyTimeLogsCard = ({
                 const nowMs = Date.now();
                 const allTasksToEvaluate = [ ...(tasks || []) ];
                 if (activeRunningTask && (activeRunningTask.taskId || activeRunningTask._id)) {
-                    const actId = String(activeRunningTask.taskId || activeRunningTask._id);
-                    const exists = allTasksToEvaluate.some(t => String(t._id || t.id) === actId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode));
-                    if (!exists) {
-                        allTasksToEvaluate.push(activeRunningTask);
+                    const aUser = String(activeRunningTask.activeUserId || activeRunningTask.assignedToId || '').toLowerCase().trim();
+                    const isMine = !aUser || aUser === uId || aUser === uCode || aUser === String(effectiveUser?._id || '').toLowerCase().trim();
+                    if (isMine) {
+                        const actId = String(activeRunningTask.taskId || activeRunningTask._id);
+                        const exists = allTasksToEvaluate.some(t => String(t._id || t.id) === actId || (t.taskCode && activeRunningTask.taskCode && t.taskCode === activeRunningTask.taskCode));
+                        if (!exists) {
+                            allTasksToEvaluate.push(activeRunningTask);
+                        }
                     }
                 }
 
                 allTasksToEvaluate.forEach(t => {
                     if (!isMyTask(t)) return;
+                    // If another user is running this shared task, do not attribute its live timer to effectiveUser
+                    if (t.timerRunning && t.activeUserId) {
+                        const actId = String(t.activeUserId).toLowerCase().trim();
+                        if (uId && actId !== uId && uCode && actId !== uCode) return;
+                    }
                     const tId = String(t._id || t.id);
 
                     const isRunning = Boolean(

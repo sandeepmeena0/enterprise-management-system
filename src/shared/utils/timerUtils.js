@@ -500,8 +500,10 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     const baseSecs = Math.max(0, Number(task.dailySessions[targetDate]) || 0);
     let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
-      const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-      liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
+      const startTs = Number(task.startedAt) || 0;
+      liveSecs = (startTs >= todayMidnight.getTime() && startTs <= nowMs)
+        ? Math.floor((nowMs - startTs) / 1000)
+        : 0;
     }
     const result = baseSecs + liveSecs;
     return targetDate === actualToday ? Math.min(result, maxPhysicalSecs) : Math.min(result, 24 * 3600);
@@ -517,8 +519,10 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
     }
     let liveSecs = 0;
     if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
-      const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
-      liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
+      const startTs = Number(task.startedAt) || 0;
+      liveSecs = (startTs >= todayMidnight.getTime() && startTs <= nowMs)
+        ? Math.floor((nowMs - startTs) / 1000)
+        : 0;
     }
     const result = baseSecs + liveSecs;
     return targetDate === actualToday ? Math.min(result, maxPhysicalSecs) : Math.min(result, 24 * 3600);
@@ -526,9 +530,11 @@ export const getTaskTodaySeconds = (task, dateStr, nowMs = Date.now(), isEffecti
 
   // 3. Actively running task today with no prior recorded today session:
   if (task.timerRunning && targetDate === actualToday && !isEffectiveOnBreak) {
-    const startTs = task.startedAt ? Number(task.startedAt) : nowMs;
+    const startTs = Number(task.startedAt) || 0;
     const base = (task.todayBaseSecs !== undefined) ? Math.max(0, Number(task.todayBaseSecs) || 0) : 0;
-    const liveSecs = Math.max(0, Math.floor((nowMs - Math.max(startTs, todayMidnight.getTime())) / 1000));
+    const liveSecs = (startTs >= todayMidnight.getTime() && startTs <= nowMs)
+      ? Math.floor((nowMs - startTs) / 1000)
+      : 0;
     return Math.min(base + liveSecs, maxPhysicalSecs);
   }
 
@@ -560,7 +566,7 @@ export const sanitizeTaskDailySessions = (task) => {
   const nowMs = Date.now();
 
   const isRunning = Boolean(task.timerRunning && task.startedAt);
-  const runningElapsed = (isRunning && Number(task.startedAt) >= todayMidnight.getTime())
+  const runningElapsed = (isRunning && Number(task.startedAt) >= todayMidnight.getTime() && Number(task.startedAt) <= nowMs)
     ? Math.max(0, Math.floor((nowMs - Number(task.startedAt)) / 1000))
     : 0;
 
@@ -622,11 +628,12 @@ export const syncTaskPauseState = (task, { nowMs = Date.now(), todayStr, wasPaus
   const today = todayStr || getLocalDateStr();
 
   let sessionElapsed = 0;
-  if (task.timerRunning && task.startedAt && Number(task.startedAt) > 0) {
-    const todayMidnight = new Date();
-    todayMidnight.setHours(0, 0, 0, 0);
-    const effStart = Math.max(Number(task.startedAt), todayMidnight.getTime());
-    sessionElapsed = Math.max(0, Math.floor((nowMs - effStart) / 1000));
+  const startTs = Number(task.startedAt) || 0;
+  const todayMidnight = new Date(nowMs);
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayMidnightMs = todayMidnight.getTime();
+  if (task.timerRunning && startTs >= todayMidnightMs && startTs <= nowMs) {
+    sessionElapsed = Math.floor((nowMs - startTs) / 1000);
   }
 
   const dailySessionsMap = (task.dailySessions && typeof task.dailySessions === 'object') ? { ...task.dailySessions } : {};
