@@ -233,7 +233,6 @@ export const removeTimerStorage = (user, subKey) => {
 };
 
 import { hrService } from '../../modules/hr/services/hrService.js';
-import { workService } from '../../modules/work/services/workService.js';
 import { getCompanySettings, fetchCompanySettingsFromDB } from '../services/companySettingsService.js';
 
 export const getLocalDateStr = (d = new Date()) => {
@@ -1011,8 +1010,7 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
             isClockedIn: false,
             clockOutTime: timeStr,
             clockOutTimestamp: nowTs,
-            workSeconds: finalVerifiedWorkSecs,
-            activeTask: null
+            workSeconds: finalVerifiedWorkSecs
           }).catch(() => {});
         } catch (_) {}
       }
@@ -1044,7 +1042,6 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
       const taskList = JSON.parse(rawTasks) || [];
       const userIdentifiers = mirrorKeys.map(k => String(k).toLowerCase());
       let taskChanged = false;
-      const tasksToUpdateBackend = [];
 
       const updatedTasks = taskList.map(t => {
         const isAssigned = (t.assignedToId && userIdentifiers.includes(String(t.assignedToId).toLowerCase())) ||
@@ -1055,9 +1052,7 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
 
         if (isAssigned && t.timerRunning) {
           taskChanged = true;
-          const pausedT = syncTaskPauseState(t, { nowMs: nowTs, todayStr: today, wasPausedForClockOut: true });
-          tasksToUpdateBackend.push(pausedT);
-          return pausedT;
+          return syncTaskPauseState(t, { nowMs: nowTs, todayStr: today, wasPausedForClockOut: true });
         }
         return t;
       });
@@ -1065,39 +1060,6 @@ export const performShiftClockOut = (user, { reason = 'Clock Out', nowTs = Date.
       if (taskChanged) {
         localStorage.setItem('ems_tasks', JSON.stringify(updatedTasks));
         window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: 'ems_tasks' } }));
-
-        // Async update tasks in MongoDB backend so remote clients see timerRunning: false
-        tasksToUpdateBackend.forEach(pt => {
-          if (pt && (pt._id || pt.id)) {
-            workService.updateTask(pt._id || pt.id, {
-              timerRunning: false,
-              startedAt: null,
-              accumulatedSeconds: pt.accumulatedSeconds,
-              timerSeconds: pt.timerSeconds,
-              todayWorkSeconds: pt.todayWorkSeconds,
-              dailySessions: pt.dailySessions,
-              sessionDate: pt.sessionDate,
-              wasPausedForClockOut: true
-            }).catch(() => {});
-          }
-        });
-      }
-
-      // Also ensure pausedActiveTimer taskId is synced to backend
-      if (pausedActiveTimer && pausedActiveTimer.taskId) {
-        const alreadyUpdated = tasksToUpdateBackend.some(pt => String(pt._id || pt.id) === String(pausedActiveTimer.taskId));
-        if (!alreadyUpdated) {
-          workService.updateTask(pausedActiveTimer.taskId, {
-            timerRunning: false,
-            startedAt: null,
-            accumulatedSeconds: pausedActiveTimer.accumulatedSeconds,
-            timerSeconds: pausedActiveTimer.timerSeconds,
-            todayWorkSeconds: pausedActiveTimer.todayWorkSeconds,
-            dailySessions: pausedActiveTimer.dailySessions,
-            sessionDate: pausedActiveTimer.sessionDate,
-            wasPausedForClockOut: true
-          }).catch(() => {});
-        }
       }
     }
   } catch (_) {}

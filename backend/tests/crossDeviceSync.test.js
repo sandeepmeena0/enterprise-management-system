@@ -32,7 +32,10 @@ const {
   resumeTimer,
   stopTimer,
   getActiveTimer,
-  completeTask
+  completeTask,
+  computeRequestHash,
+  acquireIdempotencyLease,
+  getISTDateString
 } = require('../src/modules/work/services/timeEngineService');
 const { dispatchPendingOutboxEvents } = require('../src/modules/work/services/outboxDispatcher');
 const socketManager = require('../src/shared/socket/socketManager');
@@ -484,6 +487,8 @@ describe('Cross-Device Single Source of Truth & Synchronization Suite', () => {
       assert.equal(result.success, true);
       assert.equal(result.task.status, 'completed');
       assert.equal(result.task.progress, 100);
+      assert.equal(result.state.status, 'IDLE');
+      assert.equal(result.state.taskId, null);
     } finally {
       ActiveTaskTimer.findOne = origFindOneTimer;
       ActiveTaskTimer.updateOne = origUpdateOneTimer;
@@ -493,6 +498,106 @@ describe('Cross-Device Single Source of Truth & Synchronization Suite', () => {
       require('../src/modules/work/models/TimeTrackingAuditLog').create = origCreateAudit;
       require('../src/modules/work/models/Timesheet').create = origCreateTimesheet;
       DurableOutboxEvent.create = origCreateOutbox;
+    }
+  });
+
+  // ── Scenario 10: completeTask rejected if employee is clocked out or on break ──
+  test('Scenario 10: completeTask rejects and preserves task status if employee is clocked out', async () => {
+    Attendance.findOne = () => stubQuery({
+      isClockedIn: false,
+      clockOutTime: '06:00 PM',
+      isOnBreak: false,
+      date: getISTDateString(new Date())
+    });
+
+    const origFindByIdTask = Task.findById;
+    Task.findById = () => stubQuery({
+      _id: task1Id,
+      assignedTo: emp1Id,
+      title: 'Finish Task'
+    });
+
+    let taskUpdated = false;
+    const origUpdateOneTask = Task.updateOne;
+    Task.updateOne = async () => {
+      taskUpdated = true;
+      return { matchedCount: 1, modifiedCount: 1 };
+    };
+
+    try {
+      await assert.rejects(
+        async () => {
+          await completeTask({
+            actor: actorEmp1,
+            targetEmployeeId: emp1Id,
+            taskId: task1Id
+          });
+        },
+        (err) => {
+          assert.equal(err.statusCode, 400);
+          assert.match(err.message, /clocked out/i);
+          return true;
+        }
+      );
+
+      // Verify Task was NOT modified to completed
+      assert.equal(taskUpdated, false, 'Task.updateOne must NEVER be called when completeTask is rejected');
+    } finally {
+      Task.findById = origFindByIdTask;
+      Task.updateOne = origUpdateOneTask;
+    }
+  });
+
+  // ── Scenario 11: Idempotency lease caching for completeTask ──
+  test('Scenario 11: Idempotent completeTask returns cached result on retry', async () => {
+    const IdempotencyLog = require('../src/modules/work/models/IdempotencyLog');
+    const idempotencyKey = `idem_complete_${Date.now()}`;
+    const cachedResponse = {
+      success: true,
+      message: 'Task marked as completed successfully.',
+      task: {
+        _id: task1Id,
+        status: 'completed',
+        progress: 100
+      },
+      state: {
+        status: 'IDLE',
+        taskId: null
+      }
+    };
+
+    const requestHash = computeRequestHash({
+      operationType: 'COMPLETE',
+      taskId: String(task1Id),
+      targetEmployeeId: String(emp1Id)
+    });
+
+    const origFindOne = IdempotencyLog.findOne;
+    IdempotencyLog.findOne = () => stubQuery({
+      actorId: emp1Id,
+      idempotencyKey,
+      operationType: 'COMPLETE',
+      status: 'COMPLETED',
+      httpStatusCode: 200,
+      requestHash,
+      responsePayload: cachedResponse,
+      expiresAt: new Date(Date.now() + 60000)
+    });
+
+    try {
+      const lease = await acquireIdempotencyLease({
+        actorId: emp1Id,
+        targetEmployeeId: emp1Id,
+        idempotencyKey,
+        operationType: 'COMPLETE',
+        requestPayload: { taskId: task1Id }
+      });
+
+      assert.equal(lease.isCached, true);
+      assert.equal(lease.statusCode, 200);
+      assert.deepEqual(lease.payload, cachedResponse);
+    } finally {
+      IdempotencyLog.findOne = origFindOne;
     }
   });
 });

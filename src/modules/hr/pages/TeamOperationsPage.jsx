@@ -565,80 +565,15 @@ export const TeamOperationsPage = () => {
     }
   };
 
-  // 3. Admin Instant 0ms Task Pause
+  // 3. Admin Instant Task Pause
   const handleAdminPauseTask = async (task, emp) => {
     try {
       const taskId = task._id || task.id || task.taskId;
       const empId = String(emp._id || emp.id || '');
       const empCode = String(emp.employeeCode || '');
       const empKey = empCode || empId;
-      const now = Date.now();
 
-      const targetTask = (tasks || []).find(t => String(t._id || t.id) === String(taskId)) || task;
-      const pausedT = syncTaskPauseState(targetTask, { nowMs: now, todayStr });
-
-      const pausedActiveTask = {
-        taskId,
-        taskCode: task.taskCode || targetTask.taskCode || 'TSK',
-        title: task.title || targetTask.title || 'Task',
-        projectName: task.projectName || targetTask.projectName || 'General Work',
-        timerRunning: false,
-        startedAt: null,
-        accumulatedSeconds: pausedT.accumulatedSeconds,
-        todayWorkSeconds: pausedT.todayWorkSeconds,
-        timerSeconds: pausedT.todayWorkSeconds,
-        date: todayStr,
-        sessionDate: todayStr,
-        lastUpdated: now
-      };
-
-      // 1. Optimistic live telemetry update (0ms instant UI reflection with preserved paused seconds)
-      setLiveTelemetryMap(prev => {
-        const next = { ...prev };
-        [empId, empCode, empKey].filter(Boolean).forEach(k => {
-          if (next[k]) {
-            next[k] = { ...next[k], activeTask: pausedActiveTask };
-          }
-        });
-        return next;
-      });
-
-      // 2. DO NOT delete memory cache! Update memory with latest paused seconds
-      const taskKey = String(taskId);
-      liveTaskMemoryRef.current.set(taskKey, {
-        startedAt: null,
-        lastLiveSecs: pausedT.todayWorkSeconds
-      });
-      [empId, empCode, empKey].filter(Boolean).forEach(k => {
-        liveTaskMemoryRef.current.set(k, {
-          startedAt: null,
-          lastLiveSecs: pausedT.todayWorkSeconds
-        });
-      });
-
-      // 3. Update localStorage for employee with FULL paused state
-      const timerKeys = [
-        `ems_active_task_timer_${empKey}`,
-        empId ? `ems_active_task_timer_${empId}` : null,
-        empCode ? `ems_active_task_timer_${empCode}` : null
-      ].filter(Boolean);
-      timerKeys.forEach(k => {
-        try {
-          localStorage.setItem(k, JSON.stringify(pausedActiveTask));
-        } catch (_) {}
-      });
-
-      // 4. Send backend heartbeat with activeTask object (timerRunning: false) so Atlas has full data
-      try {
-        hrService.sendHeartbeat({
-          employeeId: empId || empKey,
-          employeeCode: empCode || empKey,
-          activeTask: pausedActiveTask
-        }).catch(() => {});
-      } catch (_) {}
-
-      // 5. WorkContext pause
-      pauseTaskTimer(taskId);
+      await pauseTaskTimer(taskId);
 
       await hrService.createAttendanceAuditLog({
         type: 'admin_task_pause_override',
@@ -650,10 +585,9 @@ export const TeamOperationsPage = () => {
         actorId: currentUser?._id,
         actorName: currentUser?.name || 'Admin',
         note: `Admin paused task #${task.taskCode || 'TSK'}: "${task.title || ''}" for ${emp.name}`
-      });
+      }).catch(() => {});
 
       setSyncTick(t => t + 1);
-      addToast(`⏸️ Paused task #${task.taskCode || 'TSK'} for ${emp.name}!`, 'info');
     } catch (err) {
       console.error('Failed to pause task:', err);
       addToast('Failed to pause task', 'error');

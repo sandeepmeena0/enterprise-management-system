@@ -15,7 +15,7 @@ import { hrService } from '../../hr/services/hrService';
 import { OverdueTaskModal } from '../components/tasks/OverdueTaskModal';
 import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
 import { isHRorAdmin, canDeleteTask, canDeleteProject, canCreateTasks, canEditAnyTask, canManageProjects } from '../../../shared/utils/permissionUtils';
-import { readTimerStorage, getTaskTodaySeconds, syncTaskPauseState, sanitizeTaskDailySessions } from '../../../shared/utils/timerUtils';
+import { readTimerStorage, sanitizeTaskDailySessions } from '../../../shared/utils/timerUtils';
 import { initTimerOfflineSync } from '../services/timerOfflineQueue';
 
 const defaultWorkContext = {
@@ -98,12 +98,6 @@ export const WorkProvider = ({ children }) => {
     return currentUser?.employeeCode || (currentUser?._id ? String(currentUser._id) : '');
   }, [currentUser]);
 
-  // Reset user-specific monotonic version and request ordering on account switch
-  useEffect(() => {
-    latestServerVersionRef.current = 0;
-    inFlightRequestIdRef.current = 0;
-    isTimerActionInFlightRef.current = false;
-  }, [userKey]);
 
   const getTodayStr = () => {
     const d = new Date();
@@ -520,6 +514,17 @@ export const WorkProvider = ({ children }) => {
       return null;
     }
   }, [currentUser, reconcileAuthoritativeTimer]);
+
+  // Account switch isolation: reset monotonic version ref, request ID ref, in-flight action ref, clear previous active timer snapshot, and sync state for the new user
+  useEffect(() => {
+    latestServerVersionRef.current = 0;
+    inFlightRequestIdRef.current = 0;
+    isTimerActionInFlightRef.current = false;
+    saveActiveTimerSnapshot(null);
+    if (userKey) {
+      syncAuthoritativeTimerState({ force: true, source: 'account_switch' });
+    }
+  }, [userKey, saveActiveTimerSnapshot, syncAuthoritativeTimerState]);
 
   // Active filter states
   const [projectFilter, setProjectFilter] = useState({ status: 'all', category: 'all', department: 'all', search: '' });
@@ -1226,62 +1231,7 @@ export const WorkProvider = ({ children }) => {
       // Auto-pause task timer strictly when employee is on break OR explicitly clocked out today!
       // CRITICAL: NEVER auto-pause when !isShiftClockedIn is merely unhydrated on initial boot across devices!
       if ((isShiftOnBreak || hasExplicitClockOut) && activeTimer?.timerRunning) {
-        const today = getTodayStr();
-        const pausedTimer = syncTaskPauseState(activeTimer, {
-          nowMs: Date.now(),
-          todayStr: today,
-          wasPausedForClockOut: Boolean(hasExplicitClockOut),
-          wasPausedForBreak: Boolean(isShiftOnBreak)
-        });
-        const currentSecs = pausedTimer.accumulatedSeconds;
-        saveActiveTimerSnapshot(pausedTimer);
-
-        const allTasks = getCollection(KEYS.TASKS) || [];
-        const isMatchActive = (t) => (
-          String(t._id || t.id) === String(activeTimer.taskId) ||
-          (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
-        );
-        const updatedAll = allTasks.map(t => {
-          if (isMatchActive(t)) {
-            return {
-              ...t,
-              ...pausedTimer,
-              _id: t._id,
-              id: t.id
-            };
-          }
-          return t;
-        });
-        saveCollection(KEYS.TASKS, updatedAll);
-
-        setTasks(prevTasks => prevTasks.map(t => {
-          if (isMatchActive(t)) {
-            return {
-              ...t,
-              ...pausedTimer,
-              _id: t._id,
-              id: t.id
-            };
-          }
-          return t;
-        }));
-
-        // Log session to timesheet if clock-out caused pause
-        if (!isShiftClockedIn && currentSecs > 0) {
-          workService.createTimesheet({
-            taskId: activeTimer.taskId,
-            taskCode: activeTimer.taskCode,
-            taskTitle: activeTimer.title,
-            projectName: activeTimer.projectName,
-            employeeId: activeTimer.assignedToId || userKey,
-            employeeName: activeTimer.assignedToName || currentUser?.name || 'User',
-            date: activeTimer.date || today,
-            totalDurationSeconds: currentSecs,
-            totalDurationText: formatSeconds(currentSecs),
-            memo: 'Shift clock-out auto-save',
-            status: 'stopped'
-          }).catch(() => {});
-        }
+        syncAuthoritativeTimerState({ force: false, source: 'break_or_clockout_guard' });
         return;
       }
 
@@ -1378,191 +1328,30 @@ export const WorkProvider = ({ children }) => {
     return () => clearInterval(timerInterval);
   }, [getActiveTimerSnapshot, getElapsedSeconds, formatSeconds, userKey, saveActiveTimerSnapshot, currentUser, isTaskAssignedToMe, isTaskActiveForUser]);
 
-  // Catch up immediately when tab gains focus or visibility
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const activeTimer = getActiveTimerSnapshot();
-        if (activeTimer && activeTimer.timerRunning) {
-          const nowTs = Date.now();
-          const startTs = Number(activeTimer.startedAt) || nowTs;
-          const elapsed = Math.max(0, Math.floor((nowTs - startTs) / 1000));
-          const todayBase = Number(activeTimer.todayBaseSecs ?? activeTimer.todayWorkSeconds ?? 0);
-          const liveTodaySecs = todayBase + elapsed;
-          const liveTotalSecs = (Number(activeTimer.accumulatedSeconds) || todayBase) + elapsed;
-          const todayText = formatSeconds(liveTodaySecs);
-          const totalText = formatSeconds(liveTotalSecs);
-          setTasks(prev => prev.map(t => String(t._id || t.id) === String(activeTimer.taskId) ? {
-            ...t,
-            timerRunning: true,
-            timerSeconds: liveTodaySecs,
-            todayWorkSeconds: liveTodaySecs,
-            accumulatedSeconds: liveTotalSecs,
-            liveDurationText: todayText,
-            hoursLoggedText: totalText
-          } : t));
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
-    };
-  }, [getActiveTimerSnapshot, getElapsedSeconds, formatSeconds]);
-
   // Fast cross-device telemetry listener: immediately hydrate running task from cloud
   useEffect(() => {
     const handleShiftTelem = (e) => {
       const telemRec = e.detail?.telemRec;
       if (!telemRec?.activeTask) return;
       const at = telemRec.activeTask;
-      if (at.timerRunning && isTaskAssignedToMe(at)) {
-        const today = getTodayStr();
-        const curSnapshot = getActiveTimerSnapshot();
-        const atId = String(at._id || at.id || at.taskId);
-        if (!curSnapshot || String(curSnapshot.taskId) !== atId || !curSnapshot.timerRunning) {
-          saveActiveTimerSnapshot({
-            taskId: at._id || at.id || at.taskId,
-            taskCode: at.taskCode || 'TSK',
-            title: at.title,
-            projectName: at.projectName || 'General Work',
-            assignedToId: userKey,
-            assignedToName: at.assignedToName || currentUser?.name || 'User',
-            timerRunning: true,
-            startedAt: at.startedAt || Date.now(),
-            accumulatedSeconds: Number(at.accumulatedSeconds || 0),
-            todayWorkSeconds: Number(at.todayWorkSeconds || 0),
-            dailySessions: at.dailySessions || {},
-            sessionDate: at.sessionDate || today,
-            date: today,
-            lastUpdated: Date.now()
-          });
-        }
-        setTasks(prev => prev.map(t => {
-          if (String(t._id || t.id) === atId || (at.taskCode && t.taskCode === at.taskCode)) {
-            return {
-              ...t,
-              timerRunning: true,
-              startedAt: at.startedAt,
-              accumulatedSeconds: Number(at.accumulatedSeconds || t.accumulatedSeconds || 0),
-              todayWorkSeconds: Number(at.todayWorkSeconds || 0),
-              dailySessions: at.dailySessions || t.dailySessions,
-              sessionDate: at.sessionDate || today
-            };
-          }
-          return t;
-        }));
+      if (at && isTaskAssignedToMe(at)) {
+        reconcileAuthoritativeTimer(at, { source: 'shift_telemetry_sync' });
       }
     };
     window.addEventListener('ems_shift_telemetry_synced', handleShiftTelem);
     return () => window.removeEventListener('ems_shift_telemetry_synced', handleShiftTelem);
-  }, [isTaskAssignedToMe, userKey, currentUser, getActiveTimerSnapshot, saveActiveTimerSnapshot]);
+  }, [isTaskAssignedToMe, reconcileAuthoritativeTimer]);
 
   // ── Automatic Task Timer Pause & Resume on Break ──
   useEffect(() => {
     const handleBreakStarted = (e) => {
       if (!isEventForMe(e)) return; // Ignore breaks for other employees!
-      const activeTimer = getActiveTimerSnapshot();
-      const today = getTodayStr();
-      if (activeTimer && activeTimer.timerRunning) {
-        const pausedTimer = syncTaskPauseState(activeTimer, {
-          nowMs: Date.now(),
-          todayStr: today,
-          wasPausedForBreak: true
-        });
-        const currentSecs = pausedTimer.accumulatedSeconds;
-        const currentTodaySecs = pausedTimer.todayWorkSeconds;
-        saveActiveTimerSnapshot(pausedTimer);
-
-        const allTasks = getCollection(KEYS.TASKS) || [];
-        const isMatchActive = (t) => (
-          String(t._id || t.id) === String(activeTimer.taskId) ||
-          (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
-        );
-        const updatedAll = allTasks.map(t => {
-          if (isMatchActive(t)) {
-            return {
-              ...t,
-              ...pausedTimer,
-              _id: t._id,
-              id: t.id
-            };
-          }
-          return t;
-        });
-        saveCollection(KEYS.TASKS, updatedAll);
-
-        setTasks(prevTasks => prevTasks.map(t => {
-          if (isMatchActive(t)) {
-            return {
-              ...t,
-              ...pausedTimer,
-              _id: t._id,
-              id: t.id
-            };
-          }
-          return t;
-        }));
-
-        try {
-          workService.updateTask(activeTimer.taskId, {
-            timerRunning: false,
-            startedAt: null,
-            accumulatedSeconds: currentSecs,
-            timerSeconds: currentTodaySecs,
-            todayWorkSeconds: currentTodaySecs,
-            dailySessions: pausedTimer.dailySessions,
-            sessionDate: today,
-            hoursLogged: +(currentSecs / 3600).toFixed(2),
-            hoursLoggedText: formatSeconds(currentSecs)
-          }).catch(() => {});
-        } catch {}
-
-        try {
-          hrService.sendHeartbeat({
-            employeeId: userKey,
-            employeeCode: userKey,
-            activeTask: pausedTimer
-          }).catch(() => {});
-        } catch (_) {}
-
-        broadcastSyncEvent(SYNC_EVENTS.TASK_TIMER_PAUSED, {
-          taskId: activeTimer.taskId,
-          empKey: userKey,
-          accumulatedSeconds: currentSecs,
-          pausedForBreak: true
-        });
-        window.dispatchEvent(new CustomEvent('ems_task_timer_paused', {
-          detail: { taskId: activeTimer.taskId, userKey, empKey: userKey }
-        }));
-      }
+      syncAuthoritativeTimerState({ force: false, source: 'break_started' });
     };
 
     const handleBreakEnded = (e) => {
       if (!isEventForMe(e)) return; // Ignore break ends for other employees!
-      const activeTimer = getActiveTimerSnapshot();
-      if (activeTimer) {
-        // Keep task timer paused so user can explicitly click Resume on the task
-        const currentSecs = Number(activeTimer.accumulatedSeconds) || 0;
-        const pausedState = {
-          ...activeTimer,
-          timerRunning: false,
-          startedAt: null,
-          accumulatedSeconds: currentSecs,
-          wasPausedForBreak: false
-        };
-        saveActiveTimerSnapshot(pausedState);
-
-        setTasks(prevTasks => prevTasks.map(t => {
-          if (String(t._id || t.id) === String(activeTimer.taskId)) {
-            return { ...t, timerRunning: false, wasPausedForBreak: false, liveDurationText: formatSeconds(currentSecs) };
-          }
-          return t;
-        }));
-      }
+      syncAuthoritativeTimerState({ force: false, source: 'break_ended' });
     };
 
     window.addEventListener('ems_break_started', handleBreakStarted);
@@ -1571,36 +1360,14 @@ export const WorkProvider = ({ children }) => {
       window.removeEventListener('ems_break_started', handleBreakStarted);
       window.removeEventListener('ems_break_ended', handleBreakEnded);
     };
-  }, [getActiveTimerSnapshot, getElapsedSeconds, saveActiveTimerSnapshot, formatSeconds, isEventForMe, userKey]);
+  }, [isEventForMe, syncAuthoritativeTimerState]);
 
   // ── On Clock-In: Shift Clock In does NOT automatically start or resume task timer ──
   // User must explicitly click "Start" or "Resume" on a task for task time to begin ticking.
   useEffect(() => {
     const handleClockedIn = (e) => {
       if (!isEventForMe(e)) return; // Ignore clock-in for other employees!
-      const activeTimer = getActiveTimerSnapshot();
-      if (activeTimer) {
-        // Keep task timer safely paused so employee can start when ready
-        const pausedState = {
-          ...activeTimer,
-          timerRunning: false,
-          startedAt: null,
-          wasPausedForClockOut: false
-        };
-        saveActiveTimerSnapshot(pausedState);
-
-        setTasks(prev => prev.map(t => {
-          if (String(t._id || t.id) === String(activeTimer.taskId || activeTimer._id)) {
-            return {
-              ...t,
-              timerRunning: false,
-              startedAt: null,
-              wasPausedForClockOut: false
-            };
-          }
-          return t;
-        }));
-      }
+      syncAuthoritativeTimerState({ force: false, source: 'clock_in' });
     };
 
     window.addEventListener('ems_clocked_in', handleClockedIn);
@@ -1609,72 +1376,14 @@ export const WorkProvider = ({ children }) => {
       window.removeEventListener('ems_clocked_in', handleClockedIn);
       window.removeEventListener('ems_reclock_in', handleClockedIn);
     };
-  }, [getActiveTimerSnapshot, saveActiveTimerSnapshot, isEventForMe]);
+  }, [isEventForMe, syncAuthoritativeTimerState]);
 
   // ── Automatic Task Timer Pause on Clock-Out ──
   useEffect(() => {
     const handleClockedOut = (e) => {
       if (!isEventForMe(e)) return; // Ignore clock-out for other employees!
-      const activeTimer = getActiveTimerSnapshot();
-      const today = getTodayStr();
-
-      if (activeTimer && activeTimer.timerRunning) {
-        const pausedTimer = syncTaskPauseState(activeTimer, {
-          nowMs: Date.now(),
-          todayStr: today,
-          wasPausedForClockOut: true
-        });
-        saveActiveTimerSnapshot(pausedTimer);
-
-        const allTasks = getCollection(KEYS.TASKS) || [];
-        const isMatchActive = (t) => (
-          String(t._id || t.id) === String(activeTimer.taskId) ||
-          (activeTimer.taskCode && t.taskCode && String(activeTimer.taskCode).trim().toLowerCase() === String(t.taskCode).trim().toLowerCase())
-        );
-        const updatedAll = allTasks.map(t => {
-          if (isMatchActive(t)) {
-            return {
-              ...t,
-              ...pausedTimer,
-              _id: t._id,
-              id: t.id
-            };
-          }
-          if (isTaskAssignedToMe(t) && t.timerRunning) {
-            const p = syncTaskPauseState(t, { nowMs: Date.now(), todayStr: today, wasPausedForClockOut: true });
-            return p ? { ...t, ...p, _id: t._id, id: t.id } : { ...t, timerRunning: false, startedAt: null };
-          }
-          return t;
-        });
-        saveCollection(KEYS.TASKS, updatedAll);
-
-        setTasks(prev => prev.map(t => {
-          if (isMatchActive(t)) {
-            return {
-              ...t,
-              ...pausedTimer,
-              _id: t._id,
-              id: t.id
-            };
-          }
-          if (isTaskAssignedToMe(t) && t.timerRunning) {
-            const p = syncTaskPauseState(t, { nowMs: Date.now(), todayStr: today, wasPausedForClockOut: true });
-            return p ? { ...t, ...p, _id: t._id, id: t.id } : { ...t, timerRunning: false, startedAt: null };
-          }
-          return t;
-        }));
-
-        try {
-          hrService.sendHeartbeat({
-            employeeId: userKey,
-            employeeCode: userKey,
-            activeTask: pausedTimer
-          }).catch(() => {});
-        } catch (_) {}
-
-        addToast('Shift Clocked Out: Active task timer paused ⏸️', 'info');
-      }
-      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+      syncAuthoritativeTimerState({ force: true, source: 'clock_out' });
+      addToast('Shift Clocked Out: Active task timer paused ⏸️', 'info');
     };
 
     window.addEventListener('ems_clocked_out', handleClockedOut);
@@ -1687,118 +1396,21 @@ export const WorkProvider = ({ children }) => {
       window.removeEventListener('ems_shift_ended', handleClockedOut);
       window.removeEventListener('ems_reclock_requests_updated', handleClockedOut);
     };
-  }, [getActiveTimerSnapshot, getElapsedSeconds, saveActiveTimerSnapshot, formatSeconds, addToast]);
+  }, [isEventForMe, syncAuthoritativeTimerState, addToast]);
 
   // ── Day Change Rollover Check (New Day fresh start, 00:00:00 reset) ──
   useEffect(() => {
     const checkDayRollover = () => {
       const today = getTodayStr();
-
-      // 🌙 Strict 11:59 PM Auto-Seal: Stop active task timer before midnight so zero time leaks to next day
-      const nowMidnightCheck = new Date();
-      if (nowMidnightCheck.getHours() === 23 && nowMidnightCheck.getMinutes() >= 59) {
-        const rawSaved = localStorage.getItem(activeTimerKey);
-        if (rawSaved) {
-          try {
-            const current = JSON.parse(rawSaved);
-            if (current && current.timerRunning) {
-              const currentSecs = getElapsedSeconds();
-              saveActiveTimerSnapshot(null);
-      try {
-        const empK = current?.userKey || userKey;
-        hrService.sendHeartbeat({
-          employeeId: empK,
-          employeeCode: empK,
-          activeTask: null
-        }).catch(() => {});
-      } catch (_) {}
-              setTasks(prev => prev.map(t => {
-                if (String(t._id || t.id) === String(current.taskId)) {
-                  return syncTaskPauseState(t, { nowMs: nowMidnightCheck.getTime(), todayStr: today, wasPausedForClockOut: true });
-                }
-                return t;
-              }));
-              workService.createTimesheet({
-                taskId: current.taskId,
-                taskCode: current.taskCode,
-                taskTitle: current.title || current.taskTitle,
-                projectName: current.projectName,
-                employeeId: current.assignedToId || userKey,
-                employeeName: current.assignedToName || currentUser?.name,
-                date: today,
-                totalDurationSeconds: Math.min(currentSecs, 14 * 3600),
-                totalDurationText: formatSeconds(Math.min(currentSecs, 14 * 3600)),
-                memo: '11:59 PM auto-close same-day timesheet save',
-                status: 'stopped'
-              }).catch(e => console.warn('11:59 PM auto-timesheet error:', e));
-              window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
-            }
-          } catch (_) {}
-        }
-      }
-
       const storedWorkDate = localStorage.getItem(`ems_work_session_date_${userKey}`) || today;
 
       if (storedWorkDate !== today) {
         localStorage.setItem(`ems_work_session_date_${userKey}`, today);
         setWorkSessionDate(today);
 
-        // Check if yesterday had an active unclosed timer across midnight
-        const rawSaved = localStorage.getItem(activeTimerKey);
-        if (rawSaved) {
-          try {
-            const prev = JSON.parse(rawSaved);
-            if (prev && prev.date && prev.date !== today) {
-              const prevStartTs = prev.startedAt ? Number(prev.startedAt) : null;
-              let elapsedBeforeMidnight = 0;
-              if (prev.timerRunning && prevStartTs) {
-                const todayMidnight = new Date();
-                todayMidnight.setHours(0, 0, 0, 0);
-                elapsedBeforeMidnight = Math.max(0, Math.floor((todayMidnight.getTime() - prevStartTs) / 1000));
-              }
-              const duration = (Number(prev.accumulatedSeconds) || 0) + elapsedBeforeMidnight;
-              if (duration > 0) {
-                workService.createTimesheet({
-                  taskId: prev.taskId,
-                  taskCode: prev.taskCode,
-                  taskTitle: prev.title || prev.taskTitle,
-                  projectName: prev.projectName,
-                  employeeId: prev.assignedToId || userKey,
-                  employeeName: prev.assignedToName || currentUser?.name,
-                  date: prev.date || storedWorkDate,
-                  totalDurationSeconds: Math.min(duration, 14 * 3600),
-                  totalDurationText: formatSeconds(Math.min(duration, 14 * 3600)),
-                  memo: 'Automatic midnight rollover session save',
-                  status: 'stopped'
-                }).catch(e => console.warn('Auto timesheet close error:', e));
-              }
-            }
-          } catch (e) {}
-        }
-
-        // Reset active timer snapshot for the new day so Day 2 starts clean
+        // Reset active timer snapshot for the new day so Day starts clean
         saveActiveTimerSnapshot(null);
-
-        // Stop running state on active tasks across midnight rollover so ghost hours do not count while sleeping
-        const allTasks = getCollection(KEYS.TASKS) || [];
-        let anyReset = false;
-        const resetTasks = allTasks.map(t => {
-          if (t.timerRunning) {
-            anyReset = true;
-            return {
-              ...t,
-              timerRunning: false,
-              startedAt: null,
-              todayWorkSeconds: 0
-            };
-          }
-          return t;
-        });
-        if (anyReset) {
-          saveCollection(KEYS.TASKS, resetTasks);
-          setTasks(resetTasks);
-          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
-        }
+        syncAuthoritativeTimerState({ force: true, source: 'day_rollover' });
       }
     };
 
@@ -1812,7 +1424,7 @@ export const WorkProvider = ({ children }) => {
       clearInterval(interval);
       window.removeEventListener('ems_day_rollover', handleRolloverEvent);
     };
-  }, [userKey, activeTimerKey, saveActiveTimerSnapshot, formatSeconds]);
+  }, [userKey, saveActiveTimerSnapshot, syncAuthoritativeTimerState]);
 
   // =========================================================================
   // 🏢 PROJECT ACTIONS
@@ -2484,6 +2096,20 @@ export const WorkProvider = ({ children }) => {
         reason: customMemo || 'Task completed from UI'
       });
 
+      // Strict Failure & Offline Handling:
+      // If backend returns success: false, do not mark task completed, do not show success toast, do not auto-start next task.
+      if (!res || !res.success) {
+        if (res?.offline || res?.queued) {
+          addToast('Task completion enqueued offline. Will sync with server when online.', 'info');
+          return null;
+        }
+        const errMsg = res?.message || res?.error || 'Failed to complete task on server';
+        addToast(`⛔ ${errMsg}`, 'error');
+        await syncAuthoritativeTimerState({ force: true, source: 'complete_rejected' });
+        return null;
+      }
+
+      // Confirmed backend success only:
       const todayStr = getTodayStr();
       const completedIso = new Date().toISOString();
 
@@ -2495,13 +2121,11 @@ export const WorkProvider = ({ children }) => {
         completedOn: todayStr
       }).catch(err => console.warn('[WorkContext] Non-timer task update after complete notice:', err));
 
-      if (res && res.success) {
-        const confirmedState = res.data || res.state;
-        if (confirmedState) {
-          reconcileAuthoritativeTimer(confirmedState, { source: 'complete_confirmed', force: true });
-        } else {
-          await syncAuthoritativeTimerState({ force: true, source: 'complete_confirmed' });
-        }
+      const confirmedState = res.data || res.state;
+      if (confirmedState) {
+        reconcileAuthoritativeTimer(confirmedState, { source: 'complete_confirmed', force: true });
+      } else {
+        await syncAuthoritativeTimerState({ force: true, source: 'complete_confirmed' });
       }
 
       // Update local task state

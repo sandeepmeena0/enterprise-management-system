@@ -174,6 +174,11 @@ exports.createTask = async (req, res, next) => {
       taskCode: req.body.taskCode || `TSK-${count + 1}`
     };
 
+    // Ensure authoritative timer fields cannot be spoofed on creation
+    delete taskData.timerRunning;
+    delete taskData.startedAt;
+    delete taskData.activeUserId;
+
     // Sanitize ObjectId fields while preserving string IDs
     const rawAssignedTo = taskData.assignedTo;
     if (!taskData.assignedTo || !mongoose.Types.ObjectId.isValid(taskData.assignedTo)) {

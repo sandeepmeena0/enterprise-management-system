@@ -1365,6 +1365,14 @@ async function completeTask({ actor, targetEmployeeId, taskId, reason, requestId
         progress: 100,
         completedAt: serverNow,
         completedOn: businessDate
+      },
+      state: {
+        status: 'IDLE',
+        taskId: null,
+        activeSessionId: null,
+        stoppedAt: serverNow,
+        serverTime: serverNow,
+        version: currentVersion + 1
       }
     };
 
