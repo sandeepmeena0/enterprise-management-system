@@ -40,29 +40,35 @@ const app = express();
 // Enable reverse proxy trust for secure client IP extraction behind Render / Load Balancers
 app.set('trust proxy', 1);
 
+const parseOrigins = (str) => (str || '').split(/[\s,]+/).map(s => s.trim().replace(/\/+$/, '')).filter(Boolean);
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
   'https://enterprise-management-system-two.vercel.app',
-  process.env.FRONTEND_URL
-].filter(Boolean).map(o => o.trim().replace(/\/+$/, ''));
+  ...parseOrigins(process.env.FRONTEND_URL),
+  ...parseOrigins(process.env.ALLOWED_ORIGINS)
+];
 
-// Localhost, private LAN IPs (Wi-Fi/mobile testing), and verified project deployments
+// Comprehensive Universal Matchers: Localhost, private LAN IPs (Wi-Fi/mobile testing), custom domains, platforms & tunnels
 const LOCAL_HOST_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 const LOCAL_NETWORK_REGEX = /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
-const VERCEL_PROJECT_REGEX = /^https:\/\/enterprise-management-system(-[a-z0-9-]+)?\.vercel\.app$/i;
-const RENDER_PROJECT_REGEX = /^https:\/\/.*\.onrender\.com$/i;
+const PROJECT_DOMAINS_REGEX = /^https?:\/\/([a-z0-9-]+\.)*(inforag|inforagtechnology)\.(com|in|org|net|app|tech)(:\d+)?$/i;
+const PLATFORM_DEPLOY_REGEX = /^https:\/\/(enterprise-management-system|inforag|ems)(-[a-z0-9-]+)?\.(vercel\.app|netlify\.app|onrender\.com|pages\.dev)$/i;
+const TUNNEL_REGEX = /^https?:\/\/[a-z0-9-]+\.(ngrok-free\.app|ngrok\.io|loca\.lt|trycloudflare\.com)$/i;
 
 const isOriginAllowed = (origin) => {
   if (!origin) return true; // Server-to-server, mobile or curl
+  if (process.env.CORS_ALLOW_ALL === 'true') return true;
   const clean = origin.trim().replace(/\/+$/, '');
   if (allowedOrigins.includes(clean)) return true;
   if (LOCAL_HOST_REGEX.test(clean)) return true;
   if (LOCAL_NETWORK_REGEX.test(clean)) return true;
-  if (VERCEL_PROJECT_REGEX.test(clean)) return true;
-  if (RENDER_PROJECT_REGEX.test(clean)) return true;
+  if (PROJECT_DOMAINS_REGEX.test(clean)) return true;
+  if (PLATFORM_DEPLOY_REGEX.test(clean)) return true;
+  if (TUNNEL_REGEX.test(clean)) return true;
   return false;
 };
 

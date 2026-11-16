@@ -13,6 +13,8 @@ const { getUserAuthCache, setUserAuthCache } = require('../cache/userAuthCache')
 
 let io = null;
 
+const parseOrigins = (str) => (str || '').split(/[\s,]+/).map(s => s.trim().replace(/\/+$/, '')).filter(Boolean);
+
 function getEffectiveWhitelist(allowedOrigins = []) {
   const defaults = [
     'http://localhost:5173',
@@ -20,7 +22,8 @@ function getEffectiveWhitelist(allowedOrigins = []) {
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://enterprise-management-system-two.vercel.app',
-    process.env.FRONTEND_URL
+    ...parseOrigins(process.env.FRONTEND_URL),
+    ...parseOrigins(process.env.ALLOWED_ORIGINS)
   ].filter(Boolean);
 
   const set = new Set([...defaults, ...(Array.isArray(allowedOrigins) ? allowedOrigins : [])]);
@@ -29,18 +32,21 @@ function getEffectiveWhitelist(allowedOrigins = []) {
 
 const LOCAL_HOST_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 const LOCAL_NETWORK_REGEX = /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
-const VERCEL_PROJECT_REGEX = /^https:\/\/enterprise-management-system(-[a-z0-9-]+)?\.vercel\.app$/i;
-const RENDER_PROJECT_REGEX = /^https:\/\/.*\.onrender\.com$/i;
+const PROJECT_DOMAINS_REGEX = /^https?:\/\/([a-z0-9-]+\.)*(inforag|inforagtechnology)\.(com|in|org|net|app|tech)(:\d+)?$/i;
+const PLATFORM_DEPLOY_REGEX = /^https:\/\/(enterprise-management-system|inforag|ems)(-[a-z0-9-]+)?\.(vercel\.app|netlify\.app|onrender\.com|pages\.dev)$/i;
+const TUNNEL_REGEX = /^https?:\/\/[a-z0-9-]+\.(ngrok-free\.app|ngrok\.io|loca\.lt|trycloudflare\.com)$/i;
 
 function checkOriginAllowed(origin, allowedOrigins = []) {
   if (!origin) return false;
+  if (process.env.CORS_ALLOW_ALL === 'true') return true;
   const clean = origin.trim().replace(/\/+$/, '');
   const whitelist = getEffectiveWhitelist(allowedOrigins).map(o => o.trim().replace(/\/+$/, ''));
   if (whitelist.includes(clean)) return true;
   if (LOCAL_HOST_REGEX.test(clean)) return true;
   if (LOCAL_NETWORK_REGEX.test(clean)) return true;
-  if (VERCEL_PROJECT_REGEX.test(clean)) return true;
-  if (RENDER_PROJECT_REGEX.test(clean)) return true;
+  if (PROJECT_DOMAINS_REGEX.test(clean)) return true;
+  if (PLATFORM_DEPLOY_REGEX.test(clean)) return true;
+  if (TUNNEL_REGEX.test(clean)) return true;
   return false;
 }
 
