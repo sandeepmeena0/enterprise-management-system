@@ -3,7 +3,76 @@ const Employee = require('../models/Employee');
 const asyncHandler = require('../../../shared/middleware/asyncHandler');
 const { invalidateUserAuthCache } = require('../../../shared/cache/userAuthCache');
 const { disconnectUserSockets } = require('../../../shared/socket/socketManager');
-const { hashPassword } = require('../../../shared/utils/passwordUtils');
+const { hashPassword, generateSecureRandomPassword } = require('../../../shared/utils/passwordUtils');
+
+// Sensitive fields restricted to Admin, HR, or the employee themselves
+const SENSITIVE_FIELDS = [
+  'password',
+  'passwordHistory',
+  'salary',
+  'startingSalary',
+  'annualCTC',
+  'salaryBasis',
+  'aadhaar',
+  'pan',
+  'bankDetails',
+  'upiId',
+  'emergencyContact',
+  'documents'
+];
+
+/**
+ * Filter employee record based on requesting user privileges.
+ * Non-admin and non-HR users can only see sensitive details for their own profile.
+ */
+function sanitizeEmployeeForViewer(employeeDoc, requestingUser) {
+  if (!employeeDoc) return null;
+  const empObj = typeof employeeDoc.toObject === 'function' ? employeeDoc.toObject() : { ...employeeDoc };
+
+  delete empObj.password;
+  delete empObj.passwordHistory;
+
+  if (!requestingUser) {
+    for (const field of SENSITIVE_FIELDS) {
+      delete empObj[field];
+    }
+    return empObj;
+  }
+
+  const isMasterAdmin = Boolean(
+    requestingUser.employeeCode === 'ADM-001' ||
+    requestingUser.isSuperAdmin ||
+    requestingUser.email === 'admin@inforag.com' ||
+    requestingUser.email === 'avinash@inforag.com'
+  );
+  const isAdmin = Boolean(
+    isMasterAdmin ||
+    requestingUser.isAdmin ||
+    requestingUser.systemRole === 'admin' ||
+    requestingUser.permissions?.allAccess
+  );
+  const isHR = Boolean(
+    requestingUser.systemRole === 'hr' ||
+    requestingUser.department === 'Human Resources' ||
+    requestingUser.permissions?.manageEmployees
+  );
+
+  const empIdStr = (empObj._id || empObj.id || '').toString();
+  const reqUserIdStr = (requestingUser._id || requestingUser.id || '').toString();
+  const isSelf = Boolean(
+    (empIdStr && reqUserIdStr && empIdStr === reqUserIdStr) ||
+    (requestingUser.employeeCode && empObj.employeeCode && requestingUser.employeeCode.toUpperCase() === empObj.employeeCode.toUpperCase())
+  );
+
+  if (isAdmin || isHR || isSelf) {
+    return empObj;
+  }
+
+  for (const field of SENSITIVE_FIELDS) {
+    delete empObj[field];
+  }
+  return empObj;
+}
 
 // ─── GET /api/employees ───────────────────────────────────────────────────────
 const getEmployees = asyncHandler(async (req, res) => {
@@ -22,11 +91,12 @@ const getEmployees = asyncHandler(async (req, res) => {
   }
 
   const employees = await Employee.find(query).select('-password -passwordHistory').sort({ createdAt: 1 });
+  const sanitizedList = employees.map(e => sanitizeEmployeeForViewer(e, req.user));
 
   res.json({
     success: true,
-    count: employees.length,
-    data: employees
+    count: sanitizedList.length,
+    data: sanitizedList
   });
 });
 
@@ -101,7 +171,8 @@ const getEmployeeById = asyncHandler(async (req, res) => {
   if (!employee) {
     return res.status(404).json({ success: false, message: 'Employee not found' });
   }
-  res.json({ success: true, data: employee });
+  const sanitized = sanitizeEmployeeForViewer(employee, req.user);
+  res.json({ success: true, data: sanitized });
 });
 
 // ─── POST /api/employees ──────────────────────────────────────────────────────
@@ -157,8 +228,10 @@ const createEmployee = asyncHandler(async (req, res) => {
     }
   }
 
-  // Cryptographically hash newly created employee password with bcrypt
-  const rawPass = (payload.password || 'emp123').trim();
+  // Cryptographically hash newly created employee password with bcrypt (NO DEFAULT 'emp123')
+  const rawPass = (payload.password && typeof payload.password === 'string' && payload.password.trim())
+    ? payload.password.trim()
+    : generateSecureRandomPassword(16);
   payload.password = await hashPassword(rawPass);
   payload.passwordHistory = [];
   payload.passwordUpdatedAt = new Date().toISOString();
@@ -172,9 +245,7 @@ const createEmployee = asyncHandler(async (req, res) => {
   });
   await employee.save();
 
-  const sanitized = employee.toObject();
-  delete sanitized.password;
-  delete sanitized.passwordHistory;
+  const sanitized = sanitizeEmployeeForViewer(employee, req.user);
   res.status(201).json({ success: true, data: sanitized });
 });
 
@@ -411,6 +482,20 @@ const updateEmployeePermissions = asyncHandler(async (req, res) => {
     existing.email === 'admin@inforag.com' ||
     existing.email === 'avinash@inforag.com'
   );
+
+  const isCallerMaster = u && Boolean(
+    u.employeeCode === 'ADM-001' ||
+    u.isSuperAdmin ||
+    u.email === 'admin@inforag.com' ||
+    u.email === 'avinash@inforag.com'
+  );
+
+  if (isPrimary && !isCallerMaster) {
+    return res.status(403).json({
+      success: false,
+      message: 'Security Policy: Master Administrator account permissions cannot be modified by other users.'
+    });
+  }
 
   const getBaseRole = (roleStr, deptStr) => {
     const r = (roleStr || '').toLowerCase();

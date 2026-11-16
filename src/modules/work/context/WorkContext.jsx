@@ -16,6 +16,7 @@ import { OverdueTaskModal } from '../components/tasks/OverdueTaskModal';
 import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../../../shared/services/realtimeSyncService';
 import { isHRorAdmin, canDeleteTask, canDeleteProject, canCreateTasks, canEditAnyTask, canManageProjects } from '../../../shared/utils/permissionUtils';
 import { readTimerStorage, getTaskTodaySeconds, syncTaskPauseState, sanitizeTaskDailySessions } from '../../../shared/utils/timerUtils';
+import { initTimerOfflineSync } from '../services/timerOfflineQueue';
 
 const defaultWorkContext = {
   projects: [],
@@ -870,6 +871,14 @@ export const WorkProvider = ({ children }) => {
       unsubscribeSync();
     };
   }, [loadWorkData, activeTimerKey]);
+
+  // Persistent offline action queue listener
+  useEffect(() => {
+    const cleanupOfflineSync = initTimerOfflineSync(workService);
+    return () => {
+      cleanupOfflineSync();
+    };
+  }, []);
 
   // =========================================================================
   // ⏱️ WALL-CLOCK LIVE TICKING TASK TIMER ENGINE (Refresh & Tab-switch Immune)
@@ -2252,6 +2261,13 @@ export const WorkProvider = ({ children }) => {
         activeUserName: assignedEmpName
       }).catch(err => console.warn('Sync task timer start to backend notice:', err));
 
+      // Authoritative Work Session engine invocation
+      workService.startWorkSession({
+        taskId,
+        targetEmployeeId: isForOtherEmployee ? targetUserKey : undefined,
+        reason: 'Task timer started from UI'
+      }).catch(wsErr => console.warn('Work session start notice:', wsErr.message));
+
       if (previousTaskId) {
         workService.updateTask(previousTaskId, {
           timerRunning: false,
@@ -2465,6 +2481,12 @@ export const WorkProvider = ({ children }) => {
 
     // Persist paused state to backend
     try {
+      workService.pauseWorkSession({
+        taskId,
+        targetEmployeeId: isForOtherEmployee ? targetUserKey : undefined,
+        reason: 'Task timer paused from UI'
+      }).catch(wsErr => console.warn('Work session pause notice:', wsErr.message));
+
       workService.updateTask(taskId, {
         taskCode: targetTask.taskCode,
         title: targetTask.title,
@@ -2871,6 +2893,12 @@ export const WorkProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
 
       // Asynchronous background persistence to MongoDB Atlas (guaranteed multi-device & cloud reflection)
+      workService.completeWorkSession({
+        taskId,
+        targetEmployeeId: isForOtherEmployee ? targetUserKey : undefined,
+        reason: 'Task completed from UI'
+      }).catch(wsErr => console.warn('Work session complete notice:', wsErr.message));
+
       const currentTarget = tasks.find(t => String(t._id || t.id) === String(taskId)) || targetTask;
       const fullHist = Array.isArray(currentTarget?.history) ? [...currentTarget.history, completionHistory] : [completionHistory];
       workService.updateTask(taskId, {

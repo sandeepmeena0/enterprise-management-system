@@ -35,29 +35,36 @@ const autoClosePastDayShifts = async () => {
     const autoHours = Number(companySettings?.standardWorkHours) || 9.0;
     const autoSecs = Math.round(autoHours * 3600);
 
-    await Attendance.updateMany(
-      {
-        date: { $lt: todayStr },
-        isClockedIn: true,
-        clockOutTime: null,
-        $or: [
-          { clockInTimestamp: { $lt: sixteenHoursAgo } },
-          { clockInTimestamp: null },
-          { currentSessionStartTimestamp: { $lt: sixteenHoursAgo } }
-        ]
-      },
-      {
-        $set: {
-          isClockedIn: false,
-          isOnBreak: false,
-          clockOutTime: autoOutTime,
-          clockOut: autoOutTime,
-          workSeconds: autoSecs,
-          totalWorkingHours: autoHours,
-          notes: 'Auto-closed past-day shift (daily shift reset)'
+    const unclosedPastShifts = await Attendance.find({
+      date: { $lt: todayStr },
+      isClockedIn: true,
+      clockOutTime: null,
+      $or: [
+        { clockInTimestamp: { $lt: sixteenHoursAgo } },
+        { clockInTimestamp: null },
+        { currentSessionStartTimestamp: { $lt: sixteenHoursAgo } }
+      ]
+    });
+
+    for (const shift of unclosedPastShifts) {
+      const existingSecs = Number(shift.workSeconds) || 0;
+      const finalSecs = existingSecs > 0 ? existingSecs : autoSecs;
+      const finalHours = +(finalSecs / 3600).toFixed(2);
+      await Attendance.updateOne(
+        { _id: shift._id },
+        {
+          $set: {
+            isClockedIn: false,
+            isOnBreak: false,
+            clockOutTime: autoOutTime,
+            clockOut: autoOutTime,
+            workSeconds: finalSecs,
+            totalWorkingHours: finalHours,
+            notes: shift.notes ? `${shift.notes} | Auto-closed past shift` : 'Auto-closed past-day shift (daily shift reset)'
+          }
         }
-      }
-    );
+      );
+    }
   } catch (err) {
     console.warn('[attendanceController] Auto-close past day shifts error:', err.message);
   }
@@ -248,13 +255,31 @@ const markAttendance = asyncHandler(async (req, res) => {
     });
   }
 
-  const targetEmpId = empDoc ? empDoc._id : (mongoose.Types.ObjectId.isValid(rawEmp) ? rawEmp : new mongoose.Types.ObjectId());
-  const targetEmpName = empDoc ? empDoc.name : (req.body.employeeName || 'Employee');
-  const targetEmpCode = empDoc ? empDoc.employeeCode : (req.body.employeeCode || String(rawEmp));
-  const targetEmpRole = empDoc ? empDoc.role : (req.body.employeeRole || 'Team Member');
-  const targetEmpAvatar = empDoc ? empDoc.avatar : (req.body.employeeAvatar || '');
+  let targetEmpId = empDoc ? empDoc._id : (mongoose.Types.ObjectId.isValid(rawEmp) ? rawEmp : new mongoose.Types.ObjectId());
+  let targetEmpName = empDoc ? empDoc.name : (req.body.employeeName || 'Employee');
+  let targetEmpCode = empDoc ? empDoc.employeeCode : (req.body.employeeCode || String(rawEmp));
+  let targetEmpRole = empDoc ? empDoc.role : (req.body.employeeRole || 'Team Member');
+  let targetEmpAvatar = empDoc ? empDoc.avatar : (req.body.employeeAvatar || '');
 
-  const isPrivileged = req.user?.isAdmin || req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.permissions?.editAttendance || req.user?.permissions?.allAccess;
+  const isPrivileged = Boolean(
+    req.user?.isAdmin ||
+    req.user?.role === 'admin' ||
+    req.user?.role === 'hr' ||
+    req.user?.systemRole === 'admin' ||
+    req.user?.systemRole === 'hr' ||
+    req.user?.permissions?.editAttendance ||
+    req.user?.permissions?.allAccess
+  );
+
+  // Strict Tenant Scoping: Non-privileged users can NEVER mark attendance for other employees
+  if (!isPrivileged && req.user) {
+    targetEmpId = req.user._id || req.user.id;
+    targetEmpName = req.user.name || targetEmpName;
+    targetEmpCode = req.user.employeeCode || targetEmpCode;
+    targetEmpRole = req.user.role || targetEmpRole;
+    targetEmpAvatar = req.user.avatar || targetEmpAvatar;
+  }
+
   const adminActorId = req.user?.id || req.user?._id || markedBy || 'ADMIN';
   const adminActorName = req.user?.name || markedBy || 'HR Administrator';
 
@@ -442,6 +467,24 @@ const markAttendance = asyncHandler(async (req, res) => {
       liveTelemetryCache.set(String(targetEmpId), telemPayload);
     }
   } catch (_) {}
+
+  // Task Timer Integration: Auto-pause active task timer on shift clock-out or break start
+  if (record.isClockedIn === false || clockOutTime || Boolean(record.isOnBreak)) {
+    try {
+      const timeEngineService = require('../../work/services/timeEngineService');
+      const pauseReason = record.isOnBreak
+        ? `Shift Break (${record.breakType || 'General'}) initiated`
+        : 'Shift Clock-out: automatic pause of active task timer';
+      await timeEngineService.pauseTimer({
+        actor: req.user || { _id: targetEmpId, isAdmin: true },
+        targetEmployeeId: targetEmpId,
+        reason: pauseReason,
+        source: record.isOnBreak ? 'ATTENDANCE_BREAK' : 'ATTENDANCE_CLOCK_OUT'
+      });
+    } catch (_) {
+      // Safe to ignore if employee has no active timer running
+    }
+  }
 
   // Mandatory Audit Trail for Admin manual modifications
   if (auditNote || isAdminOverride || isPrivileged) {
@@ -991,8 +1034,23 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     activeTask
   } = req.body;
 
-  const targetId = String(employeeId || req.user?.id || req.user?._id || '').trim();
-  const targetCode = String(employeeCode || req.user?.employeeCode || '').trim().toUpperCase();
+  const isPrivileged = Boolean(
+    req.user?.isAdmin ||
+    req.user?.role === 'admin' ||
+    req.user?.role === 'hr' ||
+    req.user?.systemRole === 'admin' ||
+    req.user?.systemRole === 'hr' ||
+    req.user?.permissions?.allAccess
+  );
+
+  const targetId = (!isPrivileged && req.user)
+    ? String(req.user.id || req.user._id || '').trim()
+    : String(employeeId || req.user?.id || req.user?._id || '').trim();
+
+  const targetCode = (!isPrivileged && req.user)
+    ? String(req.user.employeeCode || '').trim().toUpperCase()
+    : String(employeeCode || req.user?.employeeCode || '').trim().toUpperCase();
+
   const today = req.body.date || getLocalTodayStr();
 
   if (!targetId && !targetCode) {

@@ -6,8 +6,11 @@
 const express = require('express');
 const router = express.Router();
 const timerController = require('../controllers/timerController');
+const { authenticateUser } = require('../../../shared/middleware/authMiddleware');
 
 // All routes are mounted behind /api/work-sessions and protected by authenticateUser middleware
+router.use(authenticateUser);
+
 router.post('/start', timerController.startTimer);
 router.post('/pause', timerController.pauseTimer);
 router.post('/resume', timerController.resumeTimer);

@@ -365,8 +365,12 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // Terminal-scoped role switcher with authoritative DB record pull
+  // Terminal-scoped role switcher with authoritative DB record pull (DEV ONLY)
   const switchRole = useCallback(async (roleId) => {
+    if (!import.meta.env.DEV) {
+      console.warn('Security Policy: switchRole is disabled in production environments.');
+      return currentUser;
+    }
     let targetUser = PRESET_USERS[roleId] || PRESET_USERS.admin;
     const employees = getCollection(KEYS.EMPLOYEES) || [];
     let query = '';

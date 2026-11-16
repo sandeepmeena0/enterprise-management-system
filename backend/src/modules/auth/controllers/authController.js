@@ -21,6 +21,22 @@ const IP_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_REQUESTS_PER_IP = 15;
 const MAX_REQUESTS_PER_IDENTIFIER = 5;
 
+// Rate limiting maps for login brute-force prevention: Dual-Bucket (IP-level + Identifier-level)
+const loginIpLimits = new Map();
+const loginIdentifierLimits = new Map();
+const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_LOGIN_ATTEMPTS_PER_IP = 25;
+const MAX_LOGIN_ATTEMPTS_PER_IDENTIFIER = 10;
+
+// Helper to extract client IP safely
+const getClientIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+};
+
 // Helper to sign JWT
 const signToken = (employee) => {
   const jwtSecret = process.env.JWT_SECRET;
@@ -47,19 +63,70 @@ exports.login = asyncHandler(async (req, res) => {
   if (!input) {
     return res.status(400).json({ success: false, message: 'Employee ID or Email is required.' });
   }
+  if (!password) {
+    return res.status(400).json({ success: false, message: 'Password is required.' });
+  }
+
+  const clientIp = getClientIp(req);
+  const now = Date.now();
+
+  // 1. IP-level Rate Limit Check
+  const ipKey = `login_ip:${clientIp}`;
+  const ipLimitEntry = loginIpLimits.get(ipKey);
+  if (ipLimitEntry && now < ipLimitEntry.resetTime) {
+    if (ipLimitEntry.count >= MAX_LOGIN_ATTEMPTS_PER_IP) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many login attempts from this network. Please try again in 15 minutes.'
+      });
+    }
+  }
+
+  // 2. Identifier-level Rate Limit Check
+  const cleanId = input.toLowerCase();
+  const idKey = `login_id:${cleanId}`;
+  const idLimitEntry = loginIdentifierLimits.get(idKey);
+  if (idLimitEntry && now < idLimitEntry.resetTime) {
+    if (idLimitEntry.count >= MAX_LOGIN_ATTEMPTS_PER_IDENTIFIER) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed login attempts for this account. Please try again in 15 minutes or request a password reset.'
+      });
+    }
+  }
+
+  const recordFailedAttempt = () => {
+    // Record IP failure
+    if (ipLimitEntry && now < ipLimitEntry.resetTime) {
+      ipLimitEntry.count += 1;
+    } else {
+      loginIpLimits.set(ipKey, { count: 1, resetTime: now + LOGIN_RATE_LIMIT_WINDOW_MS });
+    }
+
+    // Record Identifier failure
+    if (idLimitEntry && now < idLimitEntry.resetTime) {
+      idLimitEntry.count += 1;
+    } else {
+      loginIdentifierLimits.set(idKey, { count: 1, resetTime: now + LOGIN_RATE_LIMIT_WINDOW_MS });
+    }
+  };
 
   // Find employee in MongoDB Atlas (explicitly include password for verification)
   const employee = await Employee.findOne({
     $or: [
-      { email: input.toLowerCase() },
+      { email: cleanId },
       { employeeCode: input.toUpperCase() }
     ]
   }).select('+password');
 
+  // Generic credential error (Never reveal whether account exists)
+  const GENERIC_AUTH_ERROR = 'Invalid credentials. Please verify your email/ID and password.';
+
   if (!employee) {
+    recordFailedAttempt();
     return res.status(401).json({
       success: false,
-      message: `User with ID / Email "${input}" was not found in the database. Please verify or register with Admin.`
+      message: GENERIC_AUTH_ERROR
     });
   }
 
@@ -71,17 +138,28 @@ exports.login = asyncHandler(async (req, res) => {
     });
   }
 
-  // Cryptographic bcrypt verification with backward-compatible legacy auto-migration
-  const isMasterAdmin = employee.employeeCode === 'ADM-001' || employee.role === 'Administrator' || employee.isAdmin;
-  const defaultFallback = isMasterAdmin ? 'admin123' : 'emp123';
-  const { matches, needsMigration } = await verifyPassword(password, employee.password, defaultFallback);
-
-  if (!matches) {
+  // Ensure employee has a stored password configured
+  if (!employee.password || typeof employee.password !== 'string' || !employee.password.trim()) {
+    recordFailedAttempt();
     return res.status(401).json({
       success: false,
-      message: 'Incorrect password. Please verify credentials or contact Admin.'
+      message: GENERIC_AUTH_ERROR
     });
   }
+
+  // Cryptographic bcrypt verification with backward-compatible legacy auto-migration (NO DEFAULT FALLBACK)
+  const { matches, needsMigration } = await verifyPassword(password, employee.password);
+
+  if (!matches) {
+    recordFailedAttempt();
+    return res.status(401).json({
+      success: false,
+      message: GENERIC_AUTH_ERROR
+    });
+  }
+
+  // Successful authentication: clear identifier rate limit
+  loginIdentifierLimits.delete(idKey);
 
   // Transparent backward-compatible migration:
   // If employee authenticated with legacy plaintext password, hash with bcrypt and save to MongoDB
@@ -250,9 +328,7 @@ exports.changePassword = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Employee record not found.' });
   }
 
-  const isMasterAdmin = employee.employeeCode === 'ADM-001' || employee.role === 'Administrator' || employee.isAdmin;
-  const defaultFallback = isMasterAdmin ? 'admin123' : 'emp123';
-  const { matches } = await verifyPassword(cleanCurrent, employee.password, defaultFallback);
+  const { matches } = await verifyPassword(cleanCurrent, employee.password);
 
   if (!matches) {
     return res.status(400).json({

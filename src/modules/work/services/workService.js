@@ -9,6 +9,7 @@ import { API_BASE as API_BASE_URL } from '../../../shared/config/apiConfig';
 import { getUserModulePermissions, isHRorAdmin, isProjectVisibleToUser } from '../../../shared/utils/permissionUtils';
 import { matchesFilter, matchesAssignee, matchesProject, matchesSearch, matchesDateRange } from '../../../shared/utils/filterUtils';
 import { getAuthToken } from '../../../shared/services/apiClient';
+import { enqueueTimerAction } from './timerOfflineQueue';
 
 let backendOnlineCache = null;
 let lastCheckTime = 0;
@@ -1130,5 +1131,155 @@ export const workService = {
     const filtered = timesheets.filter(t => t._id !== id);
     saveCollection(KEYS.TIMESHEETS, filtered);
     return true;
+  },
+
+  // ==========================================
+  // ⏱️ SERVER-AUTHORITATIVE WORK SESSIONS & TIMER ENGINE
+  // ==========================================
+  async startWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
+    if (await isBackendAvailable()) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/work-sessions/start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ taskId, targetEmployeeId, reason })
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Backend startWorkSession notice:', err.message);
+      }
+    }
+    if (!options.skipQueue) {
+      try {
+        enqueueTimerAction('START', { taskId, targetEmployeeId, reason });
+      } catch (_) {}
+    }
+    return null;
+  },
+
+  async pauseWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
+    if (await isBackendAvailable()) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/work-sessions/pause`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ taskId, targetEmployeeId, reason })
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Backend pauseWorkSession notice:', err.message);
+      }
+    }
+    if (!options.skipQueue) {
+      try {
+        enqueueTimerAction('PAUSE', { taskId, targetEmployeeId, reason });
+      } catch (_) {}
+    }
+    return null;
+  },
+
+  async resumeWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
+    if (await isBackendAvailable()) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/work-sessions/resume`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ taskId, targetEmployeeId, reason })
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Backend resumeWorkSession notice:', err.message);
+      }
+    }
+    if (!options.skipQueue) {
+      try {
+        enqueueTimerAction('RESUME', { taskId, targetEmployeeId, reason });
+      } catch (_) {}
+    }
+    return null;
+  },
+
+  async stopWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
+    if (await isBackendAvailable()) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/work-sessions/stop`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ taskId, targetEmployeeId, reason })
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Backend stopWorkSession notice:', err.message);
+      }
+    }
+    if (!options.skipQueue) {
+      try {
+        enqueueTimerAction('STOP', { taskId, targetEmployeeId, reason });
+      } catch (_) {}
+    }
+    return null;
+  },
+
+  async completeWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
+    if (await isBackendAvailable()) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/work-sessions/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({ taskId, targetEmployeeId, reason })
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Backend completeWorkSession notice:', err.message);
+      }
+    }
+    if (!options.skipQueue) {
+      try {
+        enqueueTimerAction('COMPLETE', { taskId, targetEmployeeId, reason });
+      } catch (_) {}
+    }
+    return null;
+  },
+
+  async getActiveWorkSession({ targetEmployeeId } = {}) {
+    if (await isBackendAvailable()) {
+      try {
+        const q = targetEmployeeId ? `?targetEmployeeId=${encodeURIComponent(targetEmployeeId)}` : '';
+        const res = await fetch(`${API_BASE_URL}/work-sessions/active${q}`, {
+          headers: getAuthHeaders()
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn('Backend getActiveWorkSession notice:', err.message);
+      }
+    }
+    return null;
   }
 };

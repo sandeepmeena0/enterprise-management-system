@@ -40,11 +40,16 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
-// Universal Bulletproof CORS & Preflight Handler for ANY origin and ANY backend host
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Server-to-server, mobile or curl
+  return allowedOrigins.some(allowed => origin === allowed || (origin.endsWith('.vercel.app') && origin.startsWith('https://enterprise-management-system')));
+};
+
+// Strict, Secure CORS & Preflight Handler
 app.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  if (origin !== '*') {
+  const origin = req.headers.origin;
+  if (origin && isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
@@ -52,7 +57,7 @@ app.use((req, res, next) => {
   if (reqHeaders) {
     res.setHeader('Access-Control-Allow-Headers', reqHeaders);
   } else {
-    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token, x-user-id, x-idempotency-key, x-request-id, x-client-source');
   }
   res.setHeader('Access-Control-Max-Age', '86400');
   if (req.method === 'OPTIONS') {
@@ -62,20 +67,16 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin || isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS Policy: Request origin not allowed'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-  allowedHeaders: ['*']
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'x-auth-token', 'x-user-id', 'x-idempotency-key', 'x-request-id', 'x-client-source']
 }));
-app.options('*', (req, res) => {
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  if (origin !== '*') res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD');
-  res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
-  res.setHeader('Access-Control-Max-Age', '86400');
-  return res.status(204).end();
-});
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
