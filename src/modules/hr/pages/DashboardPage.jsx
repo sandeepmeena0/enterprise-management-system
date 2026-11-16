@@ -1744,12 +1744,12 @@ export const DashboardPage = () => {
                   <button
                     onClick={() => {
                       if (!isClockedIn) {
-                        addToast('⚠️ Please Clock In for shift before starting task timer!', 'warning');
-                        return;
+                        handleClockIn();
+                        addToast('⏱️ Auto-clocked in shift! Starting task timer...', 'info');
                       }
                       if (isOnBreak) {
-                        addToast('☕ You are on break. Please resume shift first!', 'warning');
-                        return;
+                        resumeFromBreak();
+                        addToast('☕ Resumed shift! Starting task timer...', 'info');
                       }
                       startTaskTimer(currentLeftover._id, { forceOverdue: true });
                       setActiveSelectedTaskId(currentLeftover._id);

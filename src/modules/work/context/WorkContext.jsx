@@ -516,13 +516,21 @@ export const WorkProvider = ({ children }) => {
   }, [currentUser, reconcileAuthoritativeTimer]);
 
   // Account switch isolation: reset monotonic version ref, request ID ref, in-flight action ref, clear previous active timer snapshot, and sync state for the new user
+  const previousUserKeyRef = useRef(null);
   useEffect(() => {
     latestServerVersionRef.current = 0;
     inFlightRequestIdRef.current = 0;
     isTimerActionInFlightRef.current = false;
-    saveActiveTimerSnapshot(null);
+
+    const isActualAccountSwitch = previousUserKeyRef.current !== null && previousUserKeyRef.current !== userKey;
+    previousUserKeyRef.current = userKey;
+
+    // Only clear the snapshot if logging in as a completely different user! Never wipe on page refresh!
+    if (isActualAccountSwitch) {
+      saveActiveTimerSnapshot(null);
+    }
     if (userKey) {
-      syncAuthoritativeTimerState({ force: true, source: 'account_switch' });
+      syncAuthoritativeTimerState({ force: true, source: isActualAccountSwitch ? 'account_switch' : 'mount' });
     }
   }, [userKey, saveActiveTimerSnapshot, syncAuthoritativeTimerState]);
 
@@ -1052,8 +1060,28 @@ export const WorkProvider = ({ children }) => {
     );
     if (!isShiftClockedIn) return null;
 
-    return tasks.find(t => isTaskActiveForUser(t, currentUser)) || null;
-  }, [tasks, currentUser, isTaskActiveForUser, userKey]);
+    const fromTasks = tasks.find(t => isTaskActiveForUser(t, currentUser));
+    if (fromTasks) return fromTasks;
+
+    // Resilient fallback to active timer snapshot on mount/refresh
+    const snap = getActiveTimerSnapshot();
+    if (snap && snap.timerRunning) {
+      const match = tasks.find(t => String(t._id || t.id) === String(snap.taskId));
+      if (match) {
+        return {
+          ...match,
+          timerRunning: true,
+          startedAt: snap.startedAt,
+          accumulatedSeconds: Number(snap.accumulatedSeconds) || 0,
+          timerSeconds: Number(snap.timerSeconds) || 0,
+          todayWorkSeconds: Number(snap.todayWorkSeconds) || 0,
+          activeUserId: userKey
+        };
+      }
+    }
+
+    return null;
+  }, [tasks, currentUser, isTaskActiveForUser, userKey, getActiveTimerSnapshot]);
 
   useEffect(() => {
     loadWorkData(false);
@@ -1933,7 +1961,60 @@ export const WorkProvider = ({ children }) => {
 
       if (!res || !res.success) {
         if (res?.offline || res?.queued) {
-          addToast('Action queued offline. Will sync when reconnected.', 'info');
+          // 🚀 Offline Execution Engine: Keep UI responsive and ticking in offline mode
+          const now = Date.now();
+          const today = getTodayStr();
+          const accumSecs = Number(targetTask.accumulatedSeconds || targetTask.timerSeconds || 0);
+
+          const offlineSnapshot = {
+            taskId: String(targetTask._id || targetTask.id),
+            taskCode: targetTask.taskCode || '',
+            title: targetTask.title || 'Active Task',
+            projectName: targetTask.projectName || 'General Work',
+            timerRunning: true,
+            startedAt: now,
+            accumulatedSeconds: accumSecs,
+            timerSeconds: accumSecs,
+            todayWorkSeconds: Number(targetTask.todayWorkSeconds || 0),
+            activeUserId: isForOtherEmployee ? targetUserKey : userKey,
+            date: today,
+            sessionDate: today,
+            serverVersion: 0,
+            lastUpdated: now,
+            isOfflineQueued: true
+          };
+
+          saveActiveTimerSnapshot(offlineSnapshot);
+
+          setTasks(prevTasks => {
+            const updated = prevTasks.map(t => {
+              const tId = String(t._id || t.id);
+              if (tId === String(taskId)) {
+                return {
+                  ...t,
+                  timerRunning: true,
+                  startedAt: now,
+                  accumulatedSeconds: accumSecs,
+                  timerSeconds: accumSecs,
+                  status: t.status === 'incomplete' ? 'in_progress' : t.status,
+                  activeUserId: isForOtherEmployee ? targetUserKey : userKey
+                };
+              }
+              if (t.timerRunning && (isTaskAssignedToMe(t) || String(t.activeUserId) === String(userKey))) {
+                return { ...t, timerRunning: false, startedAt: null, activeUserId: null };
+              }
+              return t;
+            });
+            saveCollection(KEYS.TASKS, updated);
+            return updated;
+          });
+
+          window.dispatchEvent(new CustomEvent('ems_task_timer_started', {
+            detail: { taskId, userKey, isOffline: true }
+          }));
+
+          addToast(`⏱️ Started tracking work on "${targetTask.title}" (Offline Mode — queued for sync)`, 'info');
+          return;
         } else {
           // Reconcile with server to restore authoritative state
           await syncAuthoritativeTimerState({ force: true, source: 'start_rejected' });
@@ -2005,7 +2086,59 @@ export const WorkProvider = ({ children }) => {
 
       if (!res || !res.success) {
         if (res?.offline || res?.queued) {
-          addToast('Pause action queued offline.', 'info');
+          const now = Date.now();
+          const today = getTodayStr();
+          const startMs = targetTask.startedAt ? (typeof targetTask.startedAt === 'number' ? targetTask.startedAt : new Date(targetTask.startedAt).getTime()) : null;
+          const elapsed = (startMs && startMs <= now) ? Math.floor((now - startMs) / 1000) : 0;
+          const baseSecs = Number(targetTask.accumulatedSeconds || targetTask.timerSeconds || 0);
+          const newAccum = baseSecs + elapsed;
+
+          const offlineSnapshot = {
+            taskId: String(targetTask._id || targetTask.id),
+            taskCode: targetTask.taskCode || '',
+            title: targetTask.title || 'Active Task',
+            projectName: targetTask.projectName || 'General Work',
+            timerRunning: false,
+            startedAt: null,
+            accumulatedSeconds: newAccum,
+            timerSeconds: newAccum,
+            todayWorkSeconds: (Number(targetTask.todayWorkSeconds || 0) + elapsed),
+            activeUserId: null,
+            date: today,
+            sessionDate: today,
+            serverVersion: 0,
+            lastUpdated: now,
+            isOfflineQueued: true
+          };
+
+          saveActiveTimerSnapshot(offlineSnapshot);
+
+          setTasks(prevTasks => {
+            const updated = prevTasks.map(t => {
+              const tId = String(t._id || t.id);
+              if (tId === String(taskId)) {
+                return {
+                  ...t,
+                  timerRunning: false,
+                  startedAt: null,
+                  accumulatedSeconds: newAccum,
+                  timerSeconds: newAccum,
+                  status: t.status === 'in_progress' ? 'on_hold' : t.status,
+                  activeUserId: null
+                };
+              }
+              return t;
+            });
+            saveCollection(KEYS.TASKS, updated);
+            return updated;
+          });
+
+          window.dispatchEvent(new CustomEvent('ems_task_timer_paused', {
+            detail: { taskId, userKey, isOffline: true }
+          }));
+
+          addToast('Task timer paused ⏸️ (Offline Mode — queued for sync)', 'info');
+          return;
         } else {
           await syncAuthoritativeTimerState({ force: true, source: 'pause_rejected' });
           const errMsg = res?.message || res?.error || 'Failed to pause task timer on server';
@@ -2096,12 +2229,74 @@ export const WorkProvider = ({ children }) => {
         reason: customMemo || 'Task completed from UI'
       });
 
-      // Strict Failure & Offline Handling:
-      // If backend returns success: false, do not mark task completed, do not show success toast, do not auto-start next task.
+      // Failure & Offline Handling:
       if (!res || !res.success) {
         if (res?.offline || res?.queued) {
-          addToast('Task completion enqueued offline. Will sync with server when online.', 'info');
-          return null;
+          const todayStr = getTodayStr();
+          const completedIso = new Date().toISOString();
+          const now = Date.now();
+          const startMs = targetTask.startedAt ? (typeof targetTask.startedAt === 'number' ? targetTask.startedAt : new Date(targetTask.startedAt).getTime()) : null;
+          const liveElapsed = (targetTask.timerRunning && startMs && startMs <= now) ? Math.floor((now - startMs) / 1000) : 0;
+          const finalDuration = Math.max(0, (Number(targetTask.accumulatedSeconds || targetTask.timerSeconds || 0) + liveElapsed));
+
+          // Log to Timesheet locally
+          try {
+            const timesheets = getCollection(KEYS.TIMESHEETS) || [];
+            const newTs = {
+              _id: `ts_${Date.now()}_${taskId}`,
+              taskId,
+              taskCode: targetTask.taskCode || '',
+              taskTitle: targetTask.title || 'Completed Task',
+              projectId: targetTask.projectId || '',
+              projectName: targetTask.projectName || 'General Work',
+              employeeId: userKey,
+              employeeCode: currentUser?.employeeCode || '',
+              employeeName: currentUser?.name || 'Employee',
+              date: todayStr,
+              totalDurationSeconds: finalDuration,
+              totalDurationText: formatSeconds(finalDuration),
+              status: 'approved',
+              isOffline: true,
+              createdAt: completedIso
+            };
+            timesheets.unshift(newTs);
+            saveCollection(KEYS.TIMESHEETS, timesheets);
+          } catch (_) {}
+
+          // Update task locally
+          setTasks(prev => {
+            const updated = prev.map(t => {
+              if (String(t._id || t.id) === String(taskId)) {
+                return {
+                  ...t,
+                  status: 'completed',
+                  progress: 100,
+                  timerRunning: false,
+                  startedAt: null,
+                  activeUserId: null,
+                  completedAt: completedIso,
+                  completedOn: todayStr,
+                  timerSeconds: finalDuration,
+                  accumulatedSeconds: finalDuration
+                };
+              }
+              return t;
+            });
+            saveCollection(KEYS.TASKS, updated);
+            return updated;
+          });
+
+          // Clear active timer snapshot if this was the running task
+          const snap = getActiveTimerSnapshot();
+          if (snap && String(snap.taskId) === String(taskId)) {
+            saveActiveTimerSnapshot(null);
+          }
+
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+          window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TIMESHEETS } }));
+          window.dispatchEvent(new CustomEvent('ems_task_timer_stopped', { detail: { taskId, userKey, isOffline: true } }));
+          addToast(`✅ Task #${targetTask.taskCode || ''} completed & logged! (Offline Mode — queued for sync)`, 'success');
+          return { completedTask: targetTask, offline: true };
         }
         const errMsg = res?.message || res?.error || 'Failed to complete task on server';
         addToast(`⛔ ${errMsg}`, 'error');

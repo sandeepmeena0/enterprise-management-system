@@ -204,12 +204,22 @@ export const ActiveTaskTimerCard = ({
                 const targetTaskId = displayActiveTask?._id || displayActiveTask?.id || displayActiveTask?.taskId;
                 if (!targetTaskId) return;
                 if (!isViewingOtherEmployee && !isClockedIn) {
-                  addToast('⚠️ Shift is not clocked in! Please Clock In above before starting task timers.', 'warning');
-                  return;
+                  if (typeof handleClockIn === 'function') {
+                    handleClockIn();
+                    addToast('⏱️ Auto-clocked in shift! Starting task timer...', 'info');
+                  } else {
+                    addToast('⚠️ Shift is not clocked in! Please Clock In above before starting task timers.', 'warning');
+                    return;
+                  }
                 }
                 if (!isViewingOtherEmployee && isOnBreak) {
-                  addToast('☕ You are currently on break. Please resume work before running task timers!', 'warning');
-                  return;
+                  if (typeof resumeFromBreak === 'function') {
+                    resumeFromBreak();
+                    addToast('☕ Resumed from break! Starting task timer...', 'info');
+                  } else {
+                    addToast('☕ You are currently on break. Please resume work before running task timers!', 'warning');
+                    return;
+                  }
                 }
                 if (displayActiveTask?.timerRunning) {
                   pauseTaskTimer(targetTaskId);
