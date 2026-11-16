@@ -1,8 +1,45 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const Attendance = require('../models/Attendance');
 const AttendanceAudit = require('../models/AttendanceAudit');
 const Task = require('../../work/models/Task');
 const asyncHandler = require('../../../shared/middleware/asyncHandler');
+const {
+  isTransactionSupported,
+  executeTransaction
+} = require('../../../shared/utils/transactionHelper');
+
+/**
+ * Deterministically canonicalizes an object or value by sorting keys recursively.
+ */
+function canonicalizeValue(val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val !== 'object') return val;
+  if (Array.isArray(val)) return val.map(canonicalizeValue);
+  const sortedKeys = Object.keys(val).sort();
+  const res = {};
+  for (const k of sortedKeys) {
+    res[k] = canonicalizeValue(val[k]);
+  }
+  return res;
+}
+
+/**
+ * Generates a deterministic SHA-256 request fingerprint scoped to actor, operation, and payload.
+ * Used for strict idempotency isolation (Section 2).
+ */
+function computeAuditFingerprint({ actorId, type, targetEmpId, targetEmpCode, date, action, payload }) {
+  const canonical = {
+    actorId: String(actorId || ''),
+    type: String(type || ''),
+    targetEmpId: String(targetEmpId || ''),
+    targetEmpCode: String(targetEmpCode || '').toUpperCase(),
+    date: String(date || ''),
+    action: String(action || ''),
+    payload: canonicalizeValue(payload || {})
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
 
 // Universal helper to get local date string YYYY-MM-DD for IST business operations
 const getLocalTodayStr = (d = new Date()) => {
@@ -879,13 +916,57 @@ const markAttendance = asyncHandler(async (req, res) => {
   // Mandatory Audit Trail for Admin manual modifications
   const isMandatoryAudit = isPrivileged && (auditNote || isAdminOverride || req.body.isManualAdjustment);
   const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
+  const auditReasonText = (auditNote || req.body.reason || notes || 'Manual administrative attendance adjustment').trim();
+
+  // Compute deterministic request fingerprint for idempotency isolation (Section 2)
+  const currentFingerprint = computeAuditFingerprint({
+    actorId: adminActorId,
+    type: 'admin_shift_adjustment',
+    targetEmpId,
+    targetEmpCode,
+    date,
+    action: 'Admin Shift Hour Adjustment',
+    payload: {
+      status: calculatedStatus,
+      workSeconds: finalWorkSecs,
+      breakSeconds: finalBreakSecs,
+      punchSessions: finalPunchSessions,
+      clockInTime: finalClockInTime,
+      clockOutTime: finalClockOutTime,
+      auditReason: auditReasonText
+    }
+  });
 
   let existingAudit = null;
   if (auditIdempotencyKey) {
     existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+    if (existingAudit) {
+      // Collision check: same key with different payload/actor/action MUST return 409 Conflict
+      if (existingAudit.requestFingerprint && existingAudit.requestFingerprint !== currentFingerprint) {
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+
+      // Idempotent replay: same key + same request returns original result
+      const existingRecordDoc = await Attendance.findOne({
+        date,
+        $or: [{ employee: targetEmpId }, { employeeCode: targetEmpCode }]
+      });
+      return res.status(200).json({
+        success: true,
+        message: 'Shift adjustment already processed (idempotent replay)',
+        idempotentReplay: true,
+        data: {
+          attendance: existingRecordDoc || existingAudit.responseSnapshot?.attendance,
+          audit: existingAudit
+        }
+      });
+    }
   }
 
-  const auditReasonText = (auditNote || req.body.reason || notes || 'Manual administrative attendance adjustment').trim();
   const auditPayload = isMandatoryAudit ? {
     employee: targetEmpId,
     employeeId: String(targetEmpId),
@@ -905,67 +986,94 @@ const markAttendance = asyncHandler(async (req, res) => {
     adminName: adminActorName,
     auditNote: auditReasonText,
     idempotencyKey: auditIdempotencyKey,
+    idempotencyScope: `${adminActorId}:admin_shift_adjustment:${targetEmpId}:${date}`,
+    requestFingerprint: currentFingerprint,
     details: `Shift manually adjusted by Admin ${adminActorName} (ID: ${adminActorId}). Status: ${calculatedStatus}, In: ${finalClockInTime || '—'}, Out: ${finalClockOutTime || '—'}. Reason: "${auditReasonText}"`
   } : null;
 
   let record;
-  let auditEntry = existingAudit;
+  let auditEntry = null;
 
-  // Attempt transaction where replica sets are supported
-  let session = null;
-  let hasActiveTransaction = false;
-  if (mongoose.connection && mongoose.connection.readyState === 1) {
+  // Transaction capability detection & safe execution (Section 1)
+  if (isTransactionSupported()) {
     try {
-      session = await mongoose.startSession();
-      if (session && typeof session.startTransaction === 'function') {
-        session.startTransaction();
-        hasActiveTransaction = true;
-      }
-    } catch (_) {
-      session = null;
-      hasActiveTransaction = false;
-    }
-  }
+      await executeTransaction(async (session) => {
+        if (isMandatoryAudit) {
+          const created = await AttendanceAudit.create([auditPayload], { session });
+          auditEntry = created[0];
+        }
 
-  if (hasActiveTransaction && session) {
-    try {
-      if (isMandatoryAudit && !auditEntry) {
-        const created = await AttendanceAudit.create([auditPayload], { session });
-        auditEntry = created[0];
-      }
+        record = await Attendance.findOneAndUpdate(
+          {
+            date,
+            $or: [
+              { employee: targetEmpId },
+              { employeeCode: targetEmpCode }
+            ]
+          },
+          updateFields,
+          { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
+        );
 
-      record = await Attendance.findOneAndUpdate(
-        {
-          date,
-          $or: [
-            { employee: targetEmpId },
-            { employeeCode: targetEmpCode }
-          ]
-        },
-        updateFields,
-        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
-      );
-
-      await session.commitTransaction();
+        if (auditEntry && record) {
+          auditEntry.responseSnapshot = {
+            attendanceId: record._id,
+            status: record.status,
+            date: record.date
+          };
+        }
+      });
     } catch (txErr) {
-      await session.abortTransaction();
       console.error('[attendanceController] Transaction failed during administrative adjustment:', txErr);
+      if (txErr.code === 11000 && auditIdempotencyKey) {
+        // Concurrent duplicate request caught by unique database index
+        const dupAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+        if (dupAudit && dupAudit.requestFingerprint === currentFingerprint) {
+          const existingRec = await Attendance.findOne({ date, $or: [{ employee: targetEmpId }, { employeeCode: targetEmpCode }] });
+          return res.status(200).json({
+            success: true,
+            message: 'Shift adjustment already processed (concurrent idempotent replay)',
+            idempotentReplay: true,
+            data: { attendance: existingRec, audit: dupAudit }
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
       return res.status(500).json({
         success: false,
         message: `Failed to commit administrative adjustment: ${txErr.message}. Operation aborted to preserve audit integrity.`
       });
-    } finally {
-      await session.endSession();
     }
   } else {
     // Non-transactional fallback with reliable rollback compensation
     let auditCreatedHere = null;
-    if (isMandatoryAudit && !auditEntry) {
+    if (isMandatoryAudit) {
       try {
         auditCreatedHere = await AttendanceAudit.create(auditPayload);
         auditEntry = auditCreatedHere;
       } catch (auditErr) {
         console.error('[attendanceController] Mandatory audit creation failed:', auditErr);
+        if (auditErr.code === 11000 && auditIdempotencyKey) {
+          const dupAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+          if (dupAudit && dupAudit.requestFingerprint === currentFingerprint) {
+            const existingRec = await Attendance.findOne({ date, $or: [{ employee: targetEmpId }, { employeeCode: targetEmpCode }] });
+            return res.status(200).json({
+              success: true,
+              message: 'Shift adjustment already processed (concurrent idempotent replay)',
+              idempotentReplay: true,
+              data: { attendance: existingRec, audit: dupAudit }
+            });
+          }
+          return res.status(409).json({
+            success: false,
+            code: 'IDEMPOTENCY_KEY_COLLISION',
+            message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+          });
+        }
         return res.status(500).json({
           success: false,
           message: `Failed to record mandatory audit trail for administrative adjustment: ${auditErr.message}. Attendance was not modified.`
@@ -986,16 +1094,22 @@ const markAttendance = asyncHandler(async (req, res) => {
         { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
       );
     } catch (updateErr) {
-      // Rollback audit entry if attendance update failed!
+      // Rollback audit entry if attendance update failed! Never delete an existing audit if it was a retry!
+      let rollbackFailed = false;
       if (auditCreatedHere && auditCreatedHere._id) {
         try {
           await AttendanceAudit.findByIdAndDelete(auditCreatedHere._id);
-        } catch (_) {}
+        } catch (rbErr) {
+          rollbackFailed = true;
+          console.error('[attendanceController] CRITICAL: Audit rollback failed:', rbErr.message);
+        }
       }
       console.error('[attendanceController] Attendance update failed after audit:', updateErr);
       return res.status(500).json({
         success: false,
-        message: `Failed to update attendance record: ${updateErr.message}. Audit trail rolled back.`
+        message: rollbackFailed
+          ? `Failed to update attendance record: ${updateErr.message}. Critical: Audit rollback failed.`
+          : `Failed to update attendance record: ${updateErr.message}. Audit trail rolled back.`
       });
     }
   }
@@ -1088,6 +1202,8 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
   const auditReasonText = (req.body.auditNote || req.body.reason || `Bulk administrative attendance update for ${records.length} records`).trim();
   const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
 
+  // Prevent duplicate employee/date pairs in the same bulk payload (Section 3)
+  const seenEmpDates = new Set();
   const operations = [];
 
   for (let idx = 0; idx < records.length; idx++) {
@@ -1095,6 +1211,16 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
     if (!r.employee || !r.date) {
       return res.status(400).json({ success: false, message: `Record ${idx + 1} must contain employee and date.` });
     }
+
+    const pairKey = `${String(r.employee).trim().toUpperCase()}__${String(r.date).trim()}`;
+    if (seenEmpDates.has(pairKey)) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate record detected in bulk payload for employee '${r.employee}' on date '${r.date}'. Each employee-date pair must be unique within a single bulk request.`
+      });
+    }
+    seenEmpDates.add(pairKey);
+
     if (r.status && !ALLOWED_STATUSES.includes(r.status)) {
       return res.status(400).json({ success: false, message: `Record ${idx + 1} has invalid status '${r.status}'. Allowed: ${ALLOWED_STATUSES.join(', ')}.` });
     }
@@ -1142,51 +1268,172 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
     });
   }
 
-  // Mandatory traceable audit trail for bulk modifications
-  let bulkAudit = null;
-  try {
-    bulkAudit = await AttendanceAudit.create({
-      employeeId: 'BULK_UPDATE',
-      employeeName: `Bulk Update (${records.length} records)`,
-      employeeCode: 'BULK',
-      date: records[0].date,
-      timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      type: 'admin_bulk_attendance',
-      action: 'Admin Bulk Attendance Update',
-      durationSeconds: 0,
-      durationText: `${records.length} records`,
-      actor: 'admin',
-      actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
-      actorName: req.user?.name || 'Administrator',
-      isAdminOverride: true,
-      adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
-      adminName: req.user?.name || 'Administrator',
-      auditNote: auditReasonText,
-      idempotencyKey: auditIdempotencyKey,
-      details: `Administrator ${req.user?.name || 'Admin'} updated ${records.length} attendance records in bulk. Reason: "${auditReasonText}"`
-    });
-  } catch (auditErr) {
-    console.error('[attendanceController] Bulk attendance audit creation failed:', auditErr);
-    return res.status(500).json({
-      success: false,
-      message: `Failed to create audit log for bulk attendance update: ${auditErr.message}. Bulk update aborted.`
-    });
+  // Deterministic fingerprint for bulk idempotency (Section 2 & 3)
+  const bulkFingerprint = computeAuditFingerprint({
+    actorId: req.user?._id || req.user?.id || 'ADMIN',
+    type: 'admin_bulk_attendance',
+    targetEmpId: 'BULK',
+    targetEmpCode: 'BULK',
+    date: records[0].date,
+    action: 'Admin Bulk Attendance Update',
+    payload: {
+      recordsCount: records.length,
+      records: records.map(r => ({ employee: r.employee, date: r.date, status: r.status, workSeconds: r.workSeconds })),
+      auditReason: auditReasonText
+    }
+  });
+
+  if (auditIdempotencyKey) {
+    const existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+    if (existingAudit) {
+      if (existingAudit.requestFingerprint && existingAudit.requestFingerprint !== bulkFingerprint) {
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: 'Bulk attendance already recorded (idempotent replay)',
+        idempotentReplay: true,
+        data: existingAudit.responseSnapshot || {},
+        audit: existingAudit
+      });
+    }
   }
 
-  let result;
-  try {
-    result = await Attendance.bulkWrite(operations);
-  } catch (bulkErr) {
-    if (bulkAudit && bulkAudit._id) {
-      try {
-        await AttendanceAudit.findByIdAndDelete(bulkAudit._id);
-      } catch (_) {}
+  const auditPayload = {
+    employeeId: 'BULK_UPDATE',
+    employeeName: `Bulk Update (${records.length} records)`,
+    employeeCode: 'BULK',
+    date: records[0].date,
+    timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    type: 'admin_bulk_attendance',
+    action: 'Admin Bulk Attendance Update',
+    durationSeconds: 0,
+    durationText: `${records.length} records`,
+    actor: 'admin',
+    actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
+    actorName: req.user?.name || 'Administrator',
+    isAdminOverride: true,
+    adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
+    adminName: req.user?.name || 'Administrator',
+    auditNote: auditReasonText,
+    idempotencyKey: auditIdempotencyKey,
+    idempotencyScope: `${req.user?._id || 'ADMIN'}:admin_bulk_attendance:${records.length}:${records[0].date}`,
+    requestFingerprint: bulkFingerprint,
+    details: `Administrator ${req.user?.name || 'Admin'} updated ${records.length} attendance records in bulk. Reason: "${auditReasonText}"`
+  };
+
+  let bulkAudit = null;
+  let result = null;
+
+  // Transactional vs Non-Transactional safe execution (Section 1 & Section 3)
+  if (isTransactionSupported()) {
+    try {
+      await executeTransaction(async (session) => {
+        const created = await AttendanceAudit.create([auditPayload], { session });
+        bulkAudit = created[0];
+        result = await Attendance.bulkWrite(operations, { session, ordered: true });
+        if (bulkAudit && result) {
+          bulkAudit.responseSnapshot = { modifiedCount: result.modifiedCount, upsertedCount: result.upsertedCount };
+        }
+      });
+    } catch (txErr) {
+      console.error('[attendanceController] Transaction failed in bulkMarkAttendance:', txErr);
+      if (txErr.code === 11000 && auditIdempotencyKey) {
+        const dupAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+        if (dupAudit && dupAudit.requestFingerprint === bulkFingerprint) {
+          return res.status(200).json({
+            success: true,
+            message: 'Bulk attendance already recorded (concurrent idempotent replay)',
+            idempotentReplay: true,
+            data: dupAudit.responseSnapshot || {},
+            audit: dupAudit
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        message: `Failed to execute bulk attendance update: ${txErr.message}. Entire operation rolled back.`
+      });
     }
-    console.error('[attendanceController] bulkWrite failed:', bulkErr);
-    return res.status(500).json({
-      success: false,
-      message: `Failed to perform bulk attendance write: ${bulkErr.message}. Audit trail rolled back.`
-    });
+  } else {
+    // Non-transactional fallback with partial outcome preservation (Section 3)
+    try {
+      bulkAudit = await AttendanceAudit.create(auditPayload);
+    } catch (auditErr) {
+      console.error('[attendanceController] Bulk attendance audit creation failed:', auditErr);
+      if (auditErr.code === 11000 && auditIdempotencyKey) {
+        const dupAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+        if (dupAudit && dupAudit.requestFingerprint === bulkFingerprint) {
+          return res.status(200).json({
+            success: true,
+            message: 'Bulk attendance already recorded (concurrent idempotent replay)',
+            idempotentReplay: true,
+            data: dupAudit.responseSnapshot || {},
+            audit: dupAudit
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        message: `Failed to create audit log for bulk attendance update: ${auditErr.message}. Bulk update aborted.`
+      });
+    }
+
+    try {
+      result = await Attendance.bulkWrite(operations, { ordered: true });
+    } catch (bulkErr) {
+      console.error('[attendanceController] bulkWrite failed:', bulkErr);
+      const modifiedCount = bulkErr.result?.nModified || bulkErr.result?.modifiedCount || 0;
+      const upsertedCount = bulkErr.result?.nUpserted || bulkErr.result?.upsertedCount || 0;
+      const totalWritten = modifiedCount + upsertedCount;
+
+      if (totalWritten > 0) {
+        // Some records were modified: DO NOT DELETE AUDIT LOG!
+        if (bulkAudit) {
+          bulkAudit.action = 'Admin Bulk Attendance Update (Partial Failure)';
+          bulkAudit.details += ` [PARTIAL FAILURE: ${bulkErr.message}. ${totalWritten} of ${records.length} records written before error.]`;
+          try { await bulkAudit.save(); } catch (_) {}
+        }
+        return res.status(500).json({
+          success: false,
+          message: `Bulk attendance operation partially failed: ${bulkErr.message}. ${totalWritten} records were modified and audit trail was preserved.`,
+          partialFailure: true,
+          modifiedCount,
+          upsertedCount
+        });
+      } else {
+        // Zero records written: safe to rollback audit entry
+        let rollbackFailed = false;
+        if (bulkAudit && bulkAudit._id) {
+          try {
+            await AttendanceAudit.findByIdAndDelete(bulkAudit._id);
+          } catch (rbErr) {
+            rollbackFailed = true;
+            console.error('[attendanceController] CRITICAL: Bulk audit rollback failed:', rbErr.message);
+          }
+        }
+        return res.status(500).json({
+          success: false,
+          message: rollbackFailed
+            ? `Failed to perform bulk attendance write: ${bulkErr.message}. Critical: Audit rollback failed.`
+            : `Failed to perform bulk attendance write: ${bulkErr.message}. Zero records modified. Audit trail rolled back.`
+        });
+      }
+    }
   }
 
   res.status(200).json({ success: true, message: 'Bulk attendance recorded', data: result, audit: bulkAudit });
@@ -1214,49 +1461,134 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
   const record = await Attendance.findById(req.params.id);
   if (!record) return res.status(404).json({ success: false, message: 'Attendance record not found' });
 
-  // 1. Audit record MUST be created and successfully persisted before deletion
-  let auditEntry = null;
-  try {
-    auditEntry = await AttendanceAudit.create({
-      employee: record.employee,
-      employeeId: String(record.employee || record.employeeCode || ''),
-      employeeName: record.employeeName || 'Employee',
-      employeeCode: record.employeeCode || '',
-      date: record.date,
-      timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      type: 'admin_shift_deletion',
-      action: 'Admin Attendance Record Deletion',
-      actor: 'admin',
-      actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
-      actorName: req.user?.name || 'Administrator',
-      isAdminOverride: true,
-      adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
-      adminName: req.user?.name || 'Administrator',
-      auditNote: auditReason,
-      details: `Attendance record for ${record.employeeName} on ${record.date} was deleted by ${req.user?.name || 'Admin'}. Reason: "${auditReason}"`
-    });
-  } catch (auditErr) {
-    console.error('[attendanceController] Audit creation failed before attendance deletion:', auditErr);
-    return res.status(500).json({
-      success: false,
-      message: `Failed to create audit log for deletion: ${auditErr.message}. Record was NOT deleted to preserve audit compliance.`
-    });
+  const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
+  const deleteFingerprint = computeAuditFingerprint({
+    actorId: req.user?._id || req.user?.id || 'ADMIN',
+    type: 'admin_shift_deletion',
+    targetEmpId: record.employee,
+    targetEmpCode: record.employeeCode,
+    date: record.date,
+    action: 'Admin Attendance Record Deletion',
+    payload: { recordId: req.params.id, reason: auditReason }
+  });
+
+  if (auditIdempotencyKey) {
+    const existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+    if (existingAudit) {
+      if (existingAudit.requestFingerprint && existingAudit.requestFingerprint !== deleteFingerprint) {
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: 'Attendance record already deleted (idempotent replay)',
+        idempotentReplay: true,
+        data: {}
+      });
+    }
   }
 
-  // 2. Only if audit succeeded, perform deletion with compensatory rollback
-  try {
-    await Attendance.findByIdAndDelete(req.params.id);
-  } catch (deleteErr) {
-    if (auditEntry && auditEntry._id) {
-      try {
-        await AttendanceAudit.findByIdAndDelete(auditEntry._id);
-      } catch (_) {}
+  const auditPayload = {
+    employee: record.employee,
+    employeeId: String(record.employee || record.employeeCode || ''),
+    employeeName: record.employeeName || 'Employee',
+    employeeCode: record.employeeCode || '',
+    date: record.date,
+    timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    type: 'admin_shift_deletion',
+    action: 'Admin Attendance Record Deletion',
+    actor: 'admin',
+    actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
+    actorName: req.user?.name || 'Administrator',
+    isAdminOverride: true,
+    adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
+    adminName: req.user?.name || 'Administrator',
+    auditNote: auditReason,
+    idempotencyKey: auditIdempotencyKey,
+    idempotencyScope: `${req.user?._id || 'ADMIN'}:admin_shift_deletion:${req.params.id}`,
+    requestFingerprint: deleteFingerprint,
+    details: `Attendance record for ${record.employeeName} on ${record.date} was deleted by ${req.user?.name || 'Admin'}. Reason: "${auditReason}"`
+  };
+
+  // Transaction capability detection & safe deletion (Section 1 & 4)
+  if (isTransactionSupported()) {
+    try {
+      await executeTransaction(async (session) => {
+        const deletedDoc = await Attendance.findByIdAndDelete(req.params.id, { session });
+        if (!deletedDoc) {
+          const notFoundErr = new Error('Attendance record not found or already deleted by another request.');
+          notFoundErr.statusCode = 404;
+          throw notFoundErr;
+        }
+
+        await AttendanceAudit.create([auditPayload], { session });
+      });
+    } catch (txErr) {
+      console.error('[attendanceController] Transaction failed in deleteAttendanceRecord:', txErr);
+      if (txErr.statusCode === 404) {
+        return res.status(404).json({ success: false, message: txErr.message });
+      }
+      return res.status(500).json({ success: false, message: `Failed to delete record: ${txErr.message}. Transaction aborted.` });
     }
-    console.error('[attendanceController] Deletion failed after audit creation:', deleteErr);
-    return res.status(500).json({
-      success: false,
-      message: `Failed to delete attendance record: ${deleteErr.message}. Audit record rolled back to prevent false records.`
-    });
+  } else {
+    // Non-transactional fallback with verified deletion and explicit rollback error handling (Section 4)
+    let auditEntry = null;
+    try {
+      auditEntry = await AttendanceAudit.create(auditPayload);
+    } catch (auditErr) {
+      console.error('[attendanceController] Audit creation failed before attendance deletion:', auditErr);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to create audit log for deletion: ${auditErr.message}. Record was NOT deleted to preserve audit compliance.`
+      });
+    }
+
+    let deletedDoc = null;
+    try {
+      deletedDoc = await Attendance.findByIdAndDelete(req.params.id);
+    } catch (deleteErr) {
+      let rollbackFailed = false;
+      if (auditEntry && auditEntry._id) {
+        try {
+          await AttendanceAudit.findByIdAndDelete(auditEntry._id);
+        } catch (rbErr) {
+          rollbackFailed = true;
+          console.error('[attendanceController] CRITICAL: Audit rollback failed after delete error:', rbErr.message);
+        }
+      }
+      return res.status(500).json({
+        success: false,
+        message: rollbackFailed
+          ? `Failed to delete attendance record: ${deleteErr.message}. Critical: Audit rollback failed.`
+          : `Failed to delete attendance record: ${deleteErr.message}. Audit record rolled back to prevent false records.`
+      });
+    }
+
+    // Verify record was actually deleted (Section 4)
+    if (!deletedDoc) {
+      let rollbackFailed = false;
+      if (auditEntry && auditEntry._id) {
+        try {
+          await AttendanceAudit.findByIdAndDelete(auditEntry._id);
+        } catch (rbErr) {
+          rollbackFailed = true;
+          console.error('[attendanceController] CRITICAL: Audit rollback failed after concurrent delete:', rbErr.message);
+        }
+      }
+      if (rollbackFailed) {
+        return res.status(500).json({
+          success: false,
+          message: 'Record was already deleted by another request, and audit rollback failed. Inconsistent state logged.'
+        });
+      }
+      return res.status(404).json({
+        success: false,
+        message: 'Attendance record was already deleted by another request. Audit record rolled back.'
+      });
+    }
   }
 
   res.json({ success: true, message: 'Record deleted', data: {} });
@@ -1525,79 +1857,183 @@ const forceClockOut = asyncHandler(async (req, res) => {
 
   // Create official Audit Trail record first to ensure audit integrity
   const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
-  let existingAudit = null;
+
+  // Deterministic fingerprint for force clock-out idempotency (Section 2)
+  const forceFingerprint = computeAuditFingerprint({
+    actorId: adminId,
+    type: 'admin_force_clock_out',
+    targetEmpId,
+    targetEmpCode,
+    date: targetDate,
+    action: 'Admin Force Clock-Out',
+    payload: { employeeId: String(targetEmpCode || employeeId), noteText }
+  });
+
   if (auditIdempotencyKey) {
-    existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+    const existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+    if (existingAudit) {
+      if (existingAudit.requestFingerprint && existingAudit.requestFingerprint !== forceFingerprint) {
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: `Shift forcefully clocked out by Admin ${adminName} (idempotent replay)`,
+        idempotentReplay: true,
+        data: { attendance: attRecord, audit: existingAudit }
+      });
+    }
   }
 
-  let auditEntry = existingAudit;
-  let auditCreatedHere = null;
-  if (!auditEntry) {
-    auditCreatedHere = new AttendanceAudit({
-      employee: targetEmpId,
-      employeeId: String(targetEmpCode || employeeId),
-      employeeName: targetEmpName,
-      employeeCode: targetEmpCode,
-      date: targetDate,
-      timeFormatted: nowStr,
-      type: 'admin_force_clock_out',
-      action: 'Admin Force Clock-Out',
-      actor: 'admin',
-      actorId: String(adminId),
-      actorName: adminName,
-      isAdminOverride: true,
-      adminId: String(adminId),
-      adminName,
-      auditNote: noteText,
-      idempotencyKey: auditIdempotencyKey,
-      details: `Administrator ${adminName} [ID: ${adminId}] manually forced shift clock-out. Reason: "${noteText}"`
-    });
+  const auditPayload = {
+    employee: targetEmpId,
+    employeeId: String(targetEmpCode || employeeId),
+    employeeName: targetEmpName,
+    employeeCode: targetEmpCode,
+    date: targetDate,
+    timeFormatted: nowStr,
+    type: 'admin_force_clock_out',
+    action: 'Admin Force Clock-Out',
+    actor: 'admin',
+    actorId: String(adminId),
+    actorName: adminName,
+    isAdminOverride: true,
+    adminId: String(adminId),
+    adminName,
+    auditNote: noteText,
+    idempotencyKey: auditIdempotencyKey,
+    idempotencyScope: `${adminId}:admin_force_clock_out:${targetEmpId}:${targetDate}`,
+    requestFingerprint: forceFingerprint,
+    details: `Administrator ${adminName} [ID: ${adminId}] manually forced shift clock-out. Reason: "${noteText}"`
+  };
 
+  let auditEntry = null;
+
+  if (isTransactionSupported()) {
     try {
-      await auditCreatedHere.save();
+      await executeTransaction(async (session) => {
+        const created = await AttendanceAudit.create([auditPayload], { session });
+        auditEntry = created[0];
+
+        if (attRecord) {
+          await attRecord.save({ session });
+        } else {
+          const createdAtt = await Attendance.create([{
+            employee: targetEmpId || new mongoose.Types.ObjectId(),
+            employeeName: targetEmpName,
+            employeeCode: targetEmpCode,
+            employeeRole: empDoc ? empDoc.role : 'Team Member',
+            date: targetDate,
+            status: 'present',
+            clockInTime: nowStr,
+            workSeconds: 0,
+            totalWorkingHours: 0,
+            clockOutTime: nowStr,
+            clockOutTimestamp: Date.now(),
+            isClockedIn: false,
+            isOnBreak: false,
+            markedBy: adminName,
+            notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
+          }], { session });
+          attRecord = Array.isArray(createdAtt) ? createdAtt[0] : createdAtt;
+        }
+      });
+    } catch (txErr) {
+      console.error('[attendanceController] Transaction failed in forceClockOut:', txErr);
+      if (txErr.code === 11000 && auditIdempotencyKey) {
+        const dupAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+        if (dupAudit && dupAudit.requestFingerprint === forceFingerprint) {
+          return res.status(200).json({
+            success: true,
+            message: `Shift forcefully clocked out by Admin ${adminName} (concurrent idempotent replay)`,
+            idempotentReplay: true,
+            data: { attendance: attRecord, audit: dupAudit }
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        message: `Failed to force clock-out: ${txErr.message}. Transaction aborted.`
+      });
+    }
+  } else {
+    // Non-transactional fallback with verified audit creation and rollback
+    let auditCreatedHere = null;
+    try {
+      auditCreatedHere = await AttendanceAudit.create(auditPayload);
       auditEntry = auditCreatedHere;
     } catch (auditErr) {
       console.error('[attendanceController] Mandatory audit creation failed in forceClockOut:', auditErr);
+      if (auditErr.code === 11000 && auditIdempotencyKey) {
+        const dupAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+        if (dupAudit && dupAudit.requestFingerprint === forceFingerprint) {
+          return res.status(200).json({
+            success: true,
+            message: `Shift forcefully clocked out by Admin ${adminName} (concurrent idempotent replay)`,
+            idempotentReplay: true,
+            data: { attendance: attRecord, audit: dupAudit }
+          });
+        }
+        return res.status(409).json({
+          success: false,
+          code: 'IDEMPOTENCY_KEY_COLLISION',
+          message: 'Idempotency key collision: This idempotency key was already used for a different request payload or target.'
+        });
+      }
       return res.status(500).json({
         success: false,
         message: `Failed to create audit log for force clock-out: ${auditErr.message}. Force clock-out aborted to preserve audit integrity.`
       });
     }
-  }
 
-  try {
-    if (attRecord) {
-      await attRecord.save();
-    } else {
-      attRecord = await Attendance.create({
-        employee: targetEmpId || new mongoose.Types.ObjectId(),
-        employeeName: targetEmpName,
-        employeeCode: targetEmpCode,
-        employeeRole: empDoc ? empDoc.role : 'Team Member',
-        date: targetDate,
-        status: 'present',
-        clockInTime: nowStr,
-        workSeconds: 0,
-        totalWorkingHours: 0,
-        clockOutTime: nowStr,
-        clockOutTimestamp: Date.now(),
-        isClockedIn: false,
-        isOnBreak: false,
-        markedBy: adminName,
-        notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
+    try {
+      if (attRecord) {
+        await attRecord.save();
+      } else {
+        attRecord = await Attendance.create({
+          employee: targetEmpId || new mongoose.Types.ObjectId(),
+          employeeName: targetEmpName,
+          employeeCode: targetEmpCode,
+          employeeRole: empDoc ? empDoc.role : 'Team Member',
+          date: targetDate,
+          status: 'present',
+          clockInTime: nowStr,
+          workSeconds: 0,
+          totalWorkingHours: 0,
+          clockOutTime: nowStr,
+          clockOutTimestamp: Date.now(),
+          isClockedIn: false,
+          isOnBreak: false,
+          markedBy: adminName,
+          notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
+        });
+      }
+    } catch (saveErr) {
+      let rollbackFailed = false;
+      if (auditCreatedHere && auditCreatedHere._id) {
+        try {
+          await AttendanceAudit.findByIdAndDelete(auditCreatedHere._id);
+        } catch (rbErr) {
+          rollbackFailed = true;
+          console.error('[attendanceController] CRITICAL: Audit rollback failed after attendance save error:', rbErr.message);
+        }
+      }
+      console.error('[attendanceController] Attendance save failed in forceClockOut:', saveErr);
+      return res.status(500).json({
+        success: false,
+        message: rollbackFailed
+          ? `Failed to save attendance record during force clock-out: ${saveErr.message}. Critical: Audit rollback failed.`
+          : `Failed to save attendance record during force clock-out: ${saveErr.message}. Audit trail rolled back.`
       });
     }
-  } catch (saveErr) {
-    if (auditCreatedHere && auditCreatedHere._id) {
-      try {
-        await AttendanceAudit.findByIdAndDelete(auditCreatedHere._id);
-      } catch (_) {}
-    }
-    console.error('[attendanceController] Attendance save failed in forceClockOut:', saveErr);
-    return res.status(500).json({
-      success: false,
-      message: `Failed to save attendance record during force clock-out: ${saveErr.message}. Audit trail rolled back.`
-    });
   }
 
   // Immediately update in-memory liveTelemetryCache so zero-flicker telemetry reflects forced clock-out across all devices instantly!
@@ -2419,6 +2855,7 @@ module.exports = {
   validateStrictDurationSeconds,
   validateStrictTimestamp,
   validatePunchSessions,
+  computeAuditFingerprint,
   MAX_CLOCK_SKEW_MS,
   MAX_DAY_SECONDS,
   MIN_ALLOWED_TIMESTAMP_MS

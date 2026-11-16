@@ -13,6 +13,11 @@ const AttendanceAudit = require('../src/modules/hr/models/AttendanceAudit');
 const Employee = require('../src/modules/hr/models/Employee');
 const CompanySettings = require('../src/modules/settings/models/CompanySettings');
 const timeEngineService = require('../src/modules/work/services/timeEngineService');
+const {
+  isTransactionSupported,
+  setTransactionSupportOverride,
+  clearTransactionSupportCache
+} = require('../src/shared/utils/transactionHelper');
 
 const {
   checkIsPrivileged,
@@ -71,6 +76,7 @@ describe('Attendance API Authorization, Audit Integrity & Validation Suite', () 
   let origFindOneCompanySettings;
   let origPauseTimer;
   let origSaveAudit;
+  let origStartSession;
 
   beforeEach(() => {
     origFindOneAttendance = Attendance.findOne;
@@ -85,8 +91,10 @@ describe('Attendance API Authorization, Audit Integrity & Validation Suite', () 
     origFindOneCompanySettings = CompanySettings.findOne;
     origPauseTimer = timeEngineService.pauseTimer;
     origSaveAudit = AttendanceAudit.prototype.save;
+    origStartSession = mongoose.startSession;
 
     // Default safe stubs for un-connected MongoDB environment
+    setTransactionSupportOverride(false);
     Attendance.findOne = async () => null;
     Attendance.findOneAndUpdate = async (q, update) => ({ ...update, _id: new mongoose.Types.ObjectId() });
     Attendance.findById = async () => null;
@@ -124,6 +132,8 @@ describe('Attendance API Authorization, Audit Integrity & Validation Suite', () 
   });
 
   afterEach(() => {
+    clearTransactionSupportCache();
+    mongoose.startSession = origStartSession;
     Attendance.findOne = origFindOneAttendance;
     Attendance.findOneAndUpdate = origFindOneAndUpdateAttendance;
     Attendance.findByIdAndDelete = origFindByIdAndDeleteAttendance;
@@ -284,9 +294,11 @@ describe('Attendance API Authorization, Audit Integrity & Validation Suite', () 
     const idempotencyKey = 'idemp_key_admin_adj_12345';
 
     let auditsCreatedCount = 0;
+    let lastCreatedAudit = null;
     AttendanceAudit.create = async (doc) => {
       auditsCreatedCount++;
-      return { ...doc, _id: new mongoose.Types.ObjectId() };
+      lastCreatedAudit = { ...doc, _id: new mongoose.Types.ObjectId() };
+      return lastCreatedAudit;
     };
 
     // First request: no existing audit
@@ -309,12 +321,8 @@ describe('Attendance API Authorization, Audit Integrity & Validation Suite', () 
     assert.equal(res1.statusCode, 200);
     assert.equal(auditsCreatedCount, 1, 'First request creates audit');
 
-    // Second request (retry): existing audit is found
-    AttendanceAudit.findOne = async () => ({
-      _id: new mongoose.Types.ObjectId(),
-      idempotencyKey,
-      action: 'Admin Shift Hour Adjustment'
-    });
+    // Second request (retry): existing audit is found with matching fingerprint
+    AttendanceAudit.findOne = async () => lastCreatedAudit;
 
     const req2 = {
       user: adminUser,
@@ -474,6 +482,287 @@ describe('Attendance API Authorization, Audit Integrity & Validation Suite', () 
     assert.equal(res.statusCode, 500);
     assert.match(res.body.message, /Audit record rolled back/i);
     assert.ok(auditDeletedId, 'Audit must be deleted so it does not falsely claim deletion succeeded');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE A.4 TRANSACTION, IDEMPOTENCY ISOLATION & BULK/DELETE INTEGRITY TESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  test('markAttendance: same idempotency key with different employee or action returns 409 Conflict', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+    const idempotencyKey = 'idemp_key_collision_test_99';
+
+    // Existing audit was created for EMP-001 with specific fingerprint
+    AttendanceAudit.findOne = async () => ({
+      _id: new mongoose.Types.ObjectId(),
+      idempotencyKey,
+      requestFingerprint: 'existing_fingerprint_for_emp_001',
+      action: 'Admin Shift Hour Adjustment'
+    });
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-002', // Different employee!
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Collision test',
+        idempotencyKey
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, 'IDEMPOTENCY_KEY_COLLISION');
+    assert.match(res.body.message, /already used for a different request payload/i);
+  });
+
+  test('markAttendance: concurrent duplicate request (E11000) returns 200 idempotent replay when fingerprints match', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+    const idempotencyKey = 'idemp_key_race_e11000';
+
+    let existingAuditMock = null;
+    // On first query before write, returns null (race window)
+    AttendanceAudit.findOne = async () => existingAuditMock;
+
+    // Simulate MongoDB driver throwing E11000 duplicate key error on insert
+    AttendanceAudit.create = async (doc) => {
+      const err = new Error('E11000 duplicate key error collection: AttendanceAudit index: idempotencyKey_1 dup key');
+      err.code = 11000;
+      // Simulate that concurrent thread already inserted the document with matching fingerprint
+      existingAuditMock = {
+        _id: new mongoose.Types.ObjectId(),
+        idempotencyKey,
+        requestFingerprint: doc.requestFingerprint,
+        action: 'Admin Shift Hour Adjustment'
+      };
+      throw err;
+    };
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Concurrent race',
+        idempotencyKey
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.idempotentReplay, true);
+  });
+
+  test('markAttendance: transaction commit failure aborts cleanly without partial commit', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+
+    setTransactionSupportOverride(true);
+
+    let transactionAborted = false;
+    mongoose.startSession = async () => ({
+      startTransaction: () => {},
+      commitTransaction: async () => {
+        throw new Error('WriteConflict: transaction commit conflict');
+      },
+      abortTransaction: async () => {
+        transactionAborted = true;
+      },
+      endSession: async () => {},
+      inTransaction: () => true
+    });
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Tx commit test'
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Failed to commit administrative adjustment.*WriteConflict/i);
+    assert.equal(transactionAborted, true, 'Transaction must be aborted when commit fails');
+  });
+
+  test('markAttendance: audit rollback failure in fallback mode reports critical error', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+
+    setTransactionSupportOverride(false);
+
+    AttendanceAudit.create = async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId() });
+    Attendance.findOneAndUpdate = async () => {
+      throw new Error('Database locked');
+    };
+    AttendanceAudit.findByIdAndDelete = async () => {
+      throw new Error('Audit delete failed (connection closed)');
+    };
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Rollback fail test'
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Critical: Audit rollback failed/i);
+  });
+
+  test('bulkMarkAttendance: rejects duplicate employee and date combinations with 400 Bad Request', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
+
+    const req = {
+      user: adminUser,
+      body: {
+        records: [
+          { employee: 'emp_001', date: '2026-11-16', status: 'present' },
+          { employee: 'emp_001', date: '2026-11-16', status: 'present' }
+        ],
+        auditNote: 'Duplicate test'
+      }
+    };
+    const res = createMockRes();
+
+    await bulkMarkAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /Duplicate record detected in bulk payload/i);
+  });
+
+  test('bulkMarkAttendance: partial bulkWrite failure preserves audit record with failure notes', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
+
+    setTransactionSupportOverride(false);
+
+    let savedAudit = null;
+    AttendanceAudit.create = async (doc) => {
+      savedAudit = {
+        ...doc,
+        _id: new mongoose.Types.ObjectId(),
+        save: async function() { return this; }
+      };
+      return savedAudit;
+    };
+
+    let auditDeleted = false;
+    AttendanceAudit.findByIdAndDelete = async () => {
+      auditDeleted = true;
+    };
+
+    Attendance.bulkWrite = async () => {
+      const err = new Error('E11000 duplicate key error in record 2');
+      err.result = { nModified: 1, nUpserted: 0 }; // 1 record succeeded before error
+      throw err;
+    };
+
+    const req = {
+      user: adminUser,
+      body: {
+        records: [
+          { employee: 'emp_1', date: '2026-11-16', status: 'present' },
+          { employee: 'emp_2', date: '2026-11-16', status: 'present' }
+        ],
+        auditNote: 'Partial failure test'
+      }
+    };
+    const res = createMockRes();
+
+    await bulkMarkAttendance(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.equal(res.body.partialFailure, true);
+    assert.match(res.body.message, /1 records were modified and audit trail was preserved/i);
+    assert.equal(auditDeleted, false, 'Audit entry MUST NOT be deleted when records were partially written');
+    assert.match(savedAudit.details, /PARTIAL FAILURE/i);
+  });
+
+  test('deleteAttendanceRecord: returns 404 and rolls back audit if record was deleted concurrently (null return)', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
+    const validId = '507f1f77bcf86cd799439011';
+
+    setTransactionSupportOverride(false);
+
+    Attendance.findById = async () => ({
+      _id: validId,
+      employee: 'emp_001',
+      employeeCode: 'EMP-001',
+      employeeName: 'Test Employee',
+      date: '2026-11-16'
+    });
+
+    let auditDeletedId = null;
+    AttendanceAudit.create = async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId('607f1f77bcf86cd799439099') });
+    AttendanceAudit.findByIdAndDelete = async (id) => {
+      auditDeletedId = id;
+      return true;
+    };
+
+    // Concurrent delete: returns null because another request deleted it already!
+    Attendance.findByIdAndDelete = async () => null;
+
+    const req = {
+      user: adminUser,
+      params: { id: validId },
+      body: { reason: 'Concurrent delete test' }
+    };
+    const res = createMockRes();
+
+    await deleteAttendanceRecord(req, res);
+    assert.equal(res.statusCode, 404);
+    assert.match(res.body.message, /already deleted by another request.*Audit record rolled back/i);
+    assert.ok(auditDeletedId, 'Audit must be deleted so it does not falsely claim deletion succeeded');
+  });
+
+  test('deleteAttendanceRecord: rollback failure after concurrent delete returns 500', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
+    const validId = '507f1f77bcf86cd799439011';
+
+    setTransactionSupportOverride(false);
+
+    Attendance.findById = async () => ({
+      _id: validId,
+      employee: 'emp_001',
+      employeeCode: 'EMP-001',
+      employeeName: 'Test Employee',
+      date: '2026-11-16'
+    });
+
+    AttendanceAudit.create = async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId('607f1f77bcf86cd799439099') });
+    AttendanceAudit.findByIdAndDelete = async () => {
+      throw new Error('Audit delete connection error');
+    };
+
+    // Concurrent delete: returns null
+    Attendance.findByIdAndDelete = async () => null;
+
+    const req = {
+      user: adminUser,
+      params: { id: validId },
+      body: { reason: 'Concurrent delete test' }
+    };
+    const res = createMockRes();
+
+    await deleteAttendanceRecord(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Record was already deleted by another request, and audit rollback failed/i);
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

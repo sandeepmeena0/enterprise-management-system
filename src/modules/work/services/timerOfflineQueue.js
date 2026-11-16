@@ -70,6 +70,29 @@ export function saveOfflineTimerQueue(queue, userId = null) {
 }
 
 /**
+ * Remove a specific confirmed action by its unique ID from the user's queue.
+ * Reconciles with current storage so newly enqueued actions are never lost!
+ * @param {string} itemId
+ * @param {string|null} userId
+ */
+export function removeOfflineQueueItem(itemId, userId = null) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const key = getOfflineQueueKey(userId);
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const currentQueue = JSON.parse(raw);
+    if (!Array.isArray(currentQueue)) return;
+    const filtered = currentQueue.filter(x => x.id !== itemId);
+    if (filtered.length === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify(filtered));
+    }
+  } catch (_) {}
+}
+
+/**
  * Enqueue a timer action with stable idempotency key
  * @param {'START'|'PAUSE'|'RESUME'|'STOP'|'COMPLETE'} type
  * @param {object} payload
@@ -107,10 +130,12 @@ const LEASE_DURATION_MS = 15000; // 15s auto-expiry for storage lease fallback
 
 /**
  * Fallback cross-tab lock using localStorage lease with heartbeat expiration.
- * Used when Web Locks API (navigator.locks) is unavailable or throws.
+ * Note: LocalStorage read-then-write is an optimistic lease fallback, not an OS/kernel-atomic lock.
+ * Web Locks API (navigator.locks) is preferred wherever available.
+ * If storage access fails, returns false safely.
  * @param {string} userId
  * @param {string} tabId
- * @returns {boolean} true if lease acquired; false if another tab holds an active lease
+ * @returns {boolean} true if lease acquired; false if another tab holds an active lease or storage unavailable
  */
 export function acquireCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
   try {
@@ -128,8 +153,51 @@ export function acquireCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
     }
     localStorage.setItem(leaseKey, JSON.stringify({ tabId, expiresAt: now + LEASE_DURATION_MS }));
     return true;
+  } catch (storageErr) {
+    // Fail safely if storage access throws (e.g. quota, sandboxed iframe, security policy)
+    console.warn('[TimerOfflineQueue] Storage access failed during lease acquisition:', storageErr);
+    return false;
+  }
+}
+
+/**
+ * Verifies whether the current tab still legitimately holds the active lease.
+ * @param {string} userId
+ * @param {string} tabId
+ * @returns {boolean}
+ */
+export function verifyCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
+  try {
+    if (typeof localStorage === 'undefined') return true;
+    const leaseKey = `ems_flush_lease_${userId}`;
+    const existing = localStorage.getItem(leaseKey);
+    if (!existing) return false;
+    const parsed = JSON.parse(existing);
+    return parsed.tabId === tabId && Number(parsed.expiresAt) > Date.now();
   } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Renews the active lease duration to prevent expiration during ongoing flushes.
+ * @param {string} userId
+ * @param {string} tabId
+ * @returns {boolean}
+ */
+export function renewCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
+  try {
+    if (typeof localStorage === 'undefined') return true;
+    const leaseKey = `ems_flush_lease_${userId}`;
+    const existing = localStorage.getItem(leaseKey);
+    if (!existing) return false;
+    const parsed = JSON.parse(existing);
+    if (parsed.tabId !== tabId) return false; // Lease was overtaken by another tab
+    const now = Date.now();
+    localStorage.setItem(leaseKey, JSON.stringify({ tabId, expiresAt: now + LEASE_DURATION_MS }));
     return true;
+  } catch (_) {
+    return false;
   }
 }
 
@@ -158,7 +226,7 @@ export function releaseCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
  * Cross-tab execution lock wrapper using Web Locks API with fallback to Storage Lease.
  * Guarantees that only ONE tab per user flushes the queue at any given time.
  * @param {string} userId
- * @param {() => Promise<number>} actionFn
+ * @param {(context: { lockType: 'weblocks'|'lease', tabId: string }) => Promise<number>} actionFn
  * @returns {Promise<number>}
  */
 export async function executeWithCrossTabLock(userId, actionFn) {
@@ -178,7 +246,7 @@ export async function executeWithCrossTabLock(userId, actionFn) {
         }
         activeUserFlushes.add(userId);
         try {
-          return await actionFn();
+          return await actionFn({ lockType: 'weblocks', tabId: TAB_INSTANCE_ID });
         } finally {
           activeUserFlushes.delete(userId);
         }
@@ -196,7 +264,7 @@ export async function executeWithCrossTabLock(userId, actionFn) {
 
   activeUserFlushes.add(userId);
   try {
-    return await actionFn();
+    return await actionFn({ lockType: 'lease', tabId: TAB_INSTANCE_ID });
   } finally {
     activeUserFlushes.delete(userId);
     releaseCrossTabStorageLease(userId);
@@ -222,7 +290,9 @@ export function getActiveFlushingUsers() {
 }
 
 /**
- * Flush all queued actions to the backend sequentially in strict FIFO order
+ * Flush all queued actions to the backend sequentially in strict FIFO order.
+ * Safe queue reconciliation: confirmed actions are removed individually upon success,
+ * ensuring newly enqueued actions are never lost or overwritten.
  * @param {object} workServiceInstance
  * @param {string|null} userId
  * @returns {Promise<number>} number of successfully flushed actions
@@ -233,30 +303,30 @@ export async function flushTimerQueue(workServiceInstance, userId = null) {
     return 0;
   }
 
-  return executeWithCrossTabLock(targetUserId, async () => {
-    const queue = getOfflineTimerQueue(targetUserId);
-    if (!queue || queue.length === 0) return 0;
-
+  return executeWithCrossTabLock(targetUserId, async (lockContext = {}) => {
     let flushedCount = 0;
-    let stoppedDueToFailure = false;
-    const remaining = [];
 
-    for (let i = 0; i < queue.length; i++) {
-      const item = queue[i];
+    // Loop through persistent queue item-by-item with live reconciliation
+    while (true) {
+      const queue = getOfflineTimerQueue(targetUserId);
+      if (!queue || queue.length === 0) break;
 
-      // Failure blocking: once an action fails, all subsequent actions must remain queued
-      if (stoppedDueToFailure) {
-        remaining.push(item);
-        continue;
+      const item = queue[0]; // Peek at head of FIFO queue
+
+      // Lease ownership & expiry verification
+      if (lockContext.lockType === 'lease') {
+        if (!verifyCrossTabStorageLease(targetUserId, lockContext.tabId)) {
+          console.warn(`[TimerOfflineQueue] Storage lease for user ${targetUserId} expired or overtaken. Aborting flush.`);
+          break;
+        }
+        renewCrossTabStorageLease(targetUserId, lockContext.tabId);
       }
 
       // Cross-account safety: verify that current active session has not switched to another user
       const currentActiveSessionUid = getActiveUserId();
       if (currentActiveSessionUid !== targetUserId) {
         console.warn(`[TimerOfflineQueue] Session switched from ${targetUserId} to ${currentActiveSessionUid} mid-flush. Aborting to prevent cross-account credential usage.`);
-        stoppedDueToFailure = true;
-        remaining.push(item);
-        continue;
+        break;
       }
 
       try {
@@ -276,16 +346,17 @@ export async function flushTimerQueue(workServiceInstance, userId = null) {
         } else if (item.type === 'COMPLETE') {
           await workServiceInstance.completeWorkSession(payloadWithKey, { skipQueue: true });
         }
+
+        // CONFIRMATION: Remove confirmed item only after backend confirmation!
+        removeOfflineQueueItem(item.id, targetUserId);
         flushedCount++;
       } catch (err) {
         console.warn(`[TimerOfflineQueue] Action ${item.type} failed:`, err.message);
-        // Preserve failed action and all dependent subsequent actions in strict FIFO order
-        stoppedDueToFailure = true;
-        remaining.push(item);
+        // Failure blocking: do NOT remove failed item. Leave it at head of queue and abort.
+        break;
       }
     }
 
-    saveOfflineTimerQueue(remaining, targetUserId);
     return flushedCount;
   });
 }

@@ -268,4 +268,142 @@ describe('Offline Timer Queue & Cross-Tab Concurrency Suite', () => {
     assert.equal(remainingA.length, 1);
     assert.equal(remainingA[0].type, 'PAUSE');
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE A.4 DATA-LOSS PREVENTION & LEASE SAFETY TESTS (Section 5 & 6)
+  // ═══════════════════════════════════════════════════════════════════════════
+  test('New action enqueued during active flush is completely preserved without data loss', async () => {
+    const { enqueueTimerAction, flushTimerQueue, getOfflineTimerQueue } = timerOfflineQueue;
+    const user = 'user_concur_enqueue';
+
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
+
+    // Pre-populate queue with Action 1 and Action 2
+    enqueueTimerAction('START', { taskId: 'task_orig_1' }, user);
+    enqueueTimerAction('PAUSE', { taskId: 'task_orig_1' }, user);
+
+    const executed = [];
+    const mockWorkService = {
+      startWorkSession: async (p) => {
+        executed.push('START');
+        // CRITICAL RACE CONDITION SIMULATION:
+        // User clicks "RESUME" while the first network call is in flight!
+        enqueueTimerAction('RESUME', { taskId: 'task_new_3' }, user);
+      },
+      pauseWorkSession: async (p) => {
+        executed.push('PAUSE');
+        // Another action added while second action is in flight!
+        enqueueTimerAction('COMPLETE', { taskId: 'task_new_3' }, user);
+      },
+      resumeWorkSession: async (p) => {
+        executed.push('RESUME');
+      },
+      completeWorkSession: async (p) => {
+        executed.push('COMPLETE');
+      }
+    };
+
+    // First flush executes and processes the live queue item-by-item
+    const flushedCount = await flushTimerQueue(mockWorkService, user);
+    assert.equal(flushedCount, 4, 'All actions including those enqueued mid-flush must be executed');
+    assert.deepEqual(executed, ['START', 'PAUSE', 'RESUME', 'COMPLETE']);
+
+    const finalQueue = getOfflineTimerQueue(user);
+    assert.equal(finalQueue.length, 0, 'Queue must be empty after all confirmed actions finish');
+  });
+
+  test('Same action retried after ambiguous network failure preserves idempotencyKey and queue position', async () => {
+    const { enqueueTimerAction, flushTimerQueue, getOfflineTimerQueue } = timerOfflineQueue;
+    const user = 'user_ambiguous_retry';
+
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
+    enqueueTimerAction('START', { taskId: 'task_retry_1' }, user);
+
+    const initialQueue = getOfflineTimerQueue(user);
+    const initialKey = initialQueue[0].idempotencyKey;
+
+    let attempt = 0;
+    const mockWorkService = {
+      startWorkSession: async (p) => {
+        attempt++;
+        if (attempt === 1) {
+          throw new Error('Ambiguous gateway timeout (504 Gateway Timeout)');
+        }
+        assert.equal(p.idempotencyKey, initialKey, 'Retry must pass the exact same idempotency key');
+      }
+    };
+
+    // First flush fails
+    const count1 = await flushTimerQueue(mockWorkService, user);
+    assert.equal(count1, 0, 'First flush must report 0 successful actions');
+
+    const queueAfterFailure = getOfflineTimerQueue(user);
+    assert.equal(queueAfterFailure.length, 1, 'Failed action must not be deleted from storage');
+    assert.equal(queueAfterFailure[0].idempotencyKey, initialKey);
+
+    // Second flush succeeds
+    const count2 = await flushTimerQueue(mockWorkService, user);
+    assert.equal(count2, 1, 'Second flush must succeed');
+    assert.equal(getOfflineTimerQueue(user).length, 0);
+  });
+
+  test('Lease expiration detection halts flush immediately if another tab overtook lock', async () => {
+    const { enqueueTimerAction, flushTimerQueue, getOfflineTimerQueue, TAB_INSTANCE_ID } = timerOfflineQueue;
+    const user = 'user_lease_expire';
+
+    // Temporarily disable Web Locks to exercise storage lease fallback specifically
+    const origLocks = global.navigator?.locks;
+    Object.defineProperty(global.navigator, 'locks', { value: undefined, configurable: true });
+
+    try {
+      global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
+      enqueueTimerAction('START', { taskId: 'task_exp_1' }, user);
+      enqueueTimerAction('PAUSE', { taskId: 'task_exp_1' }, user);
+
+      const executed = [];
+      const mockWorkService = {
+        startWorkSession: async () => {
+          executed.push('START');
+          // Simulate lease expiration + Tab 2 taking over the lease while Tab 1 was waiting!
+          const leaseKey = `ems_flush_lease_${user}`;
+          global.localStorage.setItem(leaseKey, JSON.stringify({
+            tabId: 'rival_tab_instance_999',
+            expiresAt: Date.now() + 15000
+          }));
+        },
+        pauseWorkSession: async () => {
+          executed.push('PAUSE');
+        }
+      };
+
+      const count = await flushTimerQueue(mockWorkService, user);
+      assert.equal(count, 1, 'Tab 1 must halt immediately after losing lease before executing second action');
+      assert.deepEqual(executed, ['START']);
+
+      // Second action remains in queue for the rival tab to execute
+      const remaining = getOfflineTimerQueue(user);
+      assert.equal(remaining.length, 1);
+      assert.equal(remaining[0].type, 'PAUSE');
+    } finally {
+      Object.defineProperty(global.navigator, 'locks', { value: origLocks, configurable: true });
+    }
+  });
+
+  test('acquireCrossTabStorageLease fails safely (returns false) if localStorage throws an error', () => {
+    const { acquireCrossTabStorageLease } = timerOfflineQueue;
+    const user = 'user_storage_error';
+
+    // Break localStorage.setItem to simulate QuotaExceededError or SecurityError
+    const origSetItem = global.localStorage.setItem;
+    global.localStorage.setItem = () => {
+      throw new Error('QuotaExceededError: DOM Exception 22');
+    };
+
+    try {
+      const result = acquireCrossTabStorageLease(user);
+      assert.equal(result, false, 'Must return false when storage access fails');
+    } finally {
+      global.localStorage.setItem = origSetItem;
+    }
+  });
 });

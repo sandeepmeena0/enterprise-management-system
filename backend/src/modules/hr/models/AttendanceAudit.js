@@ -87,8 +87,20 @@ const AttendanceAuditSchema = new mongoose.Schema(
     },
     idempotencyKey: {
       type: String,
+      default: null
+    },
+    idempotencyScope: {
+      type: String,
+      default: null
+    },
+    requestFingerprint: {
+      type: String,
       default: null,
       index: true
+    },
+    responseSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     }
   },
   {
@@ -100,5 +112,13 @@ const AttendanceAuditSchema = new mongoose.Schema(
 
 AttendanceAuditSchema.index({ employeeId: 1, date: 1, timestamp: -1 });
 AttendanceAuditSchema.index({ date: 1, type: 1 });
+AttendanceAuditSchema.index(
+  { idempotencyKey: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { idempotencyKey: { $type: 'string', $gt: '' } }
+  }
+);
 
 module.exports = mongoose.model('AttendanceAudit', AttendanceAuditSchema);
