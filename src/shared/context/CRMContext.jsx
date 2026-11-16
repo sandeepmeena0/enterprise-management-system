@@ -12,6 +12,7 @@ import { useHR } from '../../modules/hr/context/HRContext';
 import { getCompanySettings } from '../services/companySettingsService';
 import { API_BASE } from '../config/apiConfig';
 import { getAuthToken } from '../services/apiClient';
+import { hrService } from '../../modules/hr/services/hrService';
 
 import { calculateComputedBirthdays, calculateComputedAnniversaries } from '../../modules/crm/utils/celebrationUtils';
 import {
@@ -462,14 +463,36 @@ export const CRMProvider = ({ children }) => {
     setStorageTick(prev => prev + 1);
   };
 
+  // Safe fetch helper for CRM modules that respects backend availability and prevents console CORS spam
+  const safeFetchCrm = async (url, options = {}) => {
+    if (hrService.isBackendOnline() === false) {
+      return null;
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          ...(options.headers || {}),
+          ...getAuthHeaders()
+        }
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) return null;
+      return await res.json().catch(() => null);
+    } catch (_) {
+      clearTimeout(timeoutId);
+      return null;
+    }
+  };
+
   // Synchronize tickets with MongoDB backend
   const loadTickets = async () => {
     try {
-      const res = await fetch(`${API_BASE}/tickets`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const json = await safeFetchCrm(`${API_BASE}/tickets`);
+      if (json) {
         const remoteTickets = json.data || (Array.isArray(json) ? json : []);
         if (Array.isArray(remoteTickets)) {
           const local = getCollection(KEYS.TICKETS) || [];
@@ -498,20 +521,15 @@ export const CRMProvider = ({ children }) => {
           return;
         }
       }
-    } catch (err) {
-      console.warn('[CRMContext] Offline fallback for tickets:', err);
-    }
+    } catch (_) {}
     setTickets(getCollection(KEYS.TICKETS) || []);
   };
 
   // Synchronize conversations with MongoDB backend database
   const loadConversations = async () => {
     try {
-      const res = await fetch(`${API_BASE}/conversations`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const json = await safeFetchCrm(`${API_BASE}/conversations`);
+      if (json) {
         const remoteConvs = json.data || (Array.isArray(json) ? json : []);
         if (Array.isArray(remoteConvs) && remoteConvs.length > 0) {
           const local = getCollection(KEYS.CONVERSATIONS) || [];
@@ -617,11 +635,8 @@ export const CRMProvider = ({ children }) => {
   // Synchronize company calendar events with backend
   const loadEvents = async () => {
     try {
-      const res = await fetch(`${API_BASE}/events`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const json = await safeFetchCrm(`${API_BASE}/events`);
+      if (json) {
         const remoteEvents = json.data || (Array.isArray(json) ? json : []);
         if (Array.isArray(remoteEvents)) {
           const local = getCollection(KEYS.EVENTS) || [];
@@ -639,19 +654,14 @@ export const CRMProvider = ({ children }) => {
           setEvents(merged);
         }
       }
-    } catch (err) {
-      console.warn('[CRMContext] Offline fallback for events:', err);
-    }
+    } catch (_) {}
   };
 
   // Synchronize company expenses with backend
   const loadExpenses = async () => {
     try {
-      const res = await fetch(`${API_BASE}/expenses`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const json = await safeFetchCrm(`${API_BASE}/expenses`);
+      if (json) {
         const remoteExpenses = json.data || (Array.isArray(json) ? json : []);
         if (Array.isArray(remoteExpenses)) {
           const local = getCollection(KEYS.EXPENSES) || [];
@@ -671,19 +681,14 @@ export const CRMProvider = ({ children }) => {
           setExpenses(merged);
         }
       }
-    } catch (err) {
-      console.warn('[CRMContext] Offline fallback for expenses:', err);
-    }
+    } catch (_) {}
   };
 
   // Synchronize CRM leads pipeline with backend
   const loadLeads = async () => {
     try {
-      const res = await fetch(`${API_BASE}/leads`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const json = await safeFetchCrm(`${API_BASE}/leads`);
+      if (json) {
         const remoteLeads = json.data || (Array.isArray(json) ? json : []);
         if (Array.isArray(remoteLeads)) {
           const local = getCollection(KEYS.LEADS) || [];
@@ -703,19 +708,14 @@ export const CRMProvider = ({ children }) => {
           setLeads(merged);
         }
       }
-    } catch (err) {
-      console.warn('[CRMContext] Offline fallback for leads:', err);
-    }
+    } catch (_) {}
   };
 
   // Synchronize company notices & announcements with backend
   const loadNotices = async () => {
     try {
-      const res = await fetch(`${API_BASE}/notices`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const json = await safeFetchCrm(`${API_BASE}/notices`);
+      if (json) {
         const remoteNotices = json.data || (Array.isArray(json) ? json : []);
         if (Array.isArray(remoteNotices)) {
           const local = getCollection(KEYS.NOTICES) || [];
@@ -735,9 +735,7 @@ export const CRMProvider = ({ children }) => {
           setNotices(merged);
         }
       }
-    } catch (err) {
-      console.warn('[CRMContext] Offline fallback for notices:', err);
-    }
+    } catch (_) {}
   };
 
   useEffect(() => {

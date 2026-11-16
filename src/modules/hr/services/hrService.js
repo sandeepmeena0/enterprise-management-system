@@ -47,7 +47,7 @@ const getAuthHeaders = () => {
 
 let hrBackendOnline = null;
 let lastHrCheckTime = 0;
-const HR_CACHE_TTL = 5000;
+const HR_CACHE_TTL = 25000; // 25s cache to prevent repeated preflight/CORS error spam when backend is offline or sleeping
 let healthCheckPromise = null;
 let inFlightTelemetryPromise = null;
 let cachedTelemetryMap = null;
@@ -55,8 +55,8 @@ let lastTelemetryFetchTime = 0;
 
 async function checkHrBackendOnline() {
   const now = Date.now();
-  if (hrBackendOnline === true && (now - lastHrCheckTime < HR_CACHE_TTL)) {
-    return true;
+  if (hrBackendOnline !== null && (now - lastHrCheckTime < HR_CACHE_TTL)) {
+    return hrBackendOnline;
   }
   if (healthCheckPromise) {
     return await healthCheckPromise;
@@ -65,7 +65,7 @@ async function checkHrBackendOnline() {
   healthCheckPromise = (async () => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4500);
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
       clearTimeout(timeoutId);
       const ct = res.headers.get('content-type') || '';
@@ -77,9 +77,10 @@ async function checkHrBackendOnline() {
       }
     } catch {
       hrBackendOnline = false;
+    } finally {
+      lastHrCheckTime = Date.now();
+      healthCheckPromise = null;
     }
-    lastHrCheckTime = Date.now();
-    healthCheckPromise = null;
     return hrBackendOnline;
   })();
 
@@ -92,6 +93,18 @@ async function checkHrBackendOnline() {
 async function fetchWithFallback(url, options, fallbackFn) {
   const method = (options?.method || 'GET').toUpperCase();
   const isReadOp = method === 'GET';
+
+  // Circuit breaker: If backend is known to be offline and cache is fresh, skip network call to prevent console CORS spam
+  const now = Date.now();
+  if (isReadOp && hrBackendOnline === false && (now - lastHrCheckTime < HR_CACHE_TTL)) {
+    try {
+      return await fallbackFn();
+    } catch (fbErr) {
+      console.warn('Fallback error in fetchWithFallback:', fbErr);
+      return [];
+    }
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 6000);
 
@@ -159,6 +172,9 @@ async function fetchWithFallback(url, options, fallbackFn) {
 export const hrService = {
   isBackendOnline() {
     return hrBackendOnline === true;
+  },
+  async checkBackendOnline() {
+    return await checkHrBackendOnline();
   },
   // =========================================================================
   // 👥 EMPLOYEES & WORKFORCE MANAGEMENT

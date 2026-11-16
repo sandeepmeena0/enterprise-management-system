@@ -5,14 +5,23 @@
  */
 
 export function getApiBaseUrl() {
+  // 1. Dynamic runtime override via localStorage (useful for debugging and switching backend URLs without rebuild)
+  if (typeof window !== 'undefined') {
+    const customUrl = localStorage.getItem('ems_backend_url');
+    if (customUrl && typeof customUrl === 'string' && customUrl.trim()) {
+      const cleanUrl = customUrl.trim().replace(/\/+$/, '');
+      return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+    }
+  }
+
+  // 2. Build-time environment variable
   const envUrl = import.meta.env?.VITE_API_URL;
-  
   if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
     const cleanUrl = envUrl.trim().replace(/\/+$/, '');
     return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
   }
 
-  // Universal Hostname Auto-Resolution for Frontend Deploys
+  // 3. Universal Hostname Auto-Resolution for Frontend Deploys
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     const isLocal = host === 'localhost' || host === '127.0.0.1' ||

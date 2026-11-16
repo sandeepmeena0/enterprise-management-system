@@ -17,6 +17,13 @@ const eventListeners = new Map();
  * @returns {string}
  */
 export const getSocketServerUrl = () => {
+  if (typeof window !== 'undefined') {
+    const customUrl = localStorage.getItem('ems_socket_url') || localStorage.getItem('ems_backend_url');
+    if (customUrl && typeof customUrl === 'string' && customUrl.trim()) {
+      return customUrl.trim().replace(/\/api\/?$/, '').replace(/\/+$/, '');
+    }
+  }
+
   const envSocketUrl = import.meta.env?.VITE_SOCKET_URL;
   if (envSocketUrl && typeof envSocketUrl === 'string' && envSocketUrl.trim()) {
     return envSocketUrl.trim().replace(/\/+$/, '');
