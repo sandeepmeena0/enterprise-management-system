@@ -28,6 +28,50 @@ const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS_PER_IP = 25;
 const MAX_LOGIN_ATTEMPTS_PER_IDENTIFIER = 10;
 
+// Periodic sweep to remove expired entries and prevent unbounded memory growth
+const cleanupExpiredRateLimits = (now = Date.now()) => {
+  let clearedCount = 0;
+  for (const [key, entry] of loginIpLimits.entries()) {
+    if (now >= entry.resetTime) {
+      loginIpLimits.delete(key);
+      clearedCount++;
+    }
+  }
+  for (const [key, entry] of loginIdentifierLimits.entries()) {
+    if (now >= entry.resetTime) {
+      loginIdentifierLimits.delete(key);
+      clearedCount++;
+    }
+  }
+  for (const [key, entry] of forgotPasswordIpLimits.entries()) {
+    if (now >= entry.resetTime) {
+      forgotPasswordIpLimits.delete(key);
+      clearedCount++;
+    }
+  }
+  for (const [key, entry] of forgotPasswordIdentifierLimits.entries()) {
+    if (now >= entry.resetTime) {
+      forgotPasswordIdentifierLimits.delete(key);
+      clearedCount++;
+    }
+  }
+  return clearedCount;
+};
+
+// Run rate limit cleanup sweep every 10 minutes (unref ensures process exits cleanly in tests)
+const cleanupIntervalTimer = setInterval(() => {
+  cleanupExpiredRateLimits();
+}, 10 * 60 * 1000);
+if (cleanupIntervalTimer.unref) {
+  cleanupIntervalTimer.unref();
+}
+
+exports.cleanupExpiredRateLimits = cleanupExpiredRateLimits;
+exports.loginIpLimits = loginIpLimits;
+exports.loginIdentifierLimits = loginIdentifierLimits;
+exports.forgotPasswordIpLimits = forgotPasswordIpLimits;
+exports.forgotPasswordIdentifierLimits = forgotPasswordIdentifierLimits;
+
 // Helper to extract client IP safely
 const getClientIp = (req) => {
   const forwarded = req.headers['x-forwarded-for'];

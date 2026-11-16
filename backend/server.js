@@ -42,7 +42,7 @@ const allowedOrigins = [
 
 const isOriginAllowed = (origin) => {
   if (!origin) return true; // Server-to-server, mobile or curl
-  return allowedOrigins.some(allowed => origin === allowed || (origin.endsWith('.vercel.app') && origin.startsWith('https://enterprise-management-system')));
+  return allowedOrigins.includes(origin);
 };
 
 // Strict, Secure CORS & Preflight Handler

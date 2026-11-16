@@ -18,6 +18,17 @@ const getLocalTodayStr = (d = new Date()) => {
   }
 };
 
+// Authorization helper to check administrative attendance permissions
+const checkIsPrivileged = (user, requiredPermission = 'editAttendance') => {
+  if (!user) return false;
+  if (user.isAdmin || user.isSuperAdmin) return true;
+  if (user.role === 'admin' || user.role === 'hr') return true;
+  if (user.systemRole === 'admin' || user.systemRole === 'hr') return true;
+  if (user.permissions?.allAccess) return true;
+  if (requiredPermission && user.permissions?.[requiredPermission]) return true;
+  return false;
+};
+
 // ⏱️ Auto-close past-day unclosed shifts (runs daily at midnight or upon request)
 const autoClosePastDayShifts = async () => {
   try {
@@ -230,6 +241,16 @@ const markAttendance = asyncHandler(async (req, res) => {
     });
   }
 
+  const isPrivileged = checkIsPrivileged(req.user, 'editAttendance');
+
+  // Strict Tenant & Date Scoping: Ordinary employees can only record attendance for today
+  if (!isPrivileged && date !== todayStr) {
+    return res.status(403).json({
+      success: false,
+      message: `Unauthorized date (${date}). Non-administrative employees can only record attendance punches for today (${todayStr}).`
+    });
+  }
+
   const Employee = require('../models/Employee');
   const mongoose = require('mongoose');
 
@@ -261,16 +282,6 @@ const markAttendance = asyncHandler(async (req, res) => {
   let targetEmpRole = empDoc ? empDoc.role : (req.body.employeeRole || 'Team Member');
   let targetEmpAvatar = empDoc ? empDoc.avatar : (req.body.employeeAvatar || '');
 
-  const isPrivileged = Boolean(
-    req.user?.isAdmin ||
-    req.user?.role === 'admin' ||
-    req.user?.role === 'hr' ||
-    req.user?.systemRole === 'admin' ||
-    req.user?.systemRole === 'hr' ||
-    req.user?.permissions?.editAttendance ||
-    req.user?.permissions?.allAccess
-  );
-
   // Strict Tenant Scoping: Non-privileged users can NEVER mark attendance for other employees
   if (!isPrivileged && req.user) {
     targetEmpId = req.user._id || req.user.id;
@@ -300,52 +311,206 @@ const markAttendance = asyncHandler(async (req, res) => {
   const shiftStartSecs = parseTimeStringToSeconds(shiftStartTime);
   const graceLimitSecs = shiftStartSecs + (graceMins * 60);
 
-  // Compute working hours and late calculation dynamically based on company policy
-  let totalWorkingHours = 0;
+  const existingRecord = await Attendance.findOne({
+    date,
+    $or: [{ employee: targetEmpId }, { employeeCode: targetEmpCode }]
+  });
+
+  const serverNow = new Date();
+  const nowTs = serverNow.getTime();
+  const istFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  const nowTimeStr = istFormatter.format(serverNow);
+
+  let calculatedStatus = status;
   let isLate = false;
   let lateByMinutes = 0;
-  let calculatedStatus = status;
+  let totalWorkingHours = 0;
+  let finalWorkSecs = 0;
+  let finalBreakSecs = 0;
+  let finalBreakHistory = existingRecord?.breakHistory || [];
+  let finalPunchSessions = existingRecord?.punchSessions || [];
+  let isCurrentlyClockedIn = true;
+  let isCurrentlyOnBreak = false;
+  let finalBreakType = null;
+  let finalBreakStartTimestamp = null;
+  let finalSessionStartTimestamp = existingRecord?.currentSessionStartTimestamp || null;
+  let finalClockInTime = existingRecord?.firstClockInTime || existingRecord?.clockInTime || null;
+  let finalClockInTimestamp = existingRecord?.firstClockInTimestamp || existingRecord?.clockInTimestamp || null;
+  let finalClockOutTime = null;
+  let finalClockOutTimestamp = null;
 
-  if (clockInTime) {
-    const inSecs = parseTimeStringToSeconds(clockInTime);
-    if (inSecs > graceLimitSecs) {
-      isLate = true;
-      lateByMinutes = Math.floor((inSecs - shiftStartSecs) / 60);
-      calculatedStatus = 'late';
+  if (!isPrivileged) {
+    // ── SERVER-AUTHORITATIVE LOGIC FOR ORDINARY EMPLOYEES ──
+    if (Boolean(isOnBreak)) {
+      // 1. Starting a Break
+      isCurrentlyOnBreak = true;
+      finalBreakType = breakType || 'General';
+      finalBreakStartTimestamp = nowTs;
+      isCurrentlyClockedIn = true;
+      finalWorkSecs = Number(existingRecord?.workSeconds) || 0;
+      finalBreakSecs = Number(existingRecord?.breakSeconds) || 0;
+      totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
+      calculatedStatus = existingRecord?.status || 'present';
+    } else if (existingRecord?.isOnBreak && isOnBreak === false) {
+      // 2. Ending a Break / Resuming Work
+      const bStart = Number(existingRecord.breakStartTimestamp) || nowTs;
+      const addedBreakSecs = Math.max(0, Math.floor((nowTs - bStart) / 1000));
+      finalBreakSecs = (Number(existingRecord.breakSeconds) || 0) + addedBreakSecs;
+      const breakItem = {
+        id: `break_${nowTs}`,
+        type: existingRecord.breakType || 'General',
+        startTime: new Date(bStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        endTime: nowTimeStr,
+        durationSeconds: addedBreakSecs,
+        durationText: `${Math.floor(addedBreakSecs / 60)}m`
+      };
+      finalBreakHistory = [breakItem, ...(existingRecord.breakHistory || [])];
+      isCurrentlyOnBreak = false;
+      finalBreakType = null;
+      finalBreakStartTimestamp = null;
+      isCurrentlyClockedIn = true;
+      finalWorkSecs = Number(existingRecord.workSeconds) || 0;
+      totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
+      calculatedStatus = existingRecord.status || 'present';
+    } else if (clockOutTime || isClockedIn === false) {
+      // 3. Clocking Out of Shift
+      if (!existingRecord || (!existingRecord.isClockedIn && existingRecord.clockOutTime)) {
+        return res.status(400).json({ success: false, message: 'Cannot clock out: no active clock-in session found for today.' });
+      }
+
+      let totalBreaks = Number(existingRecord?.breakSeconds) || 0;
+      let bHistory = [...(existingRecord?.breakHistory || [])];
+      if (existingRecord?.isOnBreak) {
+        const bStart = Number(existingRecord.breakStartTimestamp) || nowTs;
+        const addedBreak = Math.max(0, Math.floor((nowTs - bStart) / 1000));
+        totalBreaks += addedBreak;
+        bHistory.unshift({
+          id: `break_${nowTs}`,
+          type: existingRecord.breakType || 'General',
+          startTime: new Date(bStart).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          endTime: nowTimeStr,
+          durationSeconds: addedBreak,
+          durationText: `${Math.floor(addedBreak / 60)}m`
+        });
+      }
+
+      const sessStart = Number(existingRecord?.currentSessionStartTimestamp) || Number(existingRecord?.clockInTimestamp) || nowTs;
+      const grossSessionSecs = Math.max(0, Math.floor((nowTs - sessStart) / 1000));
+      const closedSession = {
+        id: `sess_${nowTs}`,
+        sessionNumber: (existingRecord?.punchSessions?.length || 0) + 1,
+        inTime: existingRecord?.clockInTime || nowTimeStr,
+        outTime: nowTimeStr,
+        inTimestamp: sessStart,
+        outTimestamp: nowTs,
+        durationSeconds: grossSessionSecs,
+        durationText: `${Math.floor(grossSessionSecs / 3600)}h ${Math.floor((grossSessionSecs % 3600) / 60)}m`
+      };
+      finalPunchSessions = [...(existingRecord?.punchSessions || []), closedSession];
+      const sumSessions = finalPunchSessions.reduce((acc, s) => acc + (Number(s.durationSeconds) || 0), 0);
+      finalWorkSecs = Math.max(0, sumSessions - totalBreaks);
+      totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
+      finalBreakSecs = totalBreaks;
+      finalBreakHistory = bHistory;
+      isCurrentlyClockedIn = false;
+      isCurrentlyOnBreak = false;
+      finalClockOutTime = nowTimeStr;
+      finalClockOutTimestamp = nowTs;
+      finalSessionStartTimestamp = null;
+      calculatedStatus = existingRecord?.status || 'present';
     } else {
-      isLate = false;
-      lateByMinutes = 0;
-      if (calculatedStatus === 'late' || !calculatedStatus) {
-        calculatedStatus = 'present';
+      // 4. Clocking In / Resuming Shift
+      if (!existingRecord) {
+        // First clock-in of the day
+        finalClockInTime = nowTimeStr;
+        finalClockInTimestamp = nowTs;
+        finalSessionStartTimestamp = nowTs;
+        isCurrentlyClockedIn = true;
+        isCurrentlyOnBreak = false;
+        finalWorkSecs = 0;
+        finalBreakSecs = 0;
+        totalWorkingHours = 0;
+        finalPunchSessions = [];
+
+        const inSecs = parseTimeStringToSeconds(nowTimeStr);
+        if (inSecs > graceLimitSecs) {
+          isLate = true;
+          lateByMinutes = Math.floor((inSecs - shiftStartSecs) / 60);
+          calculatedStatus = 'late';
+        } else {
+          isLate = false;
+          lateByMinutes = 0;
+          calculatedStatus = 'present';
+        }
+      } else {
+        // Resuming after earlier clock-out (re-clock in)
+        isCurrentlyClockedIn = true;
+        isCurrentlyOnBreak = false;
+        finalSessionStartTimestamp = nowTs;
+        finalClockOutTime = null;
+        finalClockOutTimestamp = null;
+        finalWorkSecs = Number(existingRecord.workSeconds) || 0;
+        finalBreakSecs = Number(existingRecord.breakSeconds) || 0;
+        totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
+        calculatedStatus = existingRecord.status || 'present';
+        isLate = existingRecord.isLate || false;
+        lateByMinutes = existingRecord.lateByMinutes || 0;
       }
     }
-  }
+  } else {
+    // ── ADMINISTRATIVE MANUAL ADJUSTMENT / OVERRIDE ──
+    finalClockInTime = clockInTime || existingRecord?.firstClockInTime || existingRecord?.clockInTime;
+    finalClockInTimestamp = clockInTimestamp || existingRecord?.firstClockInTimestamp || existingRecord?.clockInTimestamp;
+    finalClockOutTime = clockOutTime !== undefined ? clockOutTime : existingRecord?.clockOutTime;
+    finalClockOutTimestamp = clockOutTimestamp !== undefined ? clockOutTimestamp : existingRecord?.clockOutTimestamp;
+    isCurrentlyClockedIn = isClockedIn !== undefined ? Boolean(isClockedIn) : (finalClockInTime && !finalClockOutTime);
+    isCurrentlyOnBreak = Boolean(isOnBreak);
+    finalBreakType = breakType || existingRecord?.breakType;
+    finalBreakStartTimestamp = req.body.breakStartTimestamp || existingRecord?.breakStartTimestamp;
+    finalSessionStartTimestamp = req.body.currentSessionStartTimestamp || existingRecord?.currentSessionStartTimestamp;
+    finalBreakSecs = breakSeconds !== undefined ? Number(breakSeconds) : (Number(existingRecord?.breakSeconds) || 0);
+    finalBreakHistory = breakHistory || existingRecord?.breakHistory || [];
+    finalPunchSessions = req.body.punchSessions || existingRecord?.punchSessions || [];
 
-  if (clockInTime && clockOutTime) {
-    const inSecs = parseTimeStringToSeconds(clockInTime);
-    const outSecs = parseTimeStringToSeconds(clockOutTime);
-    let diffSecs = outSecs - inSecs;
-    if (diffSecs < 0) {
-      // Cross-midnight shift (e.g. 10:00 PM to 06:00 AM)
-      diffSecs += 24 * 3600;
+    if (finalClockInTime) {
+      const inSecs = parseTimeStringToSeconds(finalClockInTime);
+      if (inSecs > graceLimitSecs) {
+        isLate = true;
+        lateByMinutes = Math.floor((inSecs - shiftStartSecs) / 60);
+        calculatedStatus = 'late';
+      } else {
+        isLate = false;
+        lateByMinutes = 0;
+        if (calculatedStatus === 'late' || !calculatedStatus) calculatedStatus = 'present';
+      }
     }
-    totalWorkingHours = +(diffSecs / 3600).toFixed(2);
-  }
 
-  const effectiveWorkHours = (workSeconds !== undefined && Number(workSeconds) > 0)
-    ? +(Number(workSeconds) / 3600).toFixed(2)
-    : totalWorkingHours;
+    if (finalClockInTime && finalClockOutTime) {
+      const inSecs = parseTimeStringToSeconds(finalClockInTime);
+      const outSecs = parseTimeStringToSeconds(finalClockOutTime);
+      let diffSecs = outSecs - inSecs;
+      if (diffSecs < 0) diffSecs += 24 * 3600;
+      totalWorkingHours = +(diffSecs / 3600).toFixed(2);
+    }
+    finalWorkSecs = workSeconds !== undefined ? Number(workSeconds) : Math.round(totalWorkingHours * 3600);
+    totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
+  }
 
   // Evaluate half-day if employee worked fewer hours than company half-day threshold
-  if (clockOutTime && effectiveWorkHours > 0 && effectiveWorkHours < halfDayThresholdHours && !['on_leave', 'holiday', 'day_off'].includes(calculatedStatus)) {
+  if (finalClockOutTime && totalWorkingHours > 0 && totalWorkingHours < halfDayThresholdHours && !['on_leave', 'holiday', 'day_off'].includes(calculatedStatus)) {
     calculatedStatus = 'half_day';
   }
 
   // Calculate Overtime if employee worked beyond standard work hours
   let overtimeHours = 0;
   let overtimeSeconds = 0;
-  if (effectiveWorkHours > standardWorkHours) {
-    overtimeHours = +(effectiveWorkHours - standardWorkHours).toFixed(2);
+  if (totalWorkingHours > standardWorkHours) {
+    overtimeHours = +(totalWorkingHours - standardWorkHours).toFixed(2);
     overtimeSeconds = Math.round(overtimeHours * 3600);
   }
 
@@ -358,69 +523,42 @@ const markAttendance = asyncHandler(async (req, res) => {
     employeeAvatar: targetEmpAvatar,
     date,
     status: calculatedStatus,
-    notes: notes || (auditNote ? `Adjusted by ${adminActorName}: ${auditNote}` : ''),
-    markedBy: adminActorName,
+    firstClockInTime: existingRecord?.firstClockInTime || finalClockInTime,
+    clockInTime: existingRecord?.firstClockInTime || finalClockInTime,
+    firstClockInTimestamp: existingRecord?.firstClockInTimestamp || finalClockInTimestamp,
+    clockInTimestamp: existingRecord?.firstClockInTimestamp || finalClockInTimestamp,
+    clockOutTime: finalClockOutTime,
+    lastClockOutTime: finalClockOutTime || existingRecord?.lastClockOutTime,
+    clockOutTimestamp: finalClockOutTimestamp,
+    lastClockOutTimestamp: finalClockOutTimestamp || existingRecord?.lastClockOutTimestamp,
+    isClockedIn: isCurrentlyClockedIn,
+    isOnBreak: isCurrentlyOnBreak,
+    breakType: finalBreakType,
+    breakStartTimestamp: finalBreakStartTimestamp,
+    currentSessionStartTimestamp: finalSessionStartTimestamp,
+    workSeconds: finalWorkSecs,
+    breakSeconds: finalBreakSecs,
+    breakHistory: finalBreakHistory,
+    punchSessions: finalPunchSessions,
+    totalWorkingHours,
+    isLate,
+    lateByMinutes,
     overtimeHours,
     overtimeSeconds,
-    hasOvertime: overtimeHours > 0
+    hasOvertime: overtimeHours > 0,
+    notes: notes || (auditNote ? `Adjusted by ${adminActorName}: ${auditNote}` : (existingRecord?.notes || '')),
+    markedBy: isPrivileged ? adminActorName : (targetEmpName || 'Self'),
+    lastHeartbeatAt: Date.now()
   };
 
-  if (overtimeHours > 0) {
-    updateFields.overtimeStatus = req.body.overtimeStatus || 'approved';
-    updateFields.overtimeReason = req.body.overtimeReason || 'Worked beyond standard shift hours';
-    updateFields.overtimeApprovedBy = 'System (Auto)';
-    updateFields.overtimeApprovedAt = new Date();
-  }
-
-  const existingRecord = await Attendance.findOne({
-    date,
-    $or: [{ employee: targetEmpId }, { employeeCode: targetEmpCode }]
-  });
-
-  if (existingRecord && (existingRecord.firstClockInTime || existingRecord.clockInTime)) {
-    updateFields.firstClockInTime = existingRecord.firstClockInTime || existingRecord.clockInTime;
-    updateFields.clockInTime = existingRecord.firstClockInTime || existingRecord.clockInTime;
-    updateFields.clockInTimestamp = existingRecord.firstClockInTimestamp || existingRecord.clockInTimestamp || clockInTimestamp;
-  } else if (clockInTime !== undefined) {
-    updateFields.firstClockInTime = req.body.firstClockInTime || clockInTime;
-    updateFields.clockInTime = req.body.firstClockInTime || clockInTime;
-    if (clockInTimestamp !== undefined) updateFields.clockInTimestamp = clockInTimestamp;
-  }
-
-  if ('clockOutTime' in req.body) {
-    updateFields.clockOutTime = clockOutTime;
-    if (clockOutTime) updateFields.lastClockOutTime = clockOutTime;
-  }
-  if ('clockOutTimestamp' in req.body) {
-    updateFields.clockOutTimestamp = clockOutTimestamp;
-    if (clockOutTimestamp) updateFields.lastClockOutTimestamp = clockOutTimestamp;
-  }
-  if (workSeconds !== undefined) updateFields.workSeconds = Number(workSeconds) || 0;
-  if (breakSeconds !== undefined) updateFields.breakSeconds = Number(breakSeconds) || 0;
-  if (isOnBreak !== undefined) updateFields.isOnBreak = Boolean(isOnBreak);
-  if (breakType !== undefined) updateFields.breakType = breakType;
-  if (breakHistory !== undefined) updateFields.breakHistory = breakHistory;
-  if ('punchSessions' in req.body) updateFields.punchSessions = req.body.punchSessions;
-  if (req.body.currentSessionStartTimestamp !== undefined) updateFields.currentSessionStartTimestamp = Number(req.body.currentSessionStartTimestamp) || null;
-  if (req.body.breakStartTimestamp !== undefined) updateFields.breakStartTimestamp = Number(req.body.breakStartTimestamp) || null;
   if ('activeTask' in req.body) updateFields.activeTask = req.body.activeTask;
-  updateFields.lastHeartbeatAt = Date.now();
 
-  if (isClockedIn !== undefined) {
-    updateFields.isClockedIn = Boolean(isClockedIn);
-  } else if (clockInTime && !clockOutTime) {
-    updateFields.isClockedIn = true;
-  } else if (clockOutTime) {
-    updateFields.isClockedIn = false;
+  if (overtimeHours > 0) {
+    updateFields.overtimeStatus = req.body.overtimeStatus || existingRecord?.overtimeStatus || 'approved';
+    updateFields.overtimeReason = req.body.overtimeReason || existingRecord?.overtimeReason || 'Worked beyond standard shift hours';
+    updateFields.overtimeApprovedBy = existingRecord?.overtimeApprovedBy || 'System (Auto)';
+    updateFields.overtimeApprovedAt = existingRecord?.overtimeApprovedAt || new Date();
   }
-
-  if (workSeconds !== undefined && Number(workSeconds) > 0) {
-    updateFields.totalWorkingHours = +(Number(workSeconds) / 3600).toFixed(2);
-  } else if (totalWorkingHours > 0) {
-    updateFields.totalWorkingHours = totalWorkingHours;
-  }
-  updateFields.isLate = isLate;
-  updateFields.lateByMinutes = lateByMinutes;
 
   const record = await Attendance.findOneAndUpdate(
     {
@@ -469,7 +607,7 @@ const markAttendance = asyncHandler(async (req, res) => {
   } catch (_) {}
 
   // Task Timer Integration: Auto-pause active task timer on shift clock-out or break start
-  if (record.isClockedIn === false || clockOutTime || Boolean(record.isOnBreak)) {
+  if (record.isClockedIn === false || finalClockOutTime || Boolean(record.isOnBreak)) {
     try {
       const timeEngineService = require('../../work/services/timeEngineService');
       const pauseReason = record.isOnBreak
@@ -487,7 +625,7 @@ const markAttendance = asyncHandler(async (req, res) => {
   }
 
   // Mandatory Audit Trail for Admin manual modifications
-  if (auditNote || isAdminOverride || isPrivileged) {
+  if (isPrivileged && (auditNote || isAdminOverride || req.body.isManualAdjustment)) {
     try {
       await AttendanceAudit.create({
         employee: targetEmpId,
@@ -507,7 +645,7 @@ const markAttendance = asyncHandler(async (req, res) => {
         adminId: String(adminActorId),
         adminName: adminActorName,
         auditNote: auditNote || 'Manual administrative attendance adjustment',
-        details: `Shift manually adjusted by Admin ${adminActorName} (ID: ${adminActorId}). Status: ${status}, In: ${clockInTime || '—'}, Out: ${clockOutTime || '—'}. Reason: "${auditNote || 'Administrative review'}"`
+        details: `Shift manually adjusted by Admin ${adminActorName} (ID: ${adminActorId}). Status: ${status}, In: ${finalClockInTime || '—'}, Out: ${finalClockOutTime || '—'}. Reason: "${auditNote || 'Administrative review'}"`
       });
     } catch (auditErr) {
       console.warn('Failed to record admin shift adjustment audit:', auditErr);
@@ -545,9 +683,20 @@ const getAttendanceByDate = asyncHandler(async (req, res) => {
 
 // ─── POST /api/attendance/bulk ───────────────────────────────────────────────
 const bulkMarkAttendance = asyncHandler(async (req, res) => {
+  const isPrivileged = checkIsPrivileged(req.user, 'editAttendance');
+  if (!isPrivileged) {
+    return res.status(403).json({ success: false, message: 'Forbidden. Administrative attendance permission required for bulk modification.' });
+  }
+
   const { records } = req.body;
-  if (!records || !Array.isArray(records)) {
+  if (!records || !Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ success: false, message: 'records array is required' });
+  }
+
+  for (const r of records) {
+    if (!r.employee || !r.date) {
+      return res.status(400).json({ success: false, message: 'Each record in bulk must contain employee and date.' });
+    }
   }
 
   const operations = records.map(r => ({
@@ -564,8 +713,39 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
 
 // ─── DELETE /api/attendance/:id ───────────────────────────────────────────────
 const deleteAttendanceRecord = asyncHandler(async (req, res) => {
-  const record = await Attendance.findByIdAndDelete(req.params.id);
+  const isPrivileged = checkIsPrivileged(req.user, 'editAttendance');
+  if (!isPrivileged) {
+    return res.status(403).json({ success: false, message: 'Forbidden. Administrative attendance permission required to delete attendance records.' });
+  }
+
+  const record = await Attendance.findById(req.params.id);
   if (!record) return res.status(404).json({ success: false, message: 'Attendance record not found' });
+
+  // Create audit log before deleting
+  try {
+    await AttendanceAudit.create({
+      employee: record.employee,
+      employeeId: String(record.employee || record.employeeCode || ''),
+      employeeName: record.employeeName || 'Employee',
+      employeeCode: record.employeeCode || '',
+      date: record.date,
+      timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      type: 'admin_shift_deletion',
+      action: 'Admin Attendance Record Deletion',
+      actor: 'admin',
+      actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
+      actorName: req.user?.name || 'Administrator',
+      isAdminOverride: true,
+      adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
+      adminName: req.user?.name || 'Administrator',
+      auditNote: req.body?.auditNote || 'Administrative deletion of attendance record',
+      details: `Attendance record for ${record.employeeName} on ${record.date} was deleted by ${req.user?.name || 'Admin'}.`
+    });
+  } catch (auditErr) {
+    console.warn('[attendanceController] Could not create audit for deleteAttendanceRecord:', auditErr.message);
+  }
+
+  await Attendance.findByIdAndDelete(req.params.id);
   res.json({ success: true, message: 'Record deleted', data: {} });
 });
 
@@ -576,7 +756,7 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
 // ─── GET /api/attendance/audit ───────────────────────────────────────────────
 const getAuditLogs = asyncHandler(async (req, res) => {
   const { employeeId, date, month, year, type, onlyOverrides } = req.query;
-  const isPrivileged = req.user?.isAdmin || req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.systemRole === 'admin' || req.user?.permissions?.viewAuditTrail || req.user?.permissions?.allAccess;
+  const isPrivileged = checkIsPrivileged(req.user, 'viewAuditTrail');
 
   const query = {};
 
@@ -615,31 +795,44 @@ const createAuditLog = asyncHandler(async (req, res) => {
   // Remove client-generated custom string _id so MongoDB creates a valid ObjectId
   delete auditData._id;
 
-  const employeeId = String(auditData.employeeId || auditData.employeeCode || req.user?.id || req.user?._id || '');
-  const type = auditData.type || auditData.action || 'system';
-  const action = auditData.action || auditData.type || 'audit';
+  const isPrivileged = checkIsPrivileged(req.user, 'editAttendance');
+  const actorId = String(req.user?._id || req.user?.id || 'unknown');
+  const actorName = String(req.user?.name || 'User');
+  const actor = isPrivileged ? (auditData.actor === 'admin' ? 'admin' : 'employee') : 'employee';
+  const isAdminOverride = isPrivileged && Boolean(auditData.isAdminOverride);
+
+  // Derive target employee safely
+  let employeeId = String(auditData.employeeId || auditData.employeeCode || '');
+  if (!isPrivileged) {
+    // Non-privileged users must only create audit logs for themselves
+    const myId = String(req.user?._id || req.user?.id || '');
+    const myCode = String(req.user?.employeeCode || '');
+    if (employeeId && employeeId !== myId && employeeId !== myCode) {
+      return res.status(403).json({ success: false, message: 'Forbidden. You cannot create audit logs for other employees.' });
+    }
+    employeeId = myCode || myId;
+  } else if (!employeeId) {
+    employeeId = actorId;
+  }
 
   if (!employeeId) {
     return res.status(400).json({ success: false, message: 'employeeId is required' });
   }
 
-  const isPrivileged = req.user?.isAdmin || req.user?.role === 'admin' || req.user?.role === 'hr' || req.user?.permissions?.editAttendance || req.user?.permissions?.allAccess;
-  const isAdminOverride = !!auditData.isAdminOverride || (isPrivileged && auditData.actor === 'admin');
+  const type = auditData.type || auditData.action || 'system';
+  const action = auditData.action || auditData.type || 'audit';
 
   // Sanitize employee field - must be valid Mongo ObjectId or omitted
   const mongoose = require('mongoose');
   let validEmployeeObjId = undefined;
   if (auditData.employee && mongoose.Types.ObjectId.isValid(auditData.employee)) {
     validEmployeeObjId = auditData.employee;
+  } else if (!isPrivileged && req.user?._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+    validEmployeeObjId = req.user._id;
   }
   delete auditData.employee;
 
-  let actor = auditData.actor || (isPrivileged ? 'admin' : 'employee');
-  if (!['employee', 'admin', 'system'].includes(actor)) {
-    actor = isPrivileged ? 'admin' : 'employee';
-  }
-
-  const employeeName = auditData.employeeName || req.user?.name || 'Employee';
+  const employeeName = (!isPrivileged && req.user?.name) ? req.user.name : (auditData.employeeName || req.user?.name || 'Employee');
 
   const record = new AttendanceAudit({
     ...auditData,
@@ -648,14 +841,14 @@ const createAuditLog = asyncHandler(async (req, res) => {
     employeeName,
     type,
     action,
-    date: auditData.date || new Date().toISOString().split('T')[0],
+    date: auditData.date || getLocalTodayStr(),
     timeFormatted: auditData.timeFormatted || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
     actor,
-    actorId: auditData.actorId || req.user?.id || req.user?._id || 'unknown',
-    actorName: auditData.actorName || req.user?.name || 'User',
+    actorId,
+    actorName,
     isAdminOverride,
-    adminId: isAdminOverride ? (auditData.adminId || req.user?.id || req.user?._id) : null,
-    adminName: isAdminOverride ? (auditData.adminName || req.user?.name) : null,
+    adminId: isAdminOverride ? actorId : null,
+    adminName: isAdminOverride ? actorName : null,
     auditNote: auditData.auditNote || null
   });
 
@@ -912,7 +1105,8 @@ const forceClockOut = asyncHandler(async (req, res) => {
 
 // ─── GET /api/attendance/overtime ─────────────────────────────────────────────
 const getOvertimeRequests = asyncHandler(async (req, res) => {
-  const query = {
+  const isPrivileged = checkIsPrivileged(req.user, 'viewAllAttendance');
+  const baseQuery = {
     $or: [
       { overtimeStatus: { $in: ['pending', 'approved', 'rejected'] } },
       { overtimeSeconds: { $gt: 0 } },
@@ -920,14 +1114,46 @@ const getOvertimeRequests = asyncHandler(async (req, res) => {
       { hasOvertime: true }
     ]
   };
+
+  const query = { ...baseQuery };
+  if (!isPrivileged) {
+    const myId = req.user?.id || req.user?._id;
+    const myCode = req.user?.employeeCode;
+    const userMatch = [];
+    if (myId && mongoose.Types.ObjectId.isValid(myId)) userMatch.push({ employee: myId });
+    if (myCode) userMatch.push({ employeeCode: myCode });
+    if (myId) userMatch.push({ employeeId: String(myId) });
+
+    query.$and = [
+      baseQuery,
+      { $or: userMatch }
+    ];
+    delete query.$or;
+  }
+
   const records = await Attendance.find(query).sort({ date: -1, updatedAt: -1 });
   res.json({ success: true, count: records.length, data: records });
 });
 
 // ─── POST /api/attendance/overtime ────────────────────────────────────────────
 const requestOvertime = asyncHandler(async (req, res) => {
-  const { employeeId, employeeCode, employeeName, date, overtimeHours, overtimeSeconds, overtimeReason, overtimeTasks, requestedToId, requestedToName, isSelfApproved } = req.body;
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const isPrivileged = checkIsPrivileged(req.user, 'editAttendance');
+  let { employeeId, employeeCode, employeeName, date, overtimeHours, overtimeSeconds, overtimeReason, overtimeTasks, requestedToId, requestedToName, isSelfApproved } = req.body;
+  const targetDate = date || getLocalTodayStr();
+
+  // If not privileged, strictly scope to requesting user and reject client-forced self approval
+  if (!isPrivileged) {
+    employeeId = String(req.user?._id || req.user?.id);
+    employeeCode = req.user?.employeeCode || '';
+    employeeName = req.user?.name || 'Employee';
+    isSelfApproved = false;
+  } else {
+    isSelfApproved = Boolean(isSelfApproved);
+  }
+
+  const status = isSelfApproved ? 'approved' : 'pending';
+  const approverName = isSelfApproved ? (req.user?.name || 'Admin') : '';
+  const approvedAt = isSelfApproved ? new Date() : null;
 
   const mongoose = require('mongoose');
   let attRecord = await Attendance.findOne({
@@ -938,10 +1164,6 @@ const requestOvertime = asyncHandler(async (req, res) => {
       mongoose.Types.ObjectId.isValid(employeeId) ? { employee: employeeId } : null
     ].filter(Boolean)
   });
-
-  const status = isSelfApproved ? 'approved' : 'pending';
-  const approverName = isSelfApproved ? (employeeName || req.user?.name || 'Admin') : '';
-  const approvedAt = isSelfApproved ? new Date() : null;
 
   if (attRecord) {
     attRecord.overtimeHours = Number(overtimeHours) || +(Number(overtimeSeconds) / 3600).toFixed(2);
@@ -958,15 +1180,19 @@ const requestOvertime = asyncHandler(async (req, res) => {
   // Create audit log
   try {
     const auditEntry = new AttendanceAudit({
-      employee: attRecord?.employee || employeeId,
+      employee: attRecord?.employee || (mongoose.Types.ObjectId.isValid(employeeId) ? employeeId : undefined),
+      employeeId: String(attRecord?.employee || employeeId),
       employeeName: employeeName || 'Employee',
       employeeCode: employeeCode || '',
       type: 'overtime_request',
       action: isSelfApproved ? 'overtime_self_approved' : 'overtime_requested',
       date: targetDate,
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      performedBy: employeeName || req.user?.name || 'User',
-      note: `${isSelfApproved ? 'Self-approved' : 'Submitted'} overtime of ${overtimeHours || 0}h: ${overtimeReason || ''}`
+      timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      actor: isPrivileged ? 'admin' : 'employee',
+      actorId: String(req.user?._id || req.user?.id || 'unknown'),
+      actorName: req.user?.name || employeeName || 'User',
+      isAdminOverride: isSelfApproved,
+      auditNote: `${isSelfApproved ? 'Self-approved' : 'Submitted'} overtime of ${overtimeHours || 0}h: ${overtimeReason || ''}`
     });
     await auditEntry.save();
   } catch (_) {}
@@ -976,16 +1202,36 @@ const requestOvertime = asyncHandler(async (req, res) => {
 
 // ─── PUT /api/attendance/overtime/:id/status ──────────────────────────────────
 const updateOvertimeStatus = asyncHandler(async (req, res) => {
+  const isPrivileged = checkIsPrivileged(req.user, 'editAttendance');
+  if (!isPrivileged) {
+    return res.status(403).json({ success: false, message: 'Forbidden. Administrative authorization required to decide overtime requests.' });
+  }
+
   const { id } = req.params;
   const { status, approverName, rejectionReason } = req.body;
+
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ success: false, message: 'Invalid overtime status. Allowed values: approved, rejected.' });
+  }
 
   const attRecord = await Attendance.findById(id);
   if (!attRecord) {
     return res.status(404).json({ success: false, message: 'Attendance record not found' });
   }
 
+  // Prevent approving own overtime
+  const currentUserId = String(req.user?._id || req.user?.id || '');
+  const currentUserCode = String(req.user?.employeeCode || '').toUpperCase();
+  const recordEmpId = String(attRecord.employee || attRecord.employeeId || '');
+  const recordEmpCode = String(attRecord.employeeCode || '').toUpperCase();
+
+  if (currentUserId === recordEmpId || (currentUserCode && currentUserCode === recordEmpCode)) {
+    return res.status(403).json({ success: false, message: 'Forbidden. You cannot approve or reject your own overtime request.' });
+  }
+
+  const finalApproverName = req.user?.name || approverName || 'Admin';
   attRecord.overtimeStatus = status;
-  attRecord.overtimeApprovedBy = approverName || req.user?.name || 'Admin';
+  attRecord.overtimeApprovedBy = finalApproverName;
   attRecord.overtimeApprovedAt = new Date();
   if (rejectionReason) {
     attRecord.notes = attRecord.notes ? `${attRecord.notes} | Overtime rejected: ${rejectionReason}` : `Overtime rejected: ${rejectionReason}`;
@@ -996,14 +1242,18 @@ const updateOvertimeStatus = asyncHandler(async (req, res) => {
   try {
     const auditEntry = new AttendanceAudit({
       employee: attRecord.employee,
+      employeeId: String(attRecord.employee || attRecord.employeeCode || ''),
       employeeName: attRecord.employeeName,
       employeeCode: attRecord.employeeCode,
       type: 'overtime_decision',
       action: `overtime_${status}`,
       date: attRecord.date,
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      performedBy: approverName || req.user?.name || 'Admin',
-      note: `Overtime ${status} by ${approverName || 'Admin'}${rejectionReason ? `: ${rejectionReason}` : ''}`
+      timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      actor: 'admin',
+      actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
+      actorName: finalApproverName,
+      isAdminOverride: true,
+      auditNote: `Overtime ${status} by ${finalApproverName}${rejectionReason ? `: ${rejectionReason}` : ''}`
     });
     await auditEntry.save();
   } catch (_) {}
@@ -1614,6 +1864,7 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  checkIsPrivileged,
   autoClosePastDayShifts,
   getMonthlyAttendance,
   getAttendanceSummary,

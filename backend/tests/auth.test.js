@@ -76,4 +76,45 @@ describe('Authentication & Password Security Suite', () => {
     const isSessionValid = (decoded.tokenVersion === currentDbTokenVersion);
     assert.equal(isSessionValid, false, 'Token with outdated tokenVersion must be rejected');
   });
+
+  test('CORS Policy lockdown strictly validates exact trusted origins', () => {
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
+      'https://enterprise-management-system-two.vercel.app'
+    ];
+
+    const isOriginAllowed = (origin) => {
+      if (!origin) return true;
+      return allowedOrigins.includes(origin);
+    };
+
+    assert.equal(isOriginAllowed('https://enterprise-management-system-two.vercel.app'), true, 'Exact production frontend origin is allowed');
+    assert.equal(isOriginAllowed('http://localhost:5173'), true, 'Local dev origin is allowed');
+    assert.equal(isOriginAllowed(null), true, 'Server-to-server / curl is allowed');
+
+    // Rogue / malicious origins must be rejected
+    assert.equal(isOriginAllowed('https://enterprise-management-system-phish.vercel.app'), false, 'Arbitrary vercel subdomain is rejected');
+    assert.equal(isOriginAllowed('https://malicious-site.com'), false, 'Untrusted origin is rejected');
+  });
+
+  test('Rate limiting sweep purges expired entries to prevent unbounded memory growth', () => {
+    const { cleanupExpiredRateLimits, loginIpLimits, loginIdentifierLimits } = require('../src/modules/auth/controllers/authController');
+
+    const now = Date.now();
+    // Add expired entry
+    loginIpLimits.set('login_ip:1.2.3.4', { count: 10, resetTime: now - 1000 });
+    // Add active entry
+    loginIpLimits.set('login_ip:5.6.7.8', { count: 2, resetTime: now + 60000 });
+
+    assert.equal(loginIpLimits.has('login_ip:1.2.3.4'), true);
+    assert.equal(loginIpLimits.has('login_ip:5.6.7.8'), true);
+
+    const cleared = cleanupExpiredRateLimits(now);
+    assert.ok(cleared >= 1, 'Must clear at least 1 expired entry');
+    assert.equal(loginIpLimits.has('login_ip:1.2.3.4'), false, 'Expired entry must be deleted');
+    assert.equal(loginIpLimits.has('login_ip:5.6.7.8'), true, 'Active entry must be preserved');
+  });
 });

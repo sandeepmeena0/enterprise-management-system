@@ -872,13 +872,14 @@ export const WorkProvider = ({ children }) => {
     };
   }, [loadWorkData, activeTimerKey]);
 
-  // Persistent offline action queue listener
+  // Persistent offline action queue listener (scoped to current authenticated user)
   useEffect(() => {
-    const cleanupOfflineSync = initTimerOfflineSync(workService);
+    const currentUid = currentUser?._id || currentUser?.id || currentUser?.employeeCode || null;
+    const cleanupOfflineSync = initTimerOfflineSync(workService, currentUid);
     return () => {
       cleanupOfflineSync();
     };
-  }, []);
+  }, [currentUser]);
 
   // =========================================================================
   // ⏱️ WALL-CLOCK LIVE TICKING TASK TIMER ENGINE (Refresh & Tab-switch Immune)

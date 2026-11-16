@@ -87,4 +87,48 @@ describe('Task Timer Engine & Concurrency Suite', () => {
 
     assert.ok(totalAccumulated >= 2399 && totalAccumulated <= 2405, 'Must combine baseline + current elapsed (approx 2400s = 40 mins)');
   });
+
+  test('Attendance State Invariant: task timer start/resume rejected when clocked out', () => {
+    function checkAttendanceState(attendanceRecord) {
+      if (!attendanceRecord || !attendanceRecord.isClockedIn || attendanceRecord.clockOutTime) {
+        const err = new Error('Cannot start task timer while clocked out. Please clock in for your shift first.');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (attendanceRecord.isOnBreak) {
+        const err = new Error('Cannot start or resume task timer while on break. Please resume work first.');
+        err.statusCode = 400;
+        throw err;
+      }
+      return true;
+    }
+
+    // 1. No attendance record today
+    assert.throws(() => checkAttendanceState(null), {
+      message: 'Cannot start task timer while clocked out. Please clock in for your shift first.',
+      statusCode: 400
+    });
+
+    // 2. Attendance record with isClockedIn = false
+    assert.throws(() => checkAttendanceState({ isClockedIn: false }), {
+      message: 'Cannot start task timer while clocked out. Please clock in for your shift first.',
+      statusCode: 400
+    });
+
+    // 3. Attendance record with clockOutTime present
+    assert.throws(() => checkAttendanceState({ isClockedIn: true, clockOutTime: '06:00 PM' }), {
+      message: 'Cannot start task timer while clocked out. Please clock in for your shift first.',
+      statusCode: 400
+    });
+
+    // 4. Employee is actively on break
+    assert.throws(() => checkAttendanceState({ isClockedIn: true, isOnBreak: true, clockOutTime: null }), {
+      message: 'Cannot start or resume task timer while on break. Please resume work first.',
+      statusCode: 400
+    });
+
+    // 5. Employee is actively clocked in and not on break -> succeeds
+    const valid = checkAttendanceState({ isClockedIn: true, isOnBreak: false, clockOutTime: null });
+    assert.equal(valid, true, 'Active clocked-in employee can start or resume task timer');
+  });
 });

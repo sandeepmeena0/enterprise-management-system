@@ -375,6 +375,48 @@ async function completeIdempotencyRecord({ actorId, idempotencyKey, leaseToken, 
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Enforces the Attendance State Invariant:
+ * An employee MUST be actively clocked in for their shift today and MUST NOT be on break.
+ * Rejects with 400 if clocked out or on break.
+ */
+async function verifyAttendanceActive(empId, businessDate, session) {
+  const Attendance = require('../../hr/models/Attendance');
+  const Employee = require('../../hr/models/Employee');
+
+  let empCode = null;
+  if (mongoose.Types.ObjectId.isValid(empId)) {
+    const empDoc = await Employee.findById(empId).select('employeeCode').lean();
+    if (empDoc) empCode = empDoc.employeeCode;
+  }
+
+  const orClauses = [{ employee: empId }, { employeeId: String(empId) }];
+  if (empCode) {
+    orClauses.push({ employeeCode: empCode });
+  }
+
+  const query = Attendance.findOne({
+    date: businessDate,
+    $or: orClauses
+  });
+  if (session) query.session(session);
+  const attendanceRecord = await query;
+
+  if (!attendanceRecord || !attendanceRecord.isClockedIn || attendanceRecord.clockOutTime) {
+    const err = new Error('Cannot start task timer while clocked out. Please clock in for your shift first.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (attendanceRecord.isOnBreak) {
+    const err = new Error('Cannot start or resume task timer while on break. Please resume work first.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return attendanceRecord;
+}
+
+/**
  * START TIMER (or ATOMIC TASK SWITCH)
  */
 async function startTimer({ actor, targetEmployeeId, taskId, reason, requestId, idempotencyKey, leaseToken, source = 'EMPLOYEE_PORTAL', clientIp, userAgent }) {
@@ -386,6 +428,9 @@ async function startTimer({ actor, targetEmployeeId, taskId, reason, requestId, 
   return withOCCRetry(async (session) => {
     const serverNow = new Date();
     const businessDate = getISTDateString(serverNow);
+
+    // Enforce Attendance State Invariant: Must be clocked in today and not on break
+    await verifyAttendanceActive(empId, businessDate, session);
 
     // 1. Load or initialize authoritative ActiveTaskTimer
     let activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).session(session);
@@ -784,6 +829,10 @@ async function resumeTimer({ actor, targetEmployeeId, taskId, reason, requestId,
   return withOCCRetry(async (session) => {
     const serverNow = new Date();
     const businessDate = getISTDateString(serverNow);
+
+    // Enforce Attendance State Invariant: Must be clocked in today and not on break
+    await verifyAttendanceActive(empId, businessDate, session);
+
     const activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).session(session);
 
     if (!activeTimer) {
@@ -1143,6 +1192,10 @@ async function completeTask({ actor, targetEmployeeId, taskId, reason, requestId
   return withOCCRetry(async (session) => {
     const serverNow = new Date();
     const businessDate = getISTDateString(serverNow);
+
+    // Enforce Attendance State Invariant: Must be clocked in today and not on break
+    await verifyAttendanceActive(empId, businessDate, session);
+
     const activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).session(session);
 
     let durationSeconds = 0;
@@ -1390,6 +1443,7 @@ module.exports = {
   getISTDateString,
   resolveActorAndSubject,
   validateTaskOwnership,
+  verifyAttendanceActive,
   computeRequestHash,
   acquireIdempotencyLease,
   completeIdempotencyRecord,
