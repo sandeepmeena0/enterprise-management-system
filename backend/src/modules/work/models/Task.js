@@ -68,6 +68,12 @@ const TaskSchema = new mongoose.Schema(
       enum: ['incomplete', 'in_progress', 'on_hold', 'under_review', 'completed'],
       default: 'incomplete'
     },
+    progress: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100
+    },
     finalApproved: {
       type: Boolean,
       default: false

@@ -77,6 +77,8 @@ export const TimerProvider = ({ children }) => {
   // Anti-overwrite Hydration Lock: Prevents previous user state from overwriting new user keys on fast switch
   const prevUserKeyRef = useRef(userKey);
   const isHydratingRef = useRef(false);
+  const isSyncingLiveStateRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
 
   // Resolve canonical employee profile from storage to bridge _id, employeeCode, and name
   const resolvedEmp = useMemo(() => {
@@ -817,6 +819,10 @@ export const TimerProvider = ({ children }) => {
   // Synchronize Authoritative Live Shift State from Database across all devices / laptops
   const syncLiveShiftState = useCallback(async () => {
     if (!userKey) return;
+    const now = Date.now();
+    if (isSyncingLiveStateRef.current || (now - lastSyncTimeRef.current < 2500)) return;
+    isSyncingLiveStateRef.current = true;
+    lastSyncTimeRef.current = now;
     const today = getTodayStr();
 
     try {
@@ -1159,13 +1165,15 @@ export const TimerProvider = ({ children }) => {
       }
     } catch (e) {
       console.warn('Error in syncLiveShiftState:', e);
+    } finally {
+      isSyncingLiveStateRef.current = false;
     }
   }, [userKey, targetEmpId, isRecordForUser, loginTime]);
 
-  // Periodic and reactive sync for cross-device consistency (3s cloud poller)
+  // Periodic and reactive sync for cross-device consistency (4s cloud poller)
   useEffect(() => {
     syncLiveShiftState();
-    const interval = setInterval(syncLiveShiftState, 3000);
+    const interval = setInterval(syncLiveShiftState, 4000);
     const handleSync = () => syncLiveShiftState();
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') syncLiveShiftState();
@@ -1177,7 +1185,6 @@ export const TimerProvider = ({ children }) => {
     window.addEventListener('hrms_storage_change', handleSync);
     window.addEventListener('ems_clocked_in', handleSync);
     window.addEventListener('ems_clocked_out', handleSync);
-    window.addEventListener('ems_shift_telemetry_synced', handleSync);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleSync);
@@ -1186,7 +1193,6 @@ export const TimerProvider = ({ children }) => {
       window.removeEventListener('hrms_storage_change', handleSync);
       window.removeEventListener('ems_clocked_in', handleSync);
       window.removeEventListener('ems_clocked_out', handleSync);
-      window.removeEventListener('ems_shift_telemetry_synced', handleSync);
     };
   }, [syncLiveShiftState]);
 

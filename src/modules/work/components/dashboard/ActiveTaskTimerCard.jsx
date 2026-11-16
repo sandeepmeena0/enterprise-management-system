@@ -33,6 +33,7 @@ export const ActiveTaskTimerCard = ({
 }) => {
   const effectiveTodayStr = todayStr || new Date().toISOString().split('T')[0];
   const taskTime = getTaskDisplayTime(displayActiveTask, effectiveTodayStr, Date.now(), isClockedIn, displayedIsOnBreak);
+  const activeTaskTodaySecs = taskTime.todaySecs;
 
   return (
     <div id="active-timer-card" className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 sm:px-[18px] flex flex-col justify-between gap-2.5 shadow-xs">

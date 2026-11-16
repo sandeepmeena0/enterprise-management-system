@@ -837,22 +837,18 @@ const forceClockOut = asyncHandler(async (req, res) => {
     if (targetEmpId) {
       taskMatch.push({ assignedTo: targetEmpId });
     }
-    const runningTasks = await Task.find({
-      timerRunning: true,
-      $or: taskMatch
-    });
-    for (const rt of runningTasks) {
-      let currentSecs = (rt.accumulatedSeconds !== undefined && rt.accumulatedSeconds !== null)
-        ? Number(rt.accumulatedSeconds)
-        : (Number(rt.timerSeconds) || 0);
-      if (rt.startedAt) {
-        currentSecs += Math.max(0, Math.floor((Date.now() - Number(rt.startedAt)) / 1000));
+    try {
+      const timeEngineService = require('../../work/services/timeEngineService');
+      if (targetEmpId) {
+        await timeEngineService.pauseTimer({
+          actor: req.user,
+          targetEmployeeId: targetEmpId,
+          reason: 'Admin forced clock-out',
+          source: 'ADMIN_PORTAL'
+        });
       }
-      rt.timerRunning = false;
-      rt.startedAt = null;
-      rt.accumulatedSeconds = currentSecs;
-      rt.timerSeconds = currentSecs;
-      await rt.save();
+    } catch (engineErr) {
+      console.warn('timeEngine pause in forceClockOut notice:', engineErr.message);
     }
   } catch (taskErr) {
     console.warn('Failed to auto-pause tasks during force clock-out:', taskErr);

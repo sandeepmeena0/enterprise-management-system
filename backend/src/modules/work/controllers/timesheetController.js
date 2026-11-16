@@ -292,38 +292,23 @@ exports.stopTimer = async (req, res, next) => {
       });
     }
 
-    // Accurately recalculate task accumulated and hoursLogged from all timesheets (prevents double-counting)
-    if (task) {
-      task.timerRunning = false;
-      task.startedAt = null;
-      task.timerSeconds = totalDurationSeconds;
-      task.durationSeconds = totalDurationSeconds;
-      task.accumulatedSeconds = totalDurationSeconds;
-
-      const allTaskTimesheets = await Timesheet.find({
-        $or: [
-          { task: task._id },
-          { taskId: task._id.toString() },
-          ...(task.taskCode ? [{ taskCode: task.taskCode }] : [])
-        ]
-      });
-
-      const dateTaskMap = new Map();
-      allTaskTimesheets.forEach(ts => {
-        const dKey = `${ts.date || ''}_${ts.employeeId || ts.employeeCode || ts.employee || ''}`;
-        const dSecs = Number(ts.totalDurationSeconds) || 0;
-        if (!dateTaskMap.has(dKey) || dSecs > dateTaskMap.get(dKey)) {
-          dateTaskMap.set(dKey, dSecs);
-        }
-      });
-      const totalTaskSecs = Array.from(dateTaskMap.values()).reduce((sum, s) => sum + s, 0);
-      task.accumulatedSeconds = Math.max(totalTaskSecs, totalDurationSeconds);
-      task.todayWorkSeconds = totalDurationSeconds;
-      task.hoursLogged = Number((totalTaskSecs / 3600).toFixed(2));
-      const totalHrs = Math.floor(totalTaskSecs / 3600);
-      const totalMins = Math.floor((totalTaskSecs % 3600) / 60);
-      task.hoursLoggedText = `${String(totalHrs).padStart(2, '0')}h ${String(totalMins).padStart(2, '0')}m`;
-      await task.save();
+    // Phase 2B.1 Hardening: Route timer stop through centralized authoritative time engine.
+    // Legacy endpoints MUST NOT independently calculate or overwrite task lifetime duration (accumulatedSeconds).
+    try {
+      const timeEngineService = require('../services/timeEngineService');
+      const targetEmp = task?.assignedTo || (req.user?._id ? req.user._id : null);
+      if (task?._id && targetEmp) {
+        await timeEngineService.stopTimer({
+          actor: req.user,
+          targetEmployeeId: targetEmp,
+          taskId: task._id,
+          reason: 'Legacy timesheet stop API called',
+          source: 'LEGACY_API'
+        });
+      }
+    } catch (engineErr) {
+      // If the timer is already idle or not found, proceed safely without failing legacy timesheet save
+      console.warn('[timesheetController.stopTimer] timeEngine notice:', engineErr.message);
     }
 
     res.status(200).json({

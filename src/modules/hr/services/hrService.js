@@ -49,6 +49,9 @@ let hrBackendOnline = null;
 let lastHrCheckTime = 0;
 const HR_CACHE_TTL = 5000;
 let healthCheckPromise = null;
+let inFlightTelemetryPromise = null;
+let cachedTelemetryMap = null;
+let lastTelemetryFetchTime = 0;
 
 async function checkHrBackendOnline() {
   const now = Date.now();
@@ -89,11 +92,10 @@ async function checkHrBackendOnline() {
 async function fetchWithFallback(url, options, fallbackFn) {
   const method = (options?.method || 'GET').toUpperCase();
   const isReadOp = method === 'GET';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-
     const headers = {};
     if (options?.body || method !== 'GET') {
       headers['Content-Type'] = 'application/json';
@@ -113,7 +115,6 @@ async function fetchWithFallback(url, options, fallbackFn) {
     delete fetchOptions.skipAuthHeaders;
 
     const res = await fetch(url, fetchOptions);
-    clearTimeout(timeoutId);
 
     const ct = res.headers.get('content-type') || '';
     const isJson = ct.includes('application/json');
@@ -143,6 +144,8 @@ async function fetchWithFallback(url, options, fallbackFn) {
     }
     hrBackendOnline = false;
     lastHrCheckTime = Date.now();
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   try {
@@ -1198,44 +1201,69 @@ export const hrService = {
 
   async getLiveTelemetry(dateStr) {
     const today = dateStr || new Date().toISOString().split('T')[0];
-    const res = await fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}&_t=${Date.now()}`, {
-      method: 'GET',
-      skipAuthHeaders: true
-    }, async () => {
-      // LocalStorage fallback for offline / mock
-      const telemetryMap = {};
-      const attendance = getCollection(KEYS.ATTENDANCE) || [];
-      const todayRecords = attendance.filter(a => a.date === today);
+    const now = Date.now();
 
-      todayRecords.forEach(r => {
-        const code = String(r.employeeCode || '').trim().toUpperCase();
-        const id = String(r.employeeId || r.employee?._id || r.employee || r._id);
-        const key = code || id;
-        telemetryMap[key] = {
-          employeeId: id,
-          employeeCode: code,
-          employeeName: r.employeeName,
-          date: r.date,
-          status: r.status,
-          isClockedIn: Boolean(r.isClockedIn && !r.clockOutTime),
-          isClockedOut: Boolean(r.clockOutTime || r.clockOut),
-          isOnBreak: Boolean(r.isOnBreak),
-          breakType: r.breakType || null,
-          clockInTime: r.clockInTime || r.clockIn || null,
-          clockInTimestamp: r.clockInTimestamp || null,
-          clockOutTime: r.clockOutTime || r.clockOut || null,
-          clockOutTimestamp: r.clockOutTimestamp || null,
-          workSeconds: Number(r.workSeconds) || 0,
-          totalWorkingHours: Number(r.totalWorkingHours) || 0,
-          activeTask: r.activeTask || null
-        };
-        if (code) telemetryMap[code] = telemetryMap[key];
-        if (id) telemetryMap[id] = telemetryMap[key];
-      });
+    // 1. In-memory short-window cache (2000ms) to coalesce concurrent pollers
+    if (cachedTelemetryMap && (now - lastTelemetryFetchTime < 2000) && (!dateStr || dateStr === today)) {
+      return cachedTelemetryMap;
+    }
 
-      return telemetryMap;
-    });
-    return (res && res.data && typeof res.data === 'object') ? res.data : res;
+    // 2. In-flight Promise deduplication: share the active request across components
+    if (inFlightTelemetryPromise) {
+      return inFlightTelemetryPromise;
+    }
+
+    inFlightTelemetryPromise = (async () => {
+      try {
+        const res = await fetchWithFallback(`${API_BASE}/attendance/live-telemetry?date=${today}&_t=${Date.now()}`, {
+          method: 'GET'
+        }, async () => {
+          // LocalStorage fallback for offline / mock
+          const telemetryMap = {};
+          const attendance = getCollection(KEYS.ATTENDANCE) || [];
+          const todayRecords = attendance.filter(a => a.date === today);
+
+          todayRecords.forEach(r => {
+            const code = String(r.employeeCode || '').trim().toUpperCase();
+            const id = String(r.employeeId || r.employee?._id || r.employee || r._id);
+            const key = code || id;
+            telemetryMap[key] = {
+              employeeId: id,
+              employeeCode: code,
+              employeeName: r.employeeName,
+              date: r.date,
+              status: r.status,
+              isClockedIn: Boolean(r.isClockedIn && !r.clockOutTime),
+              isClockedOut: Boolean(r.clockOutTime || r.clockOut),
+              isOnBreak: Boolean(r.isOnBreak),
+              breakType: r.breakType || null,
+              clockInTime: r.clockInTime || r.clockIn || null,
+              clockInTimestamp: r.clockInTimestamp || null,
+              clockOutTime: r.clockOutTime || r.clockOut || null,
+              clockOutTimestamp: r.clockOutTimestamp || null,
+              workSeconds: Number(r.workSeconds) || 0,
+              totalWorkingHours: Number(r.totalWorkingHours) || 0,
+              activeTask: r.activeTask || null
+            };
+            if (code) telemetryMap[code] = telemetryMap[key];
+            if (id) telemetryMap[id] = telemetryMap[key];
+          });
+
+          return telemetryMap;
+        });
+
+        const result = (res && res.data && typeof res.data === 'object') ? res.data : res;
+        if (result && typeof result === 'object' && Object.keys(result).length > 0) {
+          cachedTelemetryMap = result;
+          lastTelemetryFetchTime = Date.now();
+        }
+        return result;
+      } finally {
+        inFlightTelemetryPromise = null;
+      }
+    })();
+
+    return inFlightTelemetryPromise;
   },
 
   // 📋 ATTENDANCE AUDIT TRAIL & ADMIN OVERRIDES

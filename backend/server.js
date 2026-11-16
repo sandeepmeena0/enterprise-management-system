@@ -158,6 +158,7 @@ app.use('/api/appreciations', require('./src/modules/hr/routes/appreciationRoute
 // Work Module (Projects, Tasks, Timesheets)
 app.use('/api/projects', require('./src/modules/work/routes/projectRoutes'));
 app.use('/api/tasks', require('./src/modules/work/routes/taskRoutes'));
+app.use('/api/work-sessions', require('./src/modules/work/routes/workSessionRoutes'));
 app.use('/api/timesheet', require('./src/modules/work/routes/timesheetRoutes'));
 app.use('/api/timesheets', require('./src/modules/work/routes/timesheetRoutes'));
 app.use('/api/timer', require('./src/modules/work/routes/timesheetRoutes'));

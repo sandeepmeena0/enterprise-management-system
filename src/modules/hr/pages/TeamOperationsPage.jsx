@@ -466,6 +466,9 @@ export const TeamOperationsPage = () => {
       : null;
 
     const nowMs = Date.now();
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    const todayMidnightMs = todayMidnight.getTime();
     const workSecs = calculateShiftWorkSeconds(emp, todayStr, nowMs, {
       isClockedIn,
       isClockedOut,
@@ -577,7 +580,7 @@ export const TeamOperationsPage = () => {
       const rawLiveSecs = todayTaskBase + elapsed;
 
       // Ensure task seconds can never physically exceed seconds elapsed today
-      const maxPhysicalToday = Math.max(0, Math.floor((Date.now() - new Date().setHours(0, 0, 0, 0)) / 1000));
+      const maxPhysicalToday = Math.max(0, Math.floor((Date.now() - todayMidnightMs) / 1000));
       const liveTaskSecs = isTimerRunning ? Math.min(rawLiveSecs, maxPhysicalToday) : todayTaskBase;
 
       liveTaskMemoryRef.current.set(taskIdentityKey, {

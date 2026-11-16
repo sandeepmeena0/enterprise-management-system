@@ -223,6 +223,21 @@ exports.createTask = async (req, res, next) => {
 exports.updateTask = async (req, res, next) => {
   try {
     const updateData = { ...req.body };
+
+    // Phase 2B.1 Hardening: Protect authoritative timer fields from direct client tampering.
+    // Timer state and duration projections can ONLY be updated by the centralized time engine.
+    const PROTECTED_TIMER_PROJECTIONS = [
+      'timerRunning',
+      'startedAt',
+      'accumulatedSeconds',
+      'timerSeconds',
+      'durationSeconds',
+      'todayWorkSeconds',
+      'dailySessions'
+    ];
+    PROTECTED_TIMER_PROJECTIONS.forEach(field => {
+      delete updateData[field];
+    });
     if (updateData.assignedTo !== undefined && (!updateData.assignedTo || !mongoose.Types.ObjectId.isValid(updateData.assignedTo))) {
       updateData.assignedToId = updateData.assignedToId || (updateData.assignedTo ? String(updateData.assignedTo) : '');
       updateData.assignedTo = null;
@@ -292,11 +307,7 @@ exports.updateTaskStatus = async (req, res, next) => {
     const update = { status };
     if (status === 'completed') {
       update.completedOn = new Date().toISOString().split('T')[0];
-      update.timerRunning = false;
-      if (req.body.timerSeconds !== undefined) update.timerSeconds = req.body.timerSeconds;
-      if (req.body.durationSeconds !== undefined) update.durationSeconds = req.body.durationSeconds;
-      if (req.body.hoursLogged !== undefined) update.hoursLogged = req.body.hoursLogged;
-      if (req.body.hoursLoggedText !== undefined) update.hoursLoggedText = req.body.hoursLoggedText;
+      update.progress = 100;
     }
 
     let task = null;

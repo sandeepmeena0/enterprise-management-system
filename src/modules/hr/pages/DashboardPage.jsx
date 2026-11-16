@@ -184,7 +184,7 @@ export const DashboardPage = () => {
     };
 
     fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 3500);
+    const interval = setInterval(fetchTelemetry, 4000);
     return () => {
       isMounted = false;
       clearInterval(interval);
