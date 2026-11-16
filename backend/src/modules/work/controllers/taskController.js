@@ -233,7 +233,8 @@ exports.updateTask = async (req, res, next) => {
       'timerSeconds',
       'durationSeconds',
       'todayWorkSeconds',
-      'dailySessions'
+      'dailySessions',
+      'activeUserId'
     ];
     PROTECTED_TIMER_PROJECTIONS.forEach(field => {
       delete updateData[field];

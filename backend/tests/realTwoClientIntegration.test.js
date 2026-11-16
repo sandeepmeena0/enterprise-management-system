@@ -12,9 +12,9 @@ const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const { io: ioClient } = require('socket.io-client');
 
-const { initSocketServer, getSocketServer, resetSocketServerForTesting } = require('../src/shared/socket/socketManager');
+const { initSocketServer, getSocketServer, resetSocketServerForTesting, checkOriginAllowed } = require('../src/shared/socket/socketManager');
 const { setUserAuthCache, clearUserAuthCache } = require('../src/shared/cache/userAuthCache');
-const { dispatchPendingOutboxEvents } = require('../src/modules/work/services/outboxDispatcher');
+const { dispatchPendingOutboxEvents, renewLease, getOutboxOperationalStatus, retryFailedOutboxEvent } = require('../src/modules/work/services/outboxDispatcher');
 const DurableOutboxEvent = require('../src/modules/work/models/DurableOutboxEvent');
 
 const TEST_JWT_SECRET = 'test_super_secret_jwt_key_real_two_client_suite_2026';
@@ -475,6 +475,147 @@ describe('Real Two-Client Socket.IO & Cross-Device Integration Suite', () => {
       DurableOutboxEvent.find = origFind;
       DurableOutboxEvent.findOneAndUpdate = origFindOneAndUpdate;
       DurableOutboxEvent.updateOne = origUpdateOne;
+    }
+  });
+
+  // ── Scenario I: Strict CORS Allowlist & Prefix Attack Rejection ───────────
+  test('Scenario I: Exact CORS allowlist matching rejects preview wildcards & subdomain spoofing', () => {
+    // Valid whitelisted origins
+    assert.equal(checkOriginAllowed('http://localhost:5173'), true, 'localhost:5173 must be allowed');
+    assert.equal(checkOriginAllowed('http://localhost:5174'), true, 'localhost:5174 must be allowed');
+    assert.equal(checkOriginAllowed('http://127.0.0.1:5173'), true, '127.0.0.1:5173 must be allowed');
+    assert.equal(checkOriginAllowed('https://enterprise-management-system-two.vercel.app'), true, 'Production Vercel app must be allowed');
+
+    // Reject arbitrary/unauthorized Vercel previews
+    assert.equal(checkOriginAllowed('https://random-preview.vercel.app'), false, 'Arbitrary vercel preview must be rejected');
+    assert.equal(checkOriginAllowed('https://attacker-app.vercel.app'), false, 'Attacker vercel app must be rejected');
+
+    // Reject prefix/subdomain spoofing attacks
+    assert.equal(checkOriginAllowed('http://localhost:5173.attacker.com'), false, 'Subdomain spoofing must be rejected');
+    assert.equal(checkOriginAllowed('http://127.0.0.1:5173.evil.org'), false, 'IP subdomain spoofing must be rejected');
+    assert.equal(checkOriginAllowed('https://evil-site.com'), false, 'Arbitrary origin must be rejected');
+  });
+
+  // ── Scenario J: Causality Guard Blocks Later Events when Earlier is FAILED ─
+  test('Scenario J: FAILED earlier sequence blocks subsequent event from violating causality', async () => {
+    const client = ioClient(serverUrl, {
+      auth: { token: tokenEmp1 },
+      transports: ['websocket'],
+      reconnection: false
+    });
+    await waitForEvent(client, 'auth:confirmed');
+
+    // Two sequential events for emp1Id
+    const eventSeq1 = {
+      _id: new mongoose.Types.ObjectId(),
+      employeeId: emp1Id,
+      seq: 1,
+      eventType: 'TIMER_STARTED',
+      payload: { taskId: 'task_1', version: 1 },
+      status: 'FAILED',
+      save: async function () { return this; }
+    };
+
+    const eventSeq2 = {
+      _id: new mongoose.Types.ObjectId(),
+      employeeId: emp1Id,
+      seq: 2,
+      eventType: 'TIMER_PAUSED',
+      payload: { taskId: 'task_1', version: 2 },
+      status: 'PENDING',
+      save: async function () { return this; }
+    };
+
+    const origFind = DurableOutboxEvent.find;
+    const origFindOne = DurableOutboxEvent.findOne;
+    const origFindOneAndUpdate = DurableOutboxEvent.findOneAndUpdate;
+
+    DurableOutboxEvent.find = () => ({
+      sort: () => ({
+        limit: () => Promise.resolve([eventSeq2])
+      })
+    });
+
+    // When outboxDispatcher checks for earlier pending/failed event:
+    DurableOutboxEvent.findOne = (query) => {
+      if (query.employeeId && query.seq && query.seq.$lt === 2 && query.status) {
+        return Promise.resolve(eventSeq1); // Earlier event exists in FAILED state!
+      }
+      return Promise.resolve(null);
+    };
+
+    let attemptedClaim = false;
+    DurableOutboxEvent.findOneAndUpdate = async () => {
+      attemptedClaim = true;
+      return eventSeq2;
+    };
+
+    try {
+      const result = await dispatchPendingOutboxEvents(emp1Id, { skipDbCheck: true });
+
+      assert.equal(result.dispatchedCount, 0, 'No event should be dispatched while earlier sequence is FAILED');
+      assert.equal(attemptedClaim, false, 'Event seq 2 must never be claimed when seq 1 is FAILED');
+    } finally {
+      DurableOutboxEvent.find = origFind;
+      DurableOutboxEvent.findOne = origFindOne;
+      DurableOutboxEvent.findOneAndUpdate = origFindOneAndUpdate;
+      client.disconnect();
+    }
+  });
+
+  // ── Scenario K: Lease Renewal Extends Lease Expiration ────────────────────
+  test('Scenario K: renewLease successfully extends worker lease for active processing', async () => {
+    const eventId = new mongoose.Types.ObjectId();
+    const workerId = 'worker_test_renew_1';
+    let renewedWithExpiresAt = null;
+
+    const origUpdateOne = DurableOutboxEvent.updateOne;
+    DurableOutboxEvent.updateOne = async (filter, update) => {
+      if (String(filter._id) === String(eventId) && filter.leaseOwner === workerId && filter.status === 'PROCESSING') {
+        renewedWithExpiresAt = update.$set.leaseExpiresAt;
+        return { matchedCount: 1, modifiedCount: 1 };
+      }
+      return { matchedCount: 0, modifiedCount: 0 };
+    };
+
+    try {
+      const success = await renewLease(eventId, workerId, 20000);
+      assert.equal(success, true, 'Lease renewal must succeed for owning worker');
+      assert.ok(renewedWithExpiresAt instanceof Date, 'leaseExpiresAt must be updated to a Date');
+      assert.ok(renewedWithExpiresAt.getTime() > Date.now() + 15000, 'leaseExpiresAt must be in future');
+
+      const failedRenew = await renewLease(eventId, 'wrong_worker_id', 20000);
+      assert.equal(failedRenew, false, 'Lease renewal must fail for non-owning worker');
+    } finally {
+      DurableOutboxEvent.updateOne = origUpdateOne;
+    }
+  });
+
+  // ── Scenario L: Outbox Health Diagnostics and Failure Recovery ───────────
+  test('Scenario L: retryFailedOutboxEvent resets FAILED event to PENDING', async () => {
+    const failedEventId = new mongoose.Types.ObjectId();
+    let resetStatus = null;
+
+    const origUpdateOne = DurableOutboxEvent.updateOne;
+    DurableOutboxEvent.updateOne = async (filter, update) => {
+      if (String(filter._id) === String(failedEventId) && filter.status === 'FAILED') {
+        resetStatus = update.$set.status;
+        return { matchedCount: 1, modifiedCount: 1 };
+      }
+      return { matchedCount: 0, modifiedCount: 0 };
+    };
+
+    // Simulate ready state for mock test
+    const origReadyState = mongoose.connection.readyState;
+    Object.defineProperty(mongoose.connection, 'readyState', { value: 1, configurable: true });
+
+    try {
+      const res = await retryFailedOutboxEvent(failedEventId);
+      assert.equal(res.success, true, 'retryFailedOutboxEvent must report success');
+      assert.equal(resetStatus, 'PENDING', 'Status must be reset to PENDING');
+    } finally {
+      DurableOutboxEvent.updateOne = origUpdateOne;
+      Object.defineProperty(mongoose.connection, 'readyState', { value: origReadyState, configurable: true });
     }
   });
 });

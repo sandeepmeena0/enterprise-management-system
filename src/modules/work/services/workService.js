@@ -569,6 +569,19 @@ export const workService = {
   },
 
   async updateTask(id, updateData) {
+    // Phase B.1.2 Hardening: Strip timer fields so updateTask cannot independently start, pause, resume or tamper with timer state
+    const safeUpdateData = { ...updateData };
+    const PROTECTED_TIMER_FIELDS = [
+      'timerRunning',
+      'startedAt',
+      'accumulatedSeconds',
+      'timerSeconds',
+      'todayWorkSeconds',
+      'activeUserId',
+      'durationSeconds'
+    ];
+    PROTECTED_TIMER_FIELDS.forEach(f => delete safeUpdateData[f]);
+
     if (await isBackendAvailable()) {
       try {
         const res = await fetch(`${API_BASE_URL}/tasks/${id}`, {
@@ -577,7 +590,7 @@ export const workService = {
             'Content-Type': 'application/json',
             ...getAuthHeaders()
           },
-          body: JSON.stringify(updateData)
+          body: JSON.stringify(safeUpdateData)
         });
         if (res.ok) {
           const json = await res.json();
@@ -585,7 +598,12 @@ export const workService = {
           const tasks = getCollection(KEYS.TASKS) || [];
           const index = tasks.findIndex(t => String(t._id || t.id) === String(id) || t.taskCode === id);
           if (index !== -1) {
-            tasks[index] = { ...tasks[index], ...updatedTask };
+            tasks[index] = {
+              ...tasks[index],
+              ...updatedTask,
+              timerRunning: tasks[index].timerRunning,
+              startedAt: tasks[index].startedAt
+            };
             saveCollection(KEYS.TASKS, tasks);
             window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
           }
@@ -604,11 +622,11 @@ export const workService = {
       const nowIso = new Date().toISOString();
       let newHistory = Array.isArray(currentTask.history) ? [...currentTask.history] : [];
 
-      if (updateData.history) {
-        newHistory = updateData.history;
+      if (safeUpdateData.history) {
+        newHistory = safeUpdateData.history;
       } else {
         // Track reassignment
-        if (updateData.assignedToName && updateData.assignedToName !== currentTask.assignedToName) {
+        if (safeUpdateData.assignedToName && safeUpdateData.assignedToName !== currentTask.assignedToName) {
           newHistory.push({
             id: `hist_${Date.now()}_reassigned`,
             action: 'reassigned',
@@ -617,12 +635,12 @@ export const workService = {
             performedBy: authUser?.name || 'Manager',
             performedById: authUser?._id,
             from: currentTask.assignedToName || 'Previous Assignee',
-            to: updateData.assignedToName,
-            details: `Task reassigned from ${currentTask.assignedToName || 'Previous Assignee'} to ${updateData.assignedToName}`
+            to: safeUpdateData.assignedToName,
+            details: `Task reassigned from ${currentTask.assignedToName || 'Previous Assignee'} to ${safeUpdateData.assignedToName}`
           });
         }
         // Track deadline / reschedule for future
-        if (updateData.dueDate && updateData.dueDate !== currentTask.dueDate) {
+        if (safeUpdateData.dueDate && safeUpdateData.dueDate !== currentTask.dueDate) {
           newHistory.push({
             id: `hist_${Date.now()}_rescheduled`,
             action: 'rescheduled',
@@ -631,29 +649,36 @@ export const workService = {
             performedBy: authUser?.name || 'User',
             performedById: authUser?._id,
             from: currentTask.dueDate || 'None',
-            to: updateData.dueDate,
-            details: `Deadline updated from ${currentTask.dueDate || 'No Due Date'} to ${updateData.dueDate}${updateData.rescheduleNote ? ` (${updateData.rescheduleNote})` : ''}`
+            to: safeUpdateData.dueDate,
+            details: `Deadline updated from ${currentTask.dueDate || 'No Due Date'} to ${safeUpdateData.dueDate}${safeUpdateData.rescheduleNote ? ` (${safeUpdateData.rescheduleNote})` : ''}`
           });
         }
         // Track status changes
-        if (updateData.status && updateData.status !== currentTask.status) {
+        if (safeUpdateData.status && safeUpdateData.status !== currentTask.status) {
           newHistory.push({
             id: `hist_${Date.now()}_status`,
             action: 'status_changed',
-            title: `Status: ${updateData.status.replace('_', ' ').toUpperCase()}`,
+            title: `Status: ${safeUpdateData.status.replace('_', ' ').toUpperCase()}`,
             timestamp: nowIso,
             performedBy: authUser?.name || 'User',
             performedById: authUser?._id,
             from: currentTask.status,
-            to: updateData.status,
-            details: `Status transitioned from ${currentTask.status} to ${updateData.status}`
+            to: safeUpdateData.status,
+            details: `Status transitioned from ${currentTask.status} to ${safeUpdateData.status}`
           });
         }
       }
 
-      tasks[index] = { ...currentTask, ...updateData, history: newHistory };
+      const updated = {
+        ...currentTask,
+        ...safeUpdateData,
+        history: newHistory,
+        updatedAt: nowIso
+      };
+      tasks[index] = updated;
       saveCollection(KEYS.TASKS, tasks);
-      return tasks[index];
+      window.dispatchEvent(new CustomEvent('hrms_storage_change', { detail: { key: KEYS.TASKS } }));
+      return updated;
     }
     return null;
   },
@@ -1150,8 +1175,16 @@ export const workService = {
         if (res.ok) {
           return await res.json();
         }
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, statusCode: res.status, ...errJson };
       } catch (err) {
-        console.warn('Backend startWorkSession notice:', err.message);
+        console.warn('Backend startWorkSession network notice:', err.message);
+        if (!options.skipQueue) {
+          try {
+            enqueueTimerAction('START', { taskId, targetEmployeeId, reason });
+          } catch (_) {}
+        }
+        return { success: false, offline: true, error: err.message };
       }
     }
     if (!options.skipQueue) {
@@ -1159,7 +1192,7 @@ export const workService = {
         enqueueTimerAction('START', { taskId, targetEmployeeId, reason });
       } catch (_) {}
     }
-    return null;
+    return { success: false, offline: true, message: 'Backend unavailable. Action enqueued offline.' };
   },
 
   async pauseWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
@@ -1176,8 +1209,16 @@ export const workService = {
         if (res.ok) {
           return await res.json();
         }
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, statusCode: res.status, ...errJson };
       } catch (err) {
-        console.warn('Backend pauseWorkSession notice:', err.message);
+        console.warn('Backend pauseWorkSession network notice:', err.message);
+        if (!options.skipQueue) {
+          try {
+            enqueueTimerAction('PAUSE', { taskId, targetEmployeeId, reason });
+          } catch (_) {}
+        }
+        return { success: false, offline: true, error: err.message };
       }
     }
     if (!options.skipQueue) {
@@ -1185,7 +1226,7 @@ export const workService = {
         enqueueTimerAction('PAUSE', { taskId, targetEmployeeId, reason });
       } catch (_) {}
     }
-    return null;
+    return { success: false, offline: true, message: 'Backend unavailable. Action enqueued offline.' };
   },
 
   async resumeWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
@@ -1202,8 +1243,16 @@ export const workService = {
         if (res.ok) {
           return await res.json();
         }
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, statusCode: res.status, ...errJson };
       } catch (err) {
-        console.warn('Backend resumeWorkSession notice:', err.message);
+        console.warn('Backend resumeWorkSession network notice:', err.message);
+        if (!options.skipQueue) {
+          try {
+            enqueueTimerAction('RESUME', { taskId, targetEmployeeId, reason });
+          } catch (_) {}
+        }
+        return { success: false, offline: true, error: err.message };
       }
     }
     if (!options.skipQueue) {
@@ -1211,7 +1260,7 @@ export const workService = {
         enqueueTimerAction('RESUME', { taskId, targetEmployeeId, reason });
       } catch (_) {}
     }
-    return null;
+    return { success: false, offline: true, message: 'Backend unavailable. Action enqueued offline.' };
   },
 
   async stopWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
@@ -1228,8 +1277,16 @@ export const workService = {
         if (res.ok) {
           return await res.json();
         }
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, statusCode: res.status, ...errJson };
       } catch (err) {
-        console.warn('Backend stopWorkSession notice:', err.message);
+        console.warn('Backend stopWorkSession network notice:', err.message);
+        if (!options.skipQueue) {
+          try {
+            enqueueTimerAction('STOP', { taskId, targetEmployeeId, reason });
+          } catch (_) {}
+        }
+        return { success: false, offline: true, error: err.message };
       }
     }
     if (!options.skipQueue) {
@@ -1237,7 +1294,7 @@ export const workService = {
         enqueueTimerAction('STOP', { taskId, targetEmployeeId, reason });
       } catch (_) {}
     }
-    return null;
+    return { success: false, offline: true, message: 'Backend unavailable. Action enqueued offline.' };
   },
 
   async completeWorkSession({ taskId, targetEmployeeId, reason } = {}, options = {}) {
@@ -1254,8 +1311,16 @@ export const workService = {
         if (res.ok) {
           return await res.json();
         }
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, statusCode: res.status, ...errJson };
       } catch (err) {
-        console.warn('Backend completeWorkSession notice:', err.message);
+        console.warn('Backend completeWorkSession network notice:', err.message);
+        if (!options.skipQueue) {
+          try {
+            enqueueTimerAction('COMPLETE', { taskId, targetEmployeeId, reason });
+          } catch (_) {}
+        }
+        return { success: false, offline: true, error: err.message };
       }
     }
     if (!options.skipQueue) {
@@ -1263,7 +1328,7 @@ export const workService = {
         enqueueTimerAction('COMPLETE', { taskId, targetEmployeeId, reason });
       } catch (_) {}
     }
-    return null;
+    return { success: false, offline: true, message: 'Backend unavailable. Action enqueued offline.' };
   },
 
   async getActiveWorkSession({ targetEmployeeId } = {}) {

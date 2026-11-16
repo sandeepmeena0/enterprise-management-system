@@ -3,7 +3,8 @@
  * @description Reliable Transactional Outbox Dispatcher for EMS Task Timer & Attendance Events.
  * Reads monotonically sequenced, committed DurableOutboxEvent records from MongoDB
  * and dispatches them in strict sequence order across authenticated Socket.IO rooms.
- * Uses atomic lease acquisition, active socket verification, and exponential backoff retry.
+ * Uses atomic lease acquisition, lease renewal, active socket verification,
+ * and strict causality ordering blocking on FAILED events.
  */
 
 const mongoose = require('mongoose');
@@ -20,6 +21,24 @@ let isShuttingDown = false;
  */
 function generateWorkerId() {
   return `worker_${process.pid}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+}
+
+/**
+ * Renew an active lease for an in-flight dispatch
+ * @param {string|import('mongoose').Types.ObjectId} eventId
+ * @param {string} workerId
+ * @param {number} [extensionMs=15000]
+ */
+async function renewLease(eventId, workerId, extensionMs = 15000) {
+  const isUpdateOneMocked = typeof DurableOutboxEvent.updateOne === 'function' && DurableOutboxEvent.updateOne !== mongoose.Model.updateOne;
+  if (mongoose.connection.readyState === 1 || isUpdateOneMocked) {
+    const res = await DurableOutboxEvent.updateOne(
+      { _id: eventId, leaseOwner: workerId, status: 'PROCESSING' },
+      { $set: { leaseExpiresAt: new Date(Date.now() + extensionMs) } }
+    );
+    return Boolean(res && (res.matchedCount > 0 || res.modifiedCount > 0));
+  }
+  return false;
 }
 
 /**
@@ -78,7 +97,7 @@ async function dispatchPendingOutboxEvents(employeeId = null, options = {}) {
     }
 
     let dispatchedCount = 0;
-    // Track employees who have had an uncompleted earlier sequence or are offline
+    // Track employees who have had an uncompleted or failed earlier sequence, or are offline
     const blockedEmployees = new Set();
 
     for (const candidate of candidates) {
@@ -91,25 +110,26 @@ async function dispatchPendingOutboxEvents(employeeId = null, options = {}) {
       }
 
       // 3. Monotonic Causality Guard:
-      // Verify that no earlier uncompleted event exists for this employee
+      // Verify that no earlier uncompleted or FAILED event exists for this employee.
+      // If an earlier event has status FAILED, later sequences MUST NOT bypass it!
       const isFindOneMocked = typeof DurableOutboxEvent.findOne === 'function' && DurableOutboxEvent.findOne !== mongoose.Model.findOne;
       if (mongoose.connection.readyState === 1 || isFindOneMocked) {
         const priorUncompleted = await DurableOutboxEvent.findOne({
           employeeId: candidate.employeeId,
           seq: { $lt: candidate.seq },
-          status: { $in: ['PENDING', 'PROCESSING'] },
+          status: { $in: ['PENDING', 'PROCESSING', 'FAILED'] },
           _id: { $ne: candidate._id }
         });
 
         if (priorUncompleted) {
-          // An earlier sequence is still pending or processing; do not dispatch candidate out of order!
+          // An earlier sequence is still pending, processing, or FAILED; do not dispatch candidate out of order!
           blockedEmployees.add(empIdStr);
           continue;
         }
       }
 
       // 4. Atomic Lease Acquisition via findOneAndUpdate
-      const leaseExpiresAt = new Date(Date.now() + 10000); // 10-second lease
+      const leaseExpiresAt = new Date(Date.now() + 15000); // 15-second lease
       const isFindOneAndUpdateMocked = typeof DurableOutboxEvent.findOneAndUpdate === 'function' && DurableOutboxEvent.findOneAndUpdate !== mongoose.Model.findOneAndUpdate;
       let claimed = candidate;
 
@@ -142,56 +162,67 @@ async function dispatchPendingOutboxEvents(employeeId = null, options = {}) {
         continue;
       }
 
-      // 5. Active Socket Connection Check:
-      // Verify the target employee has an active socket connected in their personal room
-      const targetRoom = `user:${empIdStr}`;
-      let activeSockets = [];
+      // Auto lease renewal during in-flight dispatch
+      let renewalTimer = null;
+      if (typeof setInterval === 'function') {
+        renewalTimer = setInterval(() => {
+          renewLease(claimed._id, workerId, 15000).catch(() => {});
+        }, 5000);
+        if (renewalTimer && typeof renewalTimer.unref === 'function') {
+          renewalTimer.unref();
+        }
+      }
+
       try {
-        if (typeof io.in === 'function') {
-          const roomObj = io.in(targetRoom);
-          if (roomObj && typeof roomObj.fetchSockets === 'function') {
-            activeSockets = await roomObj.fetchSockets();
+        // 5. Active Socket Connection Check:
+        // Verify the target employee has an active socket connected in their personal room
+        const targetRoom = `user:${empIdStr}`;
+        let activeSockets = [];
+        try {
+          if (typeof io.in === 'function') {
+            const roomObj = io.in(targetRoom);
+            if (roomObj && typeof roomObj.fetchSockets === 'function') {
+              activeSockets = await roomObj.fetchSockets();
+            } else {
+              // Fallback for mocks / test environments where fetchSockets is not present on stub
+              activeSockets = [{}];
+            }
           } else {
-            // Fallback for mocks / test environments where fetchSockets is not present on stub
             activeSockets = [{}];
           }
-        } else {
-          activeSockets = [{}];
+        } catch (fetchErr) {
+          activeSockets = [];
         }
-      } catch (fetchErr) {
-        activeSockets = [];
-      }
 
-      if (!activeSockets || activeSockets.length === 0) {
-        // Target employee is currently offline / has no active socket connections.
-        // Retain event as PENDING without marking PUBLISHED.
-        // It will be dispatched when the employee connects or reconnects.
-        const isUpdateOneMocked = typeof DurableOutboxEvent.updateOne === 'function' && DurableOutboxEvent.updateOne !== mongoose.Model.updateOne;
-        if (mongoose.connection.readyState === 1 || isUpdateOneMocked) {
-          await DurableOutboxEvent.updateOne(
-            { _id: claimed._id, leaseOwner: workerId },
-            {
-              $set: {
-                status: 'PENDING',
-                leaseExpiresAt: null,
-                leaseOwner: null
+        if (!activeSockets || activeSockets.length === 0) {
+          // Target employee is currently offline / has no active socket connections.
+          // Retain event as PENDING without marking PUBLISHED.
+          // It will be dispatched when the employee connects or reconnects.
+          const isUpdateOneMocked = typeof DurableOutboxEvent.updateOne === 'function' && DurableOutboxEvent.updateOne !== mongoose.Model.updateOne;
+          if (mongoose.connection.readyState === 1 || isUpdateOneMocked) {
+            await DurableOutboxEvent.updateOne(
+              { _id: claimed._id, leaseOwner: workerId },
+              {
+                $set: {
+                  status: 'PENDING',
+                  leaseExpiresAt: null,
+                  leaseOwner: null
+                }
               }
+            );
+          } else {
+            claimed.status = 'PENDING';
+            claimed.leaseExpiresAt = null;
+            claimed.leaseOwner = null;
+            if (typeof claimed.save === 'function') {
+              await claimed.save();
             }
-          );
-        } else {
-          claimed.status = 'PENDING';
-          claimed.leaseExpiresAt = null;
-          claimed.leaseOwner = null;
-          if (typeof claimed.save === 'function') {
-            await claimed.save();
           }
+          blockedEmployees.add(empIdStr);
+          continue;
         }
-        blockedEmployees.add(empIdStr);
-        continue;
-      }
 
-      // 6. Emit to Authenticated Sockets
-      try {
+        // 6. Emit to Authenticated Sockets
         const emitTarget = typeof io.to === 'function' ? io.to(targetRoom) : (typeof io.in === 'function' ? io.in(targetRoom) : null);
         if (emitTarget && typeof emitTarget.emit === 'function') {
           // Envelope event preserving sequence number
@@ -232,14 +263,34 @@ async function dispatchPendingOutboxEvents(employeeId = null, options = {}) {
           }
         }
 
-        // 7. Mark successfully PUBLISHED
-        claimed.status = 'PUBLISHED';
-        claimed.publishedAt = new Date();
-        claimed.leaseExpiresAt = null;
-        claimed.leaseOwner = null;
-        claimed.lastError = null;
-        if (typeof claimed.save === 'function') {
-          await claimed.save();
+        // 7. Mark successfully PUBLISHED (strictly verifying leaseOwner)
+        const isUpdateOneMocked = typeof DurableOutboxEvent.updateOne === 'function' && DurableOutboxEvent.updateOne !== mongoose.Model.updateOne;
+        if (mongoose.connection.readyState === 1 || isUpdateOneMocked) {
+          const updateRes = await DurableOutboxEvent.updateOne(
+            { _id: claimed._id, leaseOwner: workerId, status: 'PROCESSING' },
+            {
+              $set: {
+                status: 'PUBLISHED',
+                publishedAt: new Date(),
+                leaseExpiresAt: null,
+                leaseOwner: null,
+                lastError: null
+              }
+            }
+          );
+          if (updateRes.matchedCount === 0) {
+            console.warn('[outboxDispatcher] Lease lost before marking PUBLISHED for event', claimed._id);
+            continue;
+          }
+        } else {
+          claimed.status = 'PUBLISHED';
+          claimed.publishedAt = new Date();
+          claimed.leaseExpiresAt = null;
+          claimed.leaseOwner = null;
+          claimed.lastError = null;
+          if (typeof claimed.save === 'function') {
+            await claimed.save();
+          }
         }
 
         dispatchedCount++;
@@ -262,10 +313,27 @@ async function dispatchPendingOutboxEvents(employeeId = null, options = {}) {
           claimed.nextRetryAt = new Date(Date.now() + backoffMs);
         }
 
-        if (typeof claimed.save === 'function') {
+        const isUpdateOneMocked = typeof DurableOutboxEvent.updateOne === 'function' && DurableOutboxEvent.updateOne !== mongoose.Model.updateOne;
+        if (mongoose.connection.readyState === 1 || isUpdateOneMocked) {
+          await DurableOutboxEvent.updateOne(
+            { _id: claimed._id, leaseOwner: workerId },
+            {
+              $set: {
+                status: claimed.status,
+                retryCount: claimed.retryCount,
+                lastError: claimed.lastError,
+                leaseExpiresAt: null,
+                leaseOwner: null,
+                nextRetryAt: claimed.nextRetryAt
+              }
+            }
+          );
+        } else if (typeof claimed.save === 'function') {
           await claimed.save();
         }
         blockedEmployees.add(empIdStr);
+      } finally {
+        if (renewalTimer) clearInterval(renewalTimer);
       }
     }
 
@@ -274,6 +342,57 @@ async function dispatchPendingOutboxEvents(employeeId = null, options = {}) {
     console.error('[outboxDispatcher] Error during dispatchPendingOutboxEvents:', err.message);
     return { dispatchedCount: 0, error: err.message };
   }
+}
+
+/**
+ * Retrieve operational outbox health and blocked event diagnostics
+ * @param {string|import('mongoose').Types.ObjectId|null} [employeeId]
+ * @returns {Promise<object>}
+ */
+async function getOutboxOperationalStatus(employeeId = null) {
+  if (mongoose.connection.readyState !== 1) {
+    return { status: 'db_not_ready', pendingCount: 0, processingCount: 0, failedCount: 0, failedEvents: [] };
+  }
+  const filter = employeeId ? { employeeId } : {};
+  const [pendingCount, processingCount, failedCount, failedEvents] = await Promise.all([
+    DurableOutboxEvent.countDocuments({ ...filter, status: 'PENDING' }),
+    DurableOutboxEvent.countDocuments({ ...filter, status: 'PROCESSING' }),
+    DurableOutboxEvent.countDocuments({ ...filter, status: 'FAILED' }),
+    DurableOutboxEvent.find({ ...filter, status: 'FAILED' }).limit(10).lean()
+  ]);
+
+  return {
+    status: 'healthy',
+    pendingCount,
+    processingCount,
+    failedCount,
+    failedEvents
+  };
+}
+
+/**
+ * Reset a FAILED outbox event back to PENDING for explicit authorized re-dispatch
+ * @param {string|import('mongoose').Types.ObjectId} eventId
+ * @returns {Promise<{ success: boolean, message?: string }>}
+ */
+async function retryFailedOutboxEvent(eventId) {
+  if (mongoose.connection.readyState !== 1) {
+    return { success: false, message: 'Database not ready' };
+  }
+  const result = await DurableOutboxEvent.updateOne(
+    { _id: eventId, status: 'FAILED' },
+    {
+      $set: {
+        status: 'PENDING',
+        retryCount: 0,
+        nextRetryAt: null,
+        leaseExpiresAt: null,
+        leaseOwner: null,
+        lastError: null
+      }
+    }
+  );
+  return { success: result.matchedCount > 0 };
 }
 
 /**
@@ -316,5 +435,8 @@ function stopOutboxPollingWorker() {
 module.exports = {
   dispatchPendingOutboxEvents,
   startOutboxPollingWorker,
-  stopOutboxPollingWorker
+  stopOutboxPollingWorker,
+  renewLease,
+  getOutboxOperationalStatus,
+  retryFailedOutboxEvent
 };

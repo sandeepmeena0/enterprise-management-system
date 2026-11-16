@@ -13,6 +13,27 @@ const { getUserAuthCache, setUserAuthCache } = require('../cache/userAuthCache')
 
 let io = null;
 
+function getEffectiveWhitelist(allowedOrigins = []) {
+  const defaults = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'https://enterprise-management-system-two.vercel.app',
+    process.env.FRONTEND_URL
+  ].filter(Boolean);
+
+  const set = new Set([...defaults, ...(Array.isArray(allowedOrigins) ? allowedOrigins : [])]);
+  return Array.from(set);
+}
+
+function checkOriginAllowed(origin, allowedOrigins = []) {
+  if (!origin) return false;
+  const whitelist = getEffectiveWhitelist(allowedOrigins);
+  // Strict EXACT match only: no regex wildcard or substring matching
+  return whitelist.includes(origin);
+}
+
 /**
  * Initialize Socket.IO with HTTP server and CORS configuration
  * @param {import('http').Server} httpServer
@@ -25,27 +46,28 @@ function initSocketServer(httpServer, allowedOrigins = []) {
   io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        // Allow requests with no origin (e.g. mobile apps, curl, or same-origin)
+        // Documented non-browser policy: Requests with no Origin header (e.g. mobile apps, curl, server-to-server)
+        // do not carry browser ambient credentials. They must pass explicit JWT authentication in handshake middleware.
         if (!origin) return callback(null, true);
-        const whitelist = [
-          'http://localhost:5173',
-          'http://localhost:5174',
-          'http://127.0.0.1:5173',
-          'http://127.0.0.1:5174',
-          'https://enterprise-management-system-two.vercel.app',
-          process.env.FRONTEND_URL,
-          ...(Array.isArray(allowedOrigins) ? allowedOrigins : [])
-        ].filter(Boolean);
 
-        // Allow configured origins, localhost, and vercel previews
-        const isAllowed = whitelist.some(w => origin === w || origin.endsWith('.vercel.app')) || origin.includes('localhost') || origin.includes('127.0.0.1');
-        if (isAllowed) {
+        // Strict exact match only
+        if (checkOriginAllowed(origin, allowedOrigins)) {
           return callback(null, true);
         }
-        return callback(new Error('CORS origin not allowed'));
+        return callback(new Error('CORS origin not allowed: ' + origin));
       },
       credentials: true,
       methods: ['GET', 'POST']
+    },
+    // Handshake-level gate restricting WebSocket transport before connection upgrade
+    allowRequest: (req, callback) => {
+      const origin = req.headers?.origin;
+      if (origin) {
+        if (!checkOriginAllowed(origin, allowedOrigins)) {
+          return callback(new Error('CORS origin not allowed: ' + origin), false);
+        }
+      }
+      return callback(null, true);
     },
     pingInterval: 25000, // 25s ping keeps Render connections active
     pingTimeout: 30000,  // 30s timeout
@@ -230,5 +252,7 @@ module.exports = {
   initSocketServer,
   getSocketServer,
   disconnectUserSockets,
-  resetSocketServerForTesting
+  resetSocketServerForTesting,
+  checkOriginAllowed,
+  getEffectiveWhitelist
 };

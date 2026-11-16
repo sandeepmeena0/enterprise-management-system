@@ -93,6 +93,10 @@ const AttendanceSchema = new mongoose.Schema(
       type: Number,
       default: Date.now
     },
+    version: {
+      type: Number,
+      default: 0
+    },
     isClockedIn: {
       type: Boolean,
       default: false

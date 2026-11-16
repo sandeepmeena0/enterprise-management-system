@@ -898,7 +898,8 @@ const markAttendance = asyncHandler(async (req, res) => {
     hasOvertime: overtimeHours > 0,
     notes: notes || (auditNote ? `Adjusted by ${adminActorName}: ${auditNote}` : (existingRecord?.notes || '')),
     markedBy: isPrivileged ? adminActorName : (targetEmpName || 'Self'),
-    lastHeartbeatAt: Date.now()
+    lastHeartbeatAt: Date.now(),
+    version: (existingRecord?.version || 0) + 1
   };
 
   // Only administrative updates can supply activeTask override
@@ -1165,7 +1166,10 @@ const markAttendance = asyncHandler(async (req, res) => {
         clockOutTime: record.clockOutTime || null,
         workSeconds: Number(record.workSeconds) || 0,
         breakSeconds: Number(record.breakSeconds) || 0,
-        status: calculatedStatus || record.status
+        status: calculatedStatus || record.status,
+        version: typeof record.version === 'number' ? record.version : 0,
+        serverTime: Date.now(),
+        updatedAt: record.updatedAt || new Date()
       };
       io.to(userRoom).emit('attendance:state_updated', attPayload);
 
@@ -2033,6 +2037,7 @@ const forceClockOut = asyncHandler(async (req, res) => {
 
     try {
       if (attRecord) {
+        attRecord.version = (attRecord.version || 0) + 1;
         await attRecord.save();
       } else {
         attRecord = await Attendance.create({
@@ -2050,7 +2055,8 @@ const forceClockOut = asyncHandler(async (req, res) => {
           isClockedIn: false,
           isOnBreak: false,
           markedBy: adminName,
-          notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
+          notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`,
+          version: 1
         });
       }
     } catch (saveErr) {
@@ -2121,7 +2127,10 @@ const forceClockOut = asyncHandler(async (req, res) => {
         clockOutTime: attRecord.clockOutTime,
         workSeconds: Number(attRecord.workSeconds) || 0,
         breakSeconds: Number(attRecord.breakSeconds) || 0,
-        status: attRecord.status
+        status: attRecord.status,
+        version: typeof attRecord.version === 'number' ? attRecord.version : 0,
+        serverTime: Date.now(),
+        updatedAt: attRecord.updatedAt || new Date()
       };
       io.to(userRoom).emit('attendance:state_updated', attOutPayload);
       io.to(userRoom).emit('attendance:clock_out', attOutPayload);
@@ -2365,7 +2374,8 @@ const updateLiveHeartbeat = asyncHandler(async (req, res) => {
     isOnBreak: Boolean(isOnBreak),
     breakType: breakType || null,
     breakStartTimestamp: breakStartTimestamp ? Number(breakStartTimestamp) : (isOnBreak && existingCached?.breakStartTimestamp ? existingCached.breakStartTimestamp : (isOnBreak ? Date.now() : null)),
-    activeTask: activeTask ? { ...activeTask, timerRunning: Boolean(activeTask.timerRunning !== false) } : null,
+    // Server authority: client heartbeat CANNOT overwrite authoritative timer state
+    activeTask: existingCached?.activeTask || null,
     lastHeartbeatAt: Date.now()
   };
 
@@ -2786,12 +2796,9 @@ const getLiveTelemetry = asyncHandler(async (req, res) => {
         return; // Ignore stale unclocked heartbeat from before clock-in
       }
 
-      let effectiveActiveTask = null;
-      if (cachedVal && 'activeTask' in cachedVal) {
-        effectiveActiveTask = cachedVal.activeTask;
-      } else if (existingTelem && existingTelem.activeTask) {
-        effectiveActiveTask = existingTelem.activeTask;
-      }
+      // Server Authority: Client heartbeat cannot overwrite active task timer state.
+      // Active task is exclusively derived from authoritative backend state.
+      let effectiveActiveTask = existingTelem && existingTelem.activeTask ? existingTelem.activeTask : null;
       if (effectiveActiveTask) {
         const isRunning = Boolean(effectiveActiveTask.timerRunning !== false && effectiveActiveTask.startedAt && cachedVal.isClockedIn && !cachedVal.isOnBreak);
         const taskStart = isRunning ? Number(effectiveActiveTask.startedAt) : null;

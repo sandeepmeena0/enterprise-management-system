@@ -80,6 +80,15 @@ export const TimerProvider = ({ children }) => {
   const isSyncingLiveStateRef = useRef(false);
   const lastSyncTimeRef = useRef(0);
 
+  // Server-authoritative monotonic attendance version and timestamp ordering
+  const latestAttendanceVersionRef = useRef(0);
+  const latestAttendanceTimestampRef = useRef(0);
+
+  useEffect(() => {
+    latestAttendanceVersionRef.current = 0;
+    latestAttendanceTimestampRef.current = 0;
+  }, [userKey]);
+
   // Resolve canonical employee profile from storage to bridge _id, employeeCode, and name
   const resolvedEmp = useMemo(() => {
     if (!currentUser) return null;
@@ -2419,6 +2428,30 @@ export const TimerProvider = ({ children }) => {
 
       if (!isForMe) return;
 
+      const eventVersion = Number(ev.payload?.version) || 0;
+      const eventTimestamp = Number(
+        ev.payload?.updatedAt
+          ? new Date(ev.payload.updatedAt).getTime()
+          : (ev.payload?.serverTime ? new Date(ev.payload.serverTime).getTime() : 0)
+      );
+
+      // Monotonic guard: discard stale out-of-order attendance packets
+      if (eventVersion > 0 && latestAttendanceVersionRef.current > 0 && eventVersion < latestAttendanceVersionRef.current) {
+        console.warn(`[TimerContext] Discarding stale attendance event version ${eventVersion} < ${latestAttendanceVersionRef.current}`);
+        return;
+      }
+      if (eventVersion > 0) {
+        latestAttendanceVersionRef.current = Math.max(latestAttendanceVersionRef.current, eventVersion);
+      }
+
+      if (eventTimestamp > 0 && latestAttendanceTimestampRef.current > 0 && eventTimestamp < latestAttendanceTimestampRef.current) {
+        console.warn(`[TimerContext] Discarding stale attendance event timestamp ${eventTimestamp} < ${latestAttendanceTimestampRef.current}`);
+        return;
+      }
+      if (eventTimestamp > 0) {
+        latestAttendanceTimestampRef.current = Math.max(latestAttendanceTimestampRef.current, eventTimestamp);
+      }
+
       if (ev.type === SYNC_EVENTS.SHIFT_CLOCKED_OUT) {
         setIsClockedIn(false);
         setIsRunning(false);
@@ -2430,13 +2463,6 @@ export const TimerProvider = ({ children }) => {
         window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { userKey } }));
         syncLiveShiftState();
       } else if (ev.type === SYNC_EVENTS.SHIFT_CLOCKED_IN) {
-        // Monotonic guard: do not let an older clock-in event override a newer clock-out
-        const outTs = Number(localStorage.getItem(`ems_timer_${userKey}_clock_out_timestamp`)) || 0;
-        const inTs = Number(ev.payload?.clockInTimestamp) || 0;
-        if (outTs > 0 && inTs > 0 && inTs <= outTs) {
-          return;
-        }
-
         setIsClockedIn(true);
         setClockOutTime(null);
         setIsRunning(true);
