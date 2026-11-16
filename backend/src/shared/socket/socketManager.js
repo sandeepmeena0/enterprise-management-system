@@ -27,11 +27,21 @@ function getEffectiveWhitelist(allowedOrigins = []) {
   return Array.from(set);
 }
 
+const LOCAL_HOST_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const LOCAL_NETWORK_REGEX = /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
+const VERCEL_PROJECT_REGEX = /^https:\/\/enterprise-management-system(-[a-z0-9-]+)?\.vercel\.app$/i;
+const RENDER_PROJECT_REGEX = /^https:\/\/.*\.onrender\.com$/i;
+
 function checkOriginAllowed(origin, allowedOrigins = []) {
   if (!origin) return false;
-  const whitelist = getEffectiveWhitelist(allowedOrigins);
-  // Strict EXACT match only: no regex wildcard or substring matching
-  return whitelist.includes(origin);
+  const clean = origin.trim().replace(/\/+$/, '');
+  const whitelist = getEffectiveWhitelist(allowedOrigins).map(o => o.trim().replace(/\/+$/, ''));
+  if (whitelist.includes(clean)) return true;
+  if (LOCAL_HOST_REGEX.test(clean)) return true;
+  if (LOCAL_NETWORK_REGEX.test(clean)) return true;
+  if (VERCEL_PROJECT_REGEX.test(clean)) return true;
+  if (RENDER_PROJECT_REGEX.test(clean)) return true;
+  return false;
 }
 
 /**

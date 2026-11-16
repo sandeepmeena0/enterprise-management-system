@@ -47,11 +47,23 @@ const allowedOrigins = [
   'http://127.0.0.1:5174',
   'https://enterprise-management-system-two.vercel.app',
   process.env.FRONTEND_URL
-].filter(Boolean);
+].filter(Boolean).map(o => o.trim().replace(/\/+$/, ''));
+
+// Localhost, private LAN IPs (Wi-Fi/mobile testing), and verified project deployments
+const LOCAL_HOST_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const LOCAL_NETWORK_REGEX = /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
+const VERCEL_PROJECT_REGEX = /^https:\/\/enterprise-management-system(-[a-z0-9-]+)?\.vercel\.app$/i;
+const RENDER_PROJECT_REGEX = /^https:\/\/.*\.onrender\.com$/i;
 
 const isOriginAllowed = (origin) => {
   if (!origin) return true; // Server-to-server, mobile or curl
-  return allowedOrigins.includes(origin);
+  const clean = origin.trim().replace(/\/+$/, '');
+  if (allowedOrigins.includes(clean)) return true;
+  if (LOCAL_HOST_REGEX.test(clean)) return true;
+  if (LOCAL_NETWORK_REGEX.test(clean)) return true;
+  if (VERCEL_PROJECT_REGEX.test(clean)) return true;
+  if (RENDER_PROJECT_REGEX.test(clean)) return true;
+  return false;
 };
 
 // Strict, Secure CORS & Preflight Handler

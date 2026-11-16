@@ -28,8 +28,14 @@ export const getSocketServerUrl = () => {
   }
 
   if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:5000';
+    const host = window.location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1' ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host);
+
+    if (isLocal) {
+      return `http://${host}:5000`;
     }
     return 'https://ems-backend-7zpi.onrender.com';
   }
