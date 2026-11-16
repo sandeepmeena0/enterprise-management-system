@@ -1,14 +1,76 @@
 /**
  * @file timeEngine.test.js
- * @description Automated Unit & Integration Tests for Task Timer Engine & Concurrency Control.
+ * @description Automated Unit & Integration Tests for Task Timer Engine,
+ * Attendance Guard Invariants, Idempotency & Concurrency Control.
  */
 
-const { test, describe } = require('node:test');
+const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
-const crypto = require('crypto');
-const { getISTDateString, computeRequestHash } = require('../src/modules/work/services/timeEngineService');
+const mongoose = require('mongoose');
+
+const Attendance = require('../src/modules/hr/models/Attendance');
+const Employee = require('../src/modules/hr/models/Employee');
+const ActiveTaskTimer = require('../src/modules/work/models/ActiveTaskTimer');
+const {
+  getISTDateString,
+  computeRequestHash,
+  verifyAttendanceActive,
+  pauseTimer
+} = require('../src/modules/work/services/timeEngineService');
+
+function stubQuery(result) {
+  return {
+    session() {
+      return this;
+    },
+    then(resolve, reject) {
+      return Promise.resolve(result).then(resolve, reject);
+    }
+  };
+}
 
 describe('Task Timer Engine & Concurrency Suite', () => {
+  let origFindOneAttendance;
+  let origFindByIdEmployee;
+  let origFindOneTimer;
+  let origStartSession;
+
+  beforeEach(() => {
+    origFindOneAttendance = Attendance.findOne;
+    origFindByIdEmployee = Employee.findById;
+    origFindOneTimer = ActiveTaskTimer.findOne;
+    origStartSession = mongoose.startSession;
+
+    mongoose.startSession = async () => ({
+      withTransaction: async (fn) => fn(),
+      endSession: async () => {}
+    });
+
+    Employee.findById = (id) => {
+      const emp = {
+        _id: id || new mongoose.Types.ObjectId('507f1f77bcf86cd799439011'),
+        name: 'Test Employee',
+        employeeCode: 'EMP-001',
+        role: 'Team Member',
+        status: 'active'
+      };
+      return {
+        ...emp,
+        select: () => ({
+          lean: async () => emp
+        }),
+        then: (resolve, reject) => Promise.resolve(emp).then(resolve, reject)
+      };
+    };
+  });
+
+  afterEach(() => {
+    Attendance.findOne = origFindOneAttendance;
+    Employee.findById = origFindByIdEmployee;
+    ActiveTaskTimer.findOne = origFindOneTimer;
+    mongoose.startSession = origStartSession;
+  });
+
   test('computeRequestHash generates deterministic SHA-256 hash of payload', () => {
     const payload = { taskId: 'task_123', targetEmployeeId: 'emp_456' };
     const hash1 = computeRequestHash(payload);
@@ -34,15 +96,13 @@ describe('Task Timer Engine & Concurrency Suite', () => {
   });
 
   test('Single Active Task Invariant: switching tasks auto-pauses previous task', () => {
-    // Simulate user timer state
     let activeTimer = {
       taskId: 'task_A',
       timerRunning: true,
-      startedAt: Date.now() - 3600 * 1000, // 1 hour ago
+      startedAt: Date.now() - 3600 * 1000,
       accumulatedSeconds: 0
     };
 
-    // User switches to task_B
     const now = Date.now();
     const elapsedOnA = Math.floor((now - activeTimer.startedAt) / 1000);
     const pausedA = {
@@ -69,12 +129,12 @@ describe('Task Timer Engine & Concurrency Suite', () => {
     let timer = {
       taskId: 'task_1',
       timerRunning: false,
-      accumulatedSeconds: 1800, // 30 minutes accumulated earlier
+      accumulatedSeconds: 1800,
       startedAt: null
     };
 
     // Resume timer
-    const resumeTs = Date.now() - 600 * 1000; // Ran for 10 minutes (600s)
+    const resumeTs = Date.now() - 600 * 1000;
     timer = {
       ...timer,
       timerRunning: true,
@@ -88,47 +148,89 @@ describe('Task Timer Engine & Concurrency Suite', () => {
     assert.ok(totalAccumulated >= 2399 && totalAccumulated <= 2405, 'Must combine baseline + current elapsed (approx 2400s = 40 mins)');
   });
 
-  test('Attendance State Invariant: task timer start/resume rejected when clocked out', () => {
-    function checkAttendanceState(attendanceRecord) {
-      if (!attendanceRecord || !attendanceRecord.isClockedIn || attendanceRecord.clockOutTime) {
-        const err = new Error('Cannot start task timer while clocked out. Please clock in for your shift first.');
-        err.statusCode = 400;
-        throw err;
+  // ── Testing verifyAttendanceActive Production Service ──
+  test('verifyAttendanceActive rejects with 400 when no attendance record exists today', async () => {
+    Attendance.findOne = () => stubQuery(null);
+
+    await assert.rejects(
+      async () => {
+        await verifyAttendanceActive('507f1f77bcf86cd799439011', '2026-11-16');
+      },
+      (err) => {
+        assert.equal(err.statusCode, 400);
+        assert.match(err.message, /Cannot start task timer while clocked out/i);
+        return true;
       }
-      if (attendanceRecord.isOnBreak) {
-        const err = new Error('Cannot start or resume task timer while on break. Please resume work first.');
-        err.statusCode = 400;
-        throw err;
+    );
+  });
+
+  test('verifyAttendanceActive rejects with 400 when employee is clocked out', async () => {
+    Attendance.findOne = () => stubQuery({
+      isClockedIn: false,
+      clockOutTime: '06:00 PM',
+      isOnBreak: false
+    });
+
+    await assert.rejects(
+      async () => {
+        await verifyAttendanceActive('507f1f77bcf86cd799439011', '2026-11-16');
+      },
+      (err) => {
+        assert.equal(err.statusCode, 400);
+        assert.match(err.message, /Cannot start task timer while clocked out/i);
+        return true;
       }
-      return true;
-    }
+    );
+  });
 
-    // 1. No attendance record today
-    assert.throws(() => checkAttendanceState(null), {
-      message: 'Cannot start task timer while clocked out. Please clock in for your shift first.',
-      statusCode: 400
+  test('verifyAttendanceActive rejects with 400 when employee is on break', async () => {
+    Attendance.findOne = () => stubQuery({
+      isClockedIn: true,
+      clockOutTime: null,
+      isOnBreak: true,
+      breakType: 'Lunch'
     });
 
-    // 2. Attendance record with isClockedIn = false
-    assert.throws(() => checkAttendanceState({ isClockedIn: false }), {
-      message: 'Cannot start task timer while clocked out. Please clock in for your shift first.',
-      statusCode: 400
+    await assert.rejects(
+      async () => {
+        await verifyAttendanceActive('507f1f77bcf86cd799439011', '2026-11-16');
+      },
+      (err) => {
+        assert.equal(err.statusCode, 400);
+        assert.match(err.message, /Cannot start or resume task timer while on break/i);
+        return true;
+      }
+    );
+  });
+
+  test('verifyAttendanceActive succeeds when employee is actively clocked in and not on break', async () => {
+    const activeRecord = {
+      isClockedIn: true,
+      clockOutTime: null,
+      isOnBreak: false,
+      clockInTime: '09:30 AM'
+    };
+    Attendance.findOne = () => stubQuery(activeRecord);
+
+    const result = await verifyAttendanceActive('507f1f77bcf86cd799439011', '2026-11-16');
+    assert.equal(result.isClockedIn, true);
+    assert.equal(result.isOnBreak, false);
+  });
+
+  // ── Testing pauseTimer Production Service ──
+  test('pauseTimer returns noOp: true and 200 message when no active timer is running', async () => {
+    ActiveTaskTimer.findOne = () => stubQuery({
+      status: 'IDLE',
+      employeeId: '507f1f77bcf86cd799439011'
     });
 
-    // 3. Attendance record with clockOutTime present
-    assert.throws(() => checkAttendanceState({ isClockedIn: true, clockOutTime: '06:00 PM' }), {
-      message: 'Cannot start task timer while clocked out. Please clock in for your shift first.',
-      statusCode: 400
+    const result = await pauseTimer({
+      actor: { _id: '507f1f77bcf86cd799439011', role: 'Team Member' },
+      targetEmployeeId: '507f1f77bcf86cd799439011'
     });
 
-    // 4. Employee is actively on break
-    assert.throws(() => checkAttendanceState({ isClockedIn: true, isOnBreak: true, clockOutTime: null }), {
-      message: 'Cannot start or resume task timer while on break. Please resume work first.',
-      statusCode: 400
-    });
-
-    // 5. Employee is actively clocked in and not on break -> succeeds
-    const valid = checkAttendanceState({ isClockedIn: true, isOnBreak: false, clockOutTime: null });
-    assert.equal(valid, true, 'Active clocked-in employee can start or resume task timer');
+    assert.equal(result.success, true);
+    assert.equal(result.noOp, true);
+    assert.match(result.message, /not currently running/i);
   });
 });

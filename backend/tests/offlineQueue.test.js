@@ -1,11 +1,13 @@
 /**
  * @file offlineQueue.test.js
- * @description Automated Unit & Integration Tests for Offline Timer Queue:
- * User-scoping, strict FIFO execution, execution lock, stable idempotency, and failure blocking.
+ * @description Automated Unit & Integration Tests for Offline Timer Queue Service:
+ * User-scoping, concurrent multi-user execution, execution locking, mid-flush account switch detection,
+ * stable idempotency, and failure blocking.
  */
 
-const { test, describe } = require('node:test');
+const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('path');
 
 // Mock localStorage engine for Node test environment
 class MockLocalStorage {
@@ -27,125 +29,228 @@ class MockLocalStorage {
 }
 
 describe('Offline Timer Queue Suite', () => {
+  let timerOfflineQueue;
+  let mockStorage;
+
+  beforeEach(async () => {
+    mockStorage = new MockLocalStorage();
+    global.localStorage = mockStorage;
+    global.window = {
+      addEventListener: () => {},
+      removeEventListener: () => {}
+    };
+
+    // Dynamically import production ES Module
+    const queueModulePath = path.resolve(__dirname, '../../src/modules/work/services/timerOfflineQueue.js');
+    timerOfflineQueue = await import(`file://${queueModulePath}?t=${Date.now()}`);
+  });
+
+  afterEach(() => {
+    mockStorage.clear();
+  });
+
   test('User scoping isolates queued timer actions between different employees', () => {
-    const mockStorage = new MockLocalStorage();
+    const { enqueueTimerAction, getOfflineTimerQueue, getOfflineQueueKey } = timerOfflineQueue;
     const userA = 'emp_user_A';
     const userB = 'emp_user_B';
 
-    const queueKeyA = `ems_timer_offline_queue_${userA}`;
-    const queueKeyB = `ems_timer_offline_queue_${userB}`;
+    const keyA = getOfflineQueueKey(userA);
+    const keyB = getOfflineQueueKey(userB);
 
-    assert.notEqual(queueKeyA, queueKeyB, 'Queue keys must be strictly isolated per user');
+    assert.equal(keyA, 'ems_timer_offline_queue_emp_user_A');
+    assert.equal(keyB, 'ems_timer_offline_queue_emp_user_B');
+    assert.notEqual(keyA, keyB, 'Queue keys must be strictly isolated per user');
 
     // User A enqueues START
-    mockStorage.setItem(queueKeyA, JSON.stringify([
-      { id: '1', type: 'START', payload: { taskId: 'task_A' }, idempotencyKey: 'idemp_A1' }
-    ]));
+    enqueueTimerAction('START', { taskId: 'task_A' }, userA);
 
     // User B enqueues PAUSE
-    mockStorage.setItem(queueKeyB, JSON.stringify([
-      { id: '2', type: 'PAUSE', payload: { taskId: 'task_B' }, idempotencyKey: 'idemp_B1' }
-    ]));
+    enqueueTimerAction('PAUSE', { taskId: 'task_B' }, userB);
 
-    const queueA = JSON.parse(mockStorage.getItem(queueKeyA));
-    const queueB = JSON.parse(mockStorage.getItem(queueKeyB));
+    const queueA = getOfflineTimerQueue(userA);
+    const queueB = getOfflineTimerQueue(userB);
 
     assert.equal(queueA.length, 1);
     assert.equal(queueA[0].payload.taskId, 'task_A');
+    assert.equal(queueA[0].type, 'START');
+
     assert.equal(queueB.length, 1);
     assert.equal(queueB[0].payload.taskId, 'task_B');
+    assert.equal(queueB[0].type, 'PAUSE');
   });
 
   test('FIFO queue preserves stable idempotency keys across retries', () => {
-    const originalItem = {
-      id: 'timer_act_123',
-      type: 'START',
-      payload: { taskId: 'task_001', targetEmployeeId: 'emp_001', idempotencyKey: 'stable_idemp_key_xyz' },
-      idempotencyKey: 'stable_idemp_key_xyz',
-      timestamp: Date.now()
+    const { enqueueTimerAction, getOfflineTimerQueue } = timerOfflineQueue;
+    const user = 'emp_user_1';
+
+    enqueueTimerAction('START', { taskId: 'task_001' }, user);
+    const queueBefore = getOfflineTimerQueue(user);
+    assert.equal(queueBefore.length, 1);
+
+    const originalKey = queueBefore[0].idempotencyKey;
+    assert.ok(originalKey && originalKey.startsWith('offline_'));
+
+    // Re-read queue (simulating app relaunch)
+    const queueAfter = getOfflineTimerQueue(user);
+    assert.equal(queueAfter[0].idempotencyKey, originalKey, 'Idempotency key must remain identical across retrievals');
+    assert.equal(queueAfter[0].payload.idempotencyKey, originalKey);
+  });
+
+  test('flushTimerQueue executes queued actions in strict FIFO order and empties queue on success', async () => {
+    const { enqueueTimerAction, flushTimerQueue, getOfflineTimerQueue } = timerOfflineQueue;
+    const user = 'user_worker';
+
+    // Simulate active auth session
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
+
+    enqueueTimerAction('START', { taskId: 'task_10' }, user);
+    enqueueTimerAction('PAUSE', { taskId: 'task_10' }, user);
+    enqueueTimerAction('COMPLETE', { taskId: 'task_10' }, user);
+
+    const executed = [];
+    const mockWorkService = {
+      startWorkSession: async (p) => { executed.push({ type: 'START', taskId: p.taskId }); },
+      pauseWorkSession: async (p) => { executed.push({ type: 'PAUSE', taskId: p.taskId }); },
+      completeWorkSession: async (p) => { executed.push({ type: 'COMPLETE', taskId: p.taskId }); }
     };
 
-    // Simulate serialization & deserialization across network drops
-    const serialized = JSON.stringify([originalItem]);
-    const deserialized = JSON.parse(serialized);
+    const count = await flushTimerQueue(mockWorkService, user);
+    assert.equal(count, 3, 'All 3 actions must be flushed');
+    assert.equal(executed.length, 3);
+    assert.equal(executed[0].type, 'START');
+    assert.equal(executed[1].type, 'PAUSE');
+    assert.equal(executed[2].type, 'COMPLETE');
 
-    assert.equal(deserialized[0].idempotencyKey, 'stable_idemp_key_xyz');
-    assert.equal(deserialized[0].payload.idempotencyKey, 'stable_idemp_key_xyz');
+    const remaining = getOfflineTimerQueue(user);
+    assert.equal(remaining.length, 0, 'Queue must be empty after full successful flush');
   });
 
   test('Failure blocking preserves failed action and all dependent subsequent actions in order', async () => {
-    const executedActions = [];
-    const queue = [
-      { id: '1', type: 'START', payload: { taskId: 'task_1' }, idempotencyKey: 'key_1' },
-      { id: '2', type: 'PAUSE', payload: { taskId: 'task_1' }, idempotencyKey: 'key_2' },
-      { id: '3', type: 'COMPLETE', payload: { taskId: 'task_1' }, idempotencyKey: 'key_3' }
-    ];
+    const { enqueueTimerAction, flushTimerQueue, getOfflineTimerQueue } = timerOfflineQueue;
+    const user = 'user_fail_test';
 
-    // Mock workService where action 2 fails with network timeout
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
+
+    enqueueTimerAction('START', { taskId: 'task_1' }, user);
+    enqueueTimerAction('PAUSE', { taskId: 'task_1' }, user);
+    enqueueTimerAction('COMPLETE', { taskId: 'task_1' }, user);
+
+    const executed = [];
     const mockWorkService = {
-      async startWorkSession(p) { executedActions.push({ type: 'START', taskId: p.taskId }); },
-      async pauseWorkSession(p) { throw new Error('Network timeout (503)'); },
-      async completeWorkSession(p) { executedActions.push({ type: 'COMPLETE', taskId: p.taskId }); }
+      startWorkSession: async (p) => { executed.push('START'); },
+      pauseWorkSession: async (p) => { throw new Error('Network timeout (503 Service Unavailable)'); },
+      completeWorkSession: async (p) => { executed.push('COMPLETE'); }
     };
 
-    // Simulate flushTimerQueue with failure blocking
-    let stoppedDueToFailure = false;
-    let flushedCount = 0;
-    const remaining = [];
+    const count = await flushTimerQueue(mockWorkService, user);
+    assert.equal(count, 1, 'Only first action (START) should succeed');
+    assert.deepEqual(executed, ['START']);
 
-    for (let i = 0; i < queue.length; i++) {
-      const item = queue[i];
-      if (stoppedDueToFailure) {
-        remaining.push(item);
-        continue;
-      }
-      try {
-        if (item.type === 'START') await mockWorkService.startWorkSession(item.payload);
-        else if (item.type === 'PAUSE') await mockWorkService.pauseWorkSession(item.payload);
-        else if (item.type === 'COMPLETE') await mockWorkService.completeWorkSession(item.payload);
-        flushedCount++;
-      } catch (err) {
-        stoppedDueToFailure = true;
-        remaining.push(item);
-      }
-    }
-
-    assert.equal(flushedCount, 1, 'Only action 1 should succeed');
-    assert.equal(executedActions.length, 1);
-    assert.equal(executedActions[0].type, 'START');
-
-    // Remaining must contain action 2 AND action 3 in strict FIFO order
-    assert.equal(remaining.length, 2);
-    assert.equal(remaining[0].id, '2', 'Failed action 2 remains at front of queue');
-    assert.equal(remaining[1].id, '3', 'Dependent action 3 remains queued after action 2');
+    const remaining = getOfflineTimerQueue(user);
+    assert.equal(remaining.length, 2, 'Failed action and subsequent actions must remain queued');
+    assert.equal(remaining[0].type, 'PAUSE', 'Failed PAUSE must be at front of queue for retry');
+    assert.equal(remaining[1].type, 'COMPLETE', 'Dependent COMPLETE must remain in sequence');
   });
 
-  test('Execution lock prevents concurrent flush executions', async () => {
-    let isFlushing = false;
-    let concurrentCallsBlocked = 0;
+  test('Execution lock prevents concurrent flush executions for the SAME user', async () => {
+    const { enqueueTimerAction, flushTimerQueue, isUserFlushing } = timerOfflineQueue;
+    const user = 'user_concurrent';
 
-    async function simulatedFlush() {
-      if (isFlushing) {
-        concurrentCallsBlocked++;
-        return 0;
-      }
-      isFlushing = true;
-      try {
-        await new Promise(r => setTimeout(r, 20));
-        return 1;
-      } finally {
-        isFlushing = false;
-      }
-    }
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
+    enqueueTimerAction('START', { taskId: 'task_conc' }, user);
 
-    // Trigger concurrent flushes
-    const [res1, res2, res3] = await Promise.all([
-      simulatedFlush(),
-      simulatedFlush(),
-      simulatedFlush()
+    let activeFlushes = 0;
+    let maxConcurrency = 0;
+
+    const mockWorkService = {
+      startWorkSession: async () => {
+        activeFlushes++;
+        maxConcurrency = Math.max(maxConcurrency, activeFlushes);
+        await new Promise((r) => setTimeout(r, 40));
+        activeFlushes--;
+      }
+    };
+
+    // Trigger two simultaneous flush executions for user_concurrent
+    const [c1, c2] = await Promise.all([
+      flushTimerQueue(mockWorkService, user),
+      flushTimerQueue(mockWorkService, user)
     ]);
 
-    assert.equal(concurrentCallsBlocked, 2, 'Two of the three concurrent flush calls must be blocked by the lock');
-    assert.equal(res1 + res2 + res3, 1, 'Only one flush execution should run to completion');
+    assert.equal(maxConcurrency, 1, 'Same user cannot execute concurrent flushes');
+    assert.equal(c1 + c2, 1, 'Only one flush execution should run to completion');
+    assert.equal(isUserFlushing(user), false, 'Lock is released after flush finishes');
+  });
+
+  test('Independent user flushes execute in parallel without cross-blocking', async () => {
+    const { enqueueTimerAction, flushTimerQueue, getActiveFlushingUsers } = timerOfflineQueue;
+    const userA = 'user_alpha';
+    const userB = 'user_beta';
+
+    enqueueTimerAction('START', { taskId: 'task_alpha' }, userA);
+    enqueueTimerAction('START', { taskId: 'task_beta' }, userB);
+
+    let usersFlushed = [];
+
+    const mockWorkServiceA = {
+      startWorkSession: async () => {
+        usersFlushed.push('alpha');
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+
+    const mockWorkServiceB = {
+      startWorkSession: async () => {
+        usersFlushed.push('beta');
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    };
+
+    // User A session for mock flush
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: userA } }));
+    const flushA = flushTimerQueue(mockWorkServiceA, userA);
+
+    // User B session for mock flush
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: userB } }));
+    const flushB = flushTimerQueue(mockWorkServiceB, userB);
+
+    await Promise.all([flushA, flushB]);
+
+    assert.ok(usersFlushed.includes('alpha'));
+    assert.ok(usersFlushed.includes('beta'));
+    assert.equal(getActiveFlushingUsers().length, 0, 'All user flush locks released');
+  });
+
+  test('Cross-account security: mid-flush account switch halts execution immediately', async () => {
+    const { enqueueTimerAction, flushTimerQueue, getOfflineTimerQueue } = timerOfflineQueue;
+    const userA = 'user_victim';
+    const userB = 'user_attacker';
+
+    // Start with User A logged in
+    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: userA } }));
+
+    enqueueTimerAction('START', { taskId: 'task_userA_1' }, userA);
+    enqueueTimerAction('PAUSE', { taskId: 'task_userA_1' }, userA);
+
+    const executed = [];
+    const mockWorkService = {
+      startWorkSession: async (p) => {
+        executed.push({ op: 'START', taskId: p.taskId });
+        // Simulating session hijacking or user logout + login of user B during the flight of first request!
+        global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: userB } }));
+      },
+      pauseWorkSession: async (p) => {
+        executed.push({ op: 'PAUSE', taskId: p.taskId });
+      }
+    };
+
+    const count = await flushTimerQueue(mockWorkService, userA);
+    assert.equal(count, 1, 'Only first action ran before session switch was caught');
+    assert.equal(executed.length, 1);
+
+    // Remaining in queue for userA must preserve second action intact
+    const remainingA = getOfflineTimerQueue(userA);
+    assert.equal(remainingA.length, 1);
+    assert.equal(remainingA[0].type, 'PAUSE');
   });
 });

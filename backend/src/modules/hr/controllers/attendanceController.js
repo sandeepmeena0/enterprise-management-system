@@ -232,6 +232,14 @@ const markAttendance = asyncHandler(async (req, res) => {
   }
 
   const todayStr = getLocalTodayStr();
+  const ALLOWED_STATUSES = ['present', 'late', 'half_day', 'absent', 'on_leave', 'holiday', 'day_off'];
+  if (status && !ALLOWED_STATUSES.includes(status)) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid attendance status '${status}'. Allowed statuses: ${ALLOWED_STATUSES.join(', ')}.`
+    });
+  }
+
   // Reject future date attendance for active presence statuses (present, late, half_day, absent).
   // Future dates can only be scheduled for 'on_leave' or 'holiday'.
   if (date > todayStr && ['present', 'late', 'half_day', 'absent'].includes(status)) {
@@ -249,6 +257,52 @@ const markAttendance = asyncHandler(async (req, res) => {
       success: false,
       message: `Unauthorized date (${date}). Non-administrative employees can only record attendance punches for today (${todayStr}).`
     });
+  }
+
+  // ── Administrative Validation & Audit Reason Requirement ──
+  if (isPrivileged) {
+    const auditReason = (auditNote || req.body.reason || notes || '').trim();
+    if (!auditReason && (req.body.isManualAdjustment || clockInTime || clockOutTime || workSeconds !== undefined)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Audit reason (auditNote or notes) is required for manual administrative attendance adjustments.'
+      });
+    }
+
+    if (workSeconds !== undefined && Number(workSeconds) < 0) {
+      return res.status(400).json({ success: false, message: 'workSeconds cannot be negative.' });
+    }
+    if (breakSeconds !== undefined && Number(breakSeconds) < 0) {
+      return res.status(400).json({ success: false, message: 'breakSeconds cannot be negative.' });
+    }
+
+    if (clockInTimestamp && Number(clockInTimestamp) > Date.now() + 60000) {
+      return res.status(400).json({ success: false, message: 'clockInTimestamp cannot be in the future.' });
+    }
+    if (clockOutTimestamp && Number(clockOutTimestamp) > Date.now() + 60000) {
+      return res.status(400).json({ success: false, message: 'clockOutTimestamp cannot be in the future.' });
+    }
+    if (clockInTimestamp && clockOutTimestamp && Number(clockOutTimestamp) <= Number(clockInTimestamp)) {
+      return res.status(400).json({ success: false, message: 'clockOutTimestamp must be strictly greater than clockInTimestamp.' });
+    }
+
+    // Validate punch sessions intervals & overlap
+    if (Array.isArray(req.body.punchSessions)) {
+      for (let i = 0; i < req.body.punchSessions.length; i++) {
+        const sess = req.body.punchSessions[i];
+        const inTs = Number(sess.inTimestamp);
+        const outTs = Number(sess.outTimestamp);
+        if (inTs && outTs && outTs <= inTs) {
+          return res.status(400).json({ success: false, message: `Invalid punch session ${i + 1}: outTimestamp must be greater than inTimestamp.` });
+        }
+        if (i > 0) {
+          const prevOut = Number(req.body.punchSessions[i - 1].outTimestamp);
+          if (prevOut && inTs && inTs < prevOut) {
+            return res.status(400).json({ success: false, message: `Punch session ${i + 1} overlaps with previous session.` });
+          }
+        }
+      }
+    }
   }
 
   const Employee = require('../models/Employee');
@@ -346,8 +400,32 @@ const markAttendance = asyncHandler(async (req, res) => {
 
   if (!isPrivileged) {
     // ── SERVER-AUTHORITATIVE LOGIC FOR ORDINARY EMPLOYEES ──
-    if (Boolean(isOnBreak)) {
+    if (Boolean(isOnBreak) || req.body.action === 'break_start') {
       // 1. Starting a Break
+      if (!existingRecord || !existingRecord.isClockedIn || existingRecord.clockOutTime) {
+        return res.status(400).json({ success: false, message: 'Cannot take a break while clocked out. Please clock in first.' });
+      }
+      if (existingRecord.isOnBreak) {
+        return res.status(400).json({ success: false, message: 'Employee is already on an active break. Cannot start another break.' });
+      }
+
+      // Auto-pause active task timer FIRST
+      try {
+        const timeEngineService = require('../../work/services/timeEngineService');
+        await timeEngineService.pauseTimer({
+          actor: req.user,
+          targetEmployeeId: targetEmpId,
+          reason: `Shift Break (${breakType || 'General'}) initiated`,
+          source: 'ATTENDANCE_BREAK'
+        });
+      } catch (timerErr) {
+        console.error('[attendanceController] Critical timer pause failure during break start:', timerErr);
+        return res.status(500).json({
+          success: false,
+          message: `Failed to pause active task timer during break: ${timerErr.message}. Break was not started to prevent desynchronization.`
+        });
+      }
+
       isCurrentlyOnBreak = true;
       finalBreakType = breakType || 'General';
       finalBreakStartTimestamp = nowTs;
@@ -356,8 +434,12 @@ const markAttendance = asyncHandler(async (req, res) => {
       finalBreakSecs = Number(existingRecord?.breakSeconds) || 0;
       totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
       calculatedStatus = existingRecord?.status || 'present';
-    } else if (existingRecord?.isOnBreak && isOnBreak === false) {
+    } else if (req.body.action === 'break_end' || req.body.isEndingBreak || (existingRecord?.isOnBreak && isOnBreak === false)) {
       // 2. Ending a Break / Resuming Work
+      if (!existingRecord || !existingRecord.isOnBreak) {
+        return res.status(400).json({ success: false, message: 'No active break found to end.' });
+      }
+
       const bStart = Number(existingRecord.breakStartTimestamp) || nowTs;
       const addedBreakSecs = Math.max(0, Math.floor((nowTs - bStart) / 1000));
       finalBreakSecs = (Number(existingRecord.breakSeconds) || 0) + addedBreakSecs;
@@ -377,10 +459,27 @@ const markAttendance = asyncHandler(async (req, res) => {
       finalWorkSecs = Number(existingRecord.workSeconds) || 0;
       totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
       calculatedStatus = existingRecord.status || 'present';
-    } else if (clockOutTime || isClockedIn === false) {
+    } else if (clockOutTime !== undefined || isClockedIn === false || req.body.action === 'clock_out') {
       // 3. Clocking Out of Shift
       if (!existingRecord || (!existingRecord.isClockedIn && existingRecord.clockOutTime)) {
-        return res.status(400).json({ success: false, message: 'Cannot clock out: no active clock-in session found for today.' });
+        return res.status(400).json({ success: false, message: 'Cannot clock out: employee is not currently clocked in for today.' });
+      }
+
+      // Auto-pause active task timer FIRST
+      try {
+        const timeEngineService = require('../../work/services/timeEngineService');
+        await timeEngineService.pauseTimer({
+          actor: req.user,
+          targetEmployeeId: targetEmpId,
+          reason: 'Shift Clock-out: automatic pause of active task timer',
+          source: 'ATTENDANCE_CLOCK_OUT'
+        });
+      } catch (timerErr) {
+        console.error('[attendanceController] Critical timer pause failure during clock-out:', timerErr);
+        return res.status(500).json({
+          success: false,
+          message: `Failed to pause active task timer during clock-out: ${timerErr.message}. Clock-out was not committed to prevent desynchronization.`
+        });
       }
 
       let totalBreaks = Number(existingRecord?.breakSeconds) || 0;
@@ -425,6 +524,13 @@ const markAttendance = asyncHandler(async (req, res) => {
       calculatedStatus = existingRecord?.status || 'present';
     } else {
       // 4. Clocking In / Resuming Shift
+      if (existingRecord && existingRecord.isClockedIn && !existingRecord.clockOutTime && !existingRecord.isOnBreak) {
+        return res.status(400).json({ success: false, message: 'Employee is already clocked in for today.' });
+      }
+      if (existingRecord && existingRecord.isOnBreak) {
+        return res.status(400).json({ success: false, message: 'Employee is currently on break. Please resume from break first.' });
+      }
+
       if (!existingRecord) {
         // First clock-in of the day
         finalClockInTime = nowTimeStr;
@@ -499,6 +605,25 @@ const markAttendance = asyncHandler(async (req, res) => {
     }
     finalWorkSecs = workSeconds !== undefined ? Number(workSeconds) : Math.round(totalWorkingHours * 3600);
     totalWorkingHours = +(finalWorkSecs / 3600).toFixed(2);
+
+    // If admin is closing the shift or initiating a break, ensure task timer is paused
+    if (finalClockOutTime || isCurrentlyClockedIn === false || isCurrentlyOnBreak) {
+      try {
+        const timeEngineService = require('../../work/services/timeEngineService');
+        await timeEngineService.pauseTimer({
+          actor: req.user,
+          targetEmployeeId: targetEmpId,
+          reason: `Admin adjustment: shift ${isCurrentlyOnBreak ? 'break' : 'closed'}`,
+          source: 'ADMIN_PORTAL'
+        });
+      } catch (timerErr) {
+        console.error('[attendanceController] Timer pause failed during admin adjustment:', timerErr);
+        return res.status(500).json({
+          success: false,
+          message: `Failed to pause active task timer during administrative adjustment: ${timerErr.message}.`
+        });
+      }
+    }
   }
 
   // Evaluate half-day if employee worked fewer hours than company half-day threshold
@@ -551,7 +676,10 @@ const markAttendance = asyncHandler(async (req, res) => {
     lastHeartbeatAt: Date.now()
   };
 
-  if ('activeTask' in req.body) updateFields.activeTask = req.body.activeTask;
+  // Only administrative updates can supply activeTask override
+  if (isPrivileged && 'activeTask' in req.body) {
+    updateFields.activeTask = req.body.activeTask;
+  }
 
   if (overtimeHours > 0) {
     updateFields.overtimeStatus = req.body.overtimeStatus || existingRecord?.overtimeStatus || 'approved';
@@ -605,24 +733,6 @@ const markAttendance = asyncHandler(async (req, res) => {
       liveTelemetryCache.set(String(targetEmpId), telemPayload);
     }
   } catch (_) {}
-
-  // Task Timer Integration: Auto-pause active task timer on shift clock-out or break start
-  if (record.isClockedIn === false || finalClockOutTime || Boolean(record.isOnBreak)) {
-    try {
-      const timeEngineService = require('../../work/services/timeEngineService');
-      const pauseReason = record.isOnBreak
-        ? `Shift Break (${record.breakType || 'General'}) initiated`
-        : 'Shift Clock-out: automatic pause of active task timer';
-      await timeEngineService.pauseTimer({
-        actor: req.user || { _id: targetEmpId, isAdmin: true },
-        targetEmployeeId: targetEmpId,
-        reason: pauseReason,
-        source: record.isOnBreak ? 'ATTENDANCE_BREAK' : 'ATTENDANCE_CLOCK_OUT'
-      });
-    } catch (_) {
-      // Safe to ignore if employee has no active timer running
-    }
-  }
 
   // Mandatory Audit Trail for Admin manual modifications
   if (isPrivileged && (auditNote || isAdminOverride || req.body.isManualAdjustment)) {
@@ -693,19 +803,45 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'records array is required' });
   }
 
-  for (const r of records) {
-    if (!r.employee || !r.date) {
-      return res.status(400).json({ success: false, message: 'Each record in bulk must contain employee and date.' });
-    }
-  }
+  const ALLOWED_BULK_FIELDS = [
+    'employeeId', 'employeeCode', 'employeeName',
+    'status', 'notes',
+    'firstClockInTime', 'clockInTime', 'clockOutTime',
+    'firstClockInTimestamp', 'clockInTimestamp', 'clockOutTimestamp',
+    'workSeconds', 'breakSeconds', 'totalWorkingHours',
+    'isLate', 'lateByMinutes', 'isClockedIn', 'isOnBreak'
+  ];
+  const ALLOWED_STATUSES = ['present', 'late', 'half_day', 'absent', 'on_leave', 'holiday', 'day_off'];
 
-  const operations = records.map(r => ({
-    updateOne: {
-      filter: { employee: r.employee, date: r.date },
-      update: { $set: r },
-      upsert: true
+  const operations = [];
+
+  for (let idx = 0; idx < records.length; idx++) {
+    const r = records[idx];
+    if (!r.employee || !r.date) {
+      return res.status(400).json({ success: false, message: `Record ${idx + 1} must contain employee and date.` });
     }
-  }));
+    if (r.status && !ALLOWED_STATUSES.includes(r.status)) {
+      return res.status(400).json({ success: false, message: `Record ${idx + 1} has invalid status '${r.status}'. Allowed: ${ALLOWED_STATUSES.join(', ')}.` });
+    }
+
+    // Whitelist sanitize fields to prevent mass-assignment of protected internal fields
+    const sanitizedUpdate = {};
+    for (const key of ALLOWED_BULK_FIELDS) {
+      if (key in r) {
+        sanitizedUpdate[key] = r[key];
+      }
+    }
+    sanitizedUpdate.markedBy = req.user?.name || 'Administrator';
+    sanitizedUpdate.lastHeartbeatAt = Date.now();
+
+    operations.push({
+      updateOne: {
+        filter: { employee: r.employee, date: r.date },
+        update: { $set: sanitizedUpdate },
+        upsert: true
+      }
+    });
+  }
 
   const result = await Attendance.bulkWrite(operations);
   res.status(200).json({ success: true, message: 'Bulk attendance recorded', data: result });
@@ -718,10 +854,22 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Forbidden. Administrative attendance permission required to delete attendance records.' });
   }
 
+  const auditReason = (req.body?.auditNote || req.body?.reason || '').trim();
+  if (!auditReason) {
+    return res.status(400).json({
+      success: false,
+      message: 'Audit reason (auditNote or reason) is required for attendance record deletion.'
+    });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid attendance record ID.' });
+  }
+
   const record = await Attendance.findById(req.params.id);
   if (!record) return res.status(404).json({ success: false, message: 'Attendance record not found' });
 
-  // Create audit log before deleting
+  // 1. Audit record MUST be created and successfully persisted before deletion
   try {
     await AttendanceAudit.create({
       employee: record.employee,
@@ -738,13 +886,18 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
       isAdminOverride: true,
       adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
       adminName: req.user?.name || 'Administrator',
-      auditNote: req.body?.auditNote || 'Administrative deletion of attendance record',
+      auditNote: req.body?.auditNote || req.body?.reason || 'Administrative deletion of attendance record',
       details: `Attendance record for ${record.employeeName} on ${record.date} was deleted by ${req.user?.name || 'Admin'}.`
     });
   } catch (auditErr) {
-    console.warn('[attendanceController] Could not create audit for deleteAttendanceRecord:', auditErr.message);
+    console.error('[attendanceController] Audit creation failed before attendance deletion:', auditErr);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to create audit log for deletion: ${auditErr.message}. Record was NOT deleted to preserve audit compliance.`
+    });
   }
 
+  // 2. Only if audit succeeded, perform deletion
   await Attendance.findByIdAndDelete(req.params.id);
   res.json({ success: true, message: 'Record deleted', data: {} });
 });
@@ -896,6 +1049,25 @@ const forceClockOut = asyncHandler(async (req, res) => {
   const targetEmpId = empDoc ? empDoc._id : (mongoose.Types.ObjectId.isValid(employeeId) ? employeeId : null);
   const targetEmpCode = empDoc ? empDoc.employeeCode : String(employeeId);
   const targetEmpName = empDoc ? empDoc.name : 'Employee';
+
+  // Auto-pause active task timer FIRST to prevent desynchronization
+  try {
+    const timeEngineService = require('../../work/services/timeEngineService');
+    if (targetEmpId) {
+      await timeEngineService.pauseTimer({
+        actor: req.user,
+        targetEmployeeId: targetEmpId,
+        reason: 'Admin forced clock-out',
+        source: 'ADMIN_PORTAL'
+      });
+    }
+  } catch (timerErr) {
+    console.error('[attendanceController] Critical timer pause failure during force clock-out:', timerErr);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to pause active task timer during force clock-out: ${timerErr.message}. Force clock-out aborted to prevent desynchronization.`
+    });
+  }
 
   // Build match query for Attendance record without invalid ObjectId casting
   const matchOr = [
@@ -1059,36 +1231,6 @@ const forceClockOut = asyncHandler(async (req, res) => {
     auditNote: noteText,
     details: `Administrator ${adminName} [ID: ${adminId}] manually forced shift clock-out. Reason: "${noteText}"`
   });
-
-  // Automatically pause any running task in MongoDB for this employee
-  try {
-    const taskMatch = [
-      { assignedToId: String(employeeId) },
-      { assignedToId: String(targetEmpCode) },
-      { assignedToIds: String(employeeId) },
-      { assignedToIds: String(targetEmpCode) },
-      { activeUserId: String(employeeId) },
-      { activeUserId: String(targetEmpCode) }
-    ];
-    if (targetEmpId) {
-      taskMatch.push({ assignedTo: targetEmpId });
-    }
-    try {
-      const timeEngineService = require('../../work/services/timeEngineService');
-      if (targetEmpId) {
-        await timeEngineService.pauseTimer({
-          actor: req.user,
-          targetEmployeeId: targetEmpId,
-          reason: 'Admin forced clock-out',
-          source: 'ADMIN_PORTAL'
-        });
-      }
-    } catch (engineErr) {
-      console.warn('timeEngine pause in forceClockOut notice:', engineErr.message);
-    }
-  } catch (taskErr) {
-    console.warn('Failed to auto-pause tasks during force clock-out:', taskErr);
-  }
 
   try {
     await auditEntry.save();

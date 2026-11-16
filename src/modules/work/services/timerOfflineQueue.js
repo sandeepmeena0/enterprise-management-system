@@ -3,12 +3,12 @@
  * @description Persistent offline action queue for task timer operations.
  * Enqueues timer actions when offline or during transient network interruptions,
  * and flushes them sequentially in FIFO order when connectivity is restored.
- * Strictly scoped per authenticated user with execution concurrency lock,
- * stable idempotency keys, and failure blocking.
+ * Strictly scoped per authenticated user with per-user execution locking,
+ * cross-account identity protection, stable idempotency keys, and failure blocking.
  */
 
 /**
- * Helper to resolve the currently active user ID
+ * Helper to resolve the currently active user ID from explicit argument or local auth session
  * @param {string|null} explicitUserId
  * @returns {string}
  */
@@ -93,8 +93,27 @@ export function enqueueTimerAction(type, payload = {}, userId = null) {
   return entry;
 }
 
-// Execution lock to prevent concurrent flush operations
-let isFlushing = false;
+// Per-user execution lock Set: Allows independent parallel flushes for different users
+// while strictly serializing and blocking concurrent flushes for the same user.
+const activeUserFlushes = new Set();
+
+/**
+ * Checks whether a given user queue is currently in the process of flushing
+ * @param {string|null} userId
+ * @returns {boolean}
+ */
+export function isUserFlushing(userId = null) {
+  const uid = getActiveUserId(userId);
+  return activeUserFlushes.has(uid);
+}
+
+/**
+ * Returns all currently flushing user IDs
+ * @returns {string[]}
+ */
+export function getActiveFlushingUsers() {
+  return Array.from(activeUserFlushes);
+}
 
 /**
  * Flush all queued actions to the backend sequentially in strict FIFO order
@@ -103,12 +122,17 @@ let isFlushing = false;
  * @returns {Promise<number>} number of successfully flushed actions
  */
 export async function flushTimerQueue(workServiceInstance, userId = null) {
-  if (isFlushing) return 0;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return 0;
+  const targetUserId = getActiveUserId(userId);
+  if (activeUserFlushes.has(targetUserId)) {
+    return 0; // Same-user concurrent flush blocked
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return 0;
+  }
 
-  isFlushing = true;
+  activeUserFlushes.add(targetUserId);
   try {
-    const queue = getOfflineTimerQueue(userId);
+    const queue = getOfflineTimerQueue(targetUserId);
     if (!queue || queue.length === 0) return 0;
 
     let flushedCount = 0;
@@ -120,6 +144,15 @@ export async function flushTimerQueue(workServiceInstance, userId = null) {
 
       // Failure blocking: once an action fails, all subsequent actions must remain queued
       if (stoppedDueToFailure) {
+        remaining.push(item);
+        continue;
+      }
+
+      // Cross-account safety: verify that current active session has not switched to another user
+      const currentActiveSessionUid = getActiveUserId();
+      if (currentActiveSessionUid !== targetUserId) {
+        console.warn(`[TimerOfflineQueue] Session switched from ${targetUserId} to ${currentActiveSessionUid} mid-flush. Aborting to prevent cross-account credential usage.`);
+        stoppedDueToFailure = true;
         remaining.push(item);
         continue;
       }
@@ -144,15 +177,16 @@ export async function flushTimerQueue(workServiceInstance, userId = null) {
         flushedCount++;
       } catch (err) {
         console.warn(`[TimerOfflineQueue] Action ${item.type} failed:`, err.message);
+        // Preserve failed action and all dependent subsequent actions in strict FIFO order
         stoppedDueToFailure = true;
         remaining.push(item);
       }
     }
 
-    saveOfflineTimerQueue(remaining, userId);
+    saveOfflineTimerQueue(remaining, targetUserId);
     return flushedCount;
   } finally {
-    isFlushing = false;
+    activeUserFlushes.delete(targetUserId);
   }
 }
 
