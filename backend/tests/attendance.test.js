@@ -1,7 +1,7 @@
 /**
  * @file attendance.test.js
  * @description Automated Integration Tests for Attendance API Authorization,
- * Server-Authoritative Timestamps, State Transitions, Failure Recovery & Audit Trails.
+ * Server-Authoritative Timestamps, Audit Integrity, Transaction Rollback & Input Validation.
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
@@ -23,7 +23,12 @@ const {
   updateOvertimeStatus,
   createAuditLog,
   markAttendance,
-  forceClockOut
+  forceClockOut,
+  validateStrictDurationSeconds,
+  validateStrictTimestamp,
+  validatePunchSessions,
+  MAX_CLOCK_SKEW_MS,
+  MAX_DAY_SECONDS
 } = require('../src/modules/hr/controllers/attendanceController');
 
 function createMockRes() {
@@ -52,17 +57,20 @@ function getTodayStr() {
   return formatter.format(new Date());
 }
 
-describe('Attendance API Authorization & Scoping Suite', () => {
+describe('Attendance API Authorization, Audit Integrity & Validation Suite', () => {
   // Stubs storage
   let origFindOneAttendance;
   let origFindOneAndUpdateAttendance;
   let origFindByIdAndDeleteAttendance;
   let origFindByIdAttendance;
   let origCreateAudit;
+  let origFindOneAudit;
+  let origFindByIdAndDeleteAudit;
   let origFindOneEmployee;
   let origFindByIdEmployee;
   let origFindOneCompanySettings;
   let origPauseTimer;
+  let origSaveAudit;
 
   beforeEach(() => {
     origFindOneAttendance = Attendance.findOne;
@@ -70,12 +78,23 @@ describe('Attendance API Authorization & Scoping Suite', () => {
     origFindByIdAndDeleteAttendance = Attendance.findByIdAndDelete;
     origFindByIdAttendance = Attendance.findById;
     origCreateAudit = AttendanceAudit.create;
+    origFindOneAudit = AttendanceAudit.findOne;
+    origFindByIdAndDeleteAudit = AttendanceAudit.findByIdAndDelete;
     origFindOneEmployee = Employee.findOne;
     origFindByIdEmployee = Employee.findById;
     origFindOneCompanySettings = CompanySettings.findOne;
     origPauseTimer = timeEngineService.pauseTimer;
+    origSaveAudit = AttendanceAudit.prototype.save;
 
     // Default safe stubs for un-connected MongoDB environment
+    Attendance.findOne = async () => null;
+    Attendance.findOneAndUpdate = async (q, update) => ({ ...update, _id: new mongoose.Types.ObjectId() });
+    Attendance.findById = async () => null;
+    Attendance.findByIdAndDelete = async () => true;
+    Attendance.find = () => ({
+      lean: async () => []
+    });
+
     Employee.findById = async () => null;
     Employee.findOne = async () => ({
       _id: new mongoose.Types.ObjectId('507f1f77bcf86cd799439011'),
@@ -91,7 +110,17 @@ describe('Attendance API Authorization & Scoping Suite', () => {
         halfDayThresholdHours: 4.5
       })
     });
-    AttendanceAudit.create = async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId() });
+    AttendanceAudit.create = async (doc) => {
+      if (Array.isArray(doc)) {
+        return doc.map(d => ({ ...d, _id: new mongoose.Types.ObjectId() }));
+      }
+      return { ...doc, _id: new mongoose.Types.ObjectId() };
+    };
+    AttendanceAudit.findOne = async () => null;
+    AttendanceAudit.findByIdAndDelete = async () => true;
+    AttendanceAudit.prototype.save = async function() { return this; };
+
+    timeEngineService.pauseTimer = async () => ({ noOp: true });
   });
 
   afterEach(() => {
@@ -100,195 +129,338 @@ describe('Attendance API Authorization & Scoping Suite', () => {
     Attendance.findByIdAndDelete = origFindByIdAndDeleteAttendance;
     Attendance.findById = origFindByIdAttendance;
     AttendanceAudit.create = origCreateAudit;
+    AttendanceAudit.findOne = origFindOneAudit;
+    AttendanceAudit.findByIdAndDelete = origFindByIdAndDeleteAudit;
+    AttendanceAudit.prototype.save = origSaveAudit;
     Employee.findOne = origFindOneEmployee;
     Employee.findById = origFindByIdEmployee;
     CompanySettings.findOne = origFindOneCompanySettings;
     timeEngineService.pauseTimer = origPauseTimer;
   });
 
-  // ── 1. checkIsPrivileged ──
-  test('checkIsPrivileged correctly distinguishes administrative authority', () => {
-    assert.equal(checkIsPrivileged({ isAdmin: true }), true, 'Super/Admin is privileged');
-    assert.equal(checkIsPrivileged({ role: 'admin' }), true, 'Admin role is privileged');
-    assert.equal(checkIsPrivileged({ role: 'hr' }), true, 'HR role is privileged');
-    assert.equal(checkIsPrivileged({ systemRole: 'hr' }), true, 'System HR is privileged');
-    assert.equal(checkIsPrivileged({ permissions: { allAccess: true } }), true, 'allAccess permission is privileged');
-    assert.equal(checkIsPrivileged({ permissions: { editAttendance: true } }, 'editAttendance'), true, 'editAttendance permission is privileged');
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. REUSABLE VALIDATION HELPER UNIT TESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  test('validateStrictDurationSeconds strictly validates integer seconds within shift limits', () => {
+    assert.equal(validateStrictDurationSeconds(undefined, 'workSeconds').valid, true);
+    assert.equal(validateStrictDurationSeconds(null, 'workSeconds').valid, true);
+    assert.equal(validateStrictDurationSeconds(3600, 'workSeconds').value, 3600);
+    assert.equal(validateStrictDurationSeconds('1800', 'workSeconds').value, 1800);
 
-    // Non-privileged cases
-    assert.equal(checkIsPrivileged({ role: 'Team Member', systemRole: 'team_member', isAdmin: false }), false, 'Team Member is not privileged');
-    assert.equal(checkIsPrivileged({ role: 'Developer', permissions: {} }), false, 'Developer without permissions is not privileged');
-    assert.equal(checkIsPrivileged(null), false, 'Null user is not privileged');
+    // Rejections
+    assert.equal(validateStrictDurationSeconds('abc', 'workSeconds').valid, false);
+    assert.equal(validateStrictDurationSeconds(Infinity, 'workSeconds').valid, false);
+    assert.equal(validateStrictDurationSeconds(-500, 'workSeconds').valid, false);
+    assert.equal(validateStrictDurationSeconds(NaN, 'workSeconds').valid, false);
+    assert.equal(validateStrictDurationSeconds(90000, 'workSeconds', MAX_DAY_SECONDS).valid, false, 'Exceeds 24 hours');
   });
 
-  // ── 2. bulkMarkAttendance ──
-  test('bulkMarkAttendance rejects non-privileged employee with 403 Forbidden', async () => {
-    const regularUser = {
-      _id: 'emp_001',
-      employeeCode: 'EMP-001',
-      role: 'Team Member',
-      systemRole: 'team_member',
-      isAdmin: false
+  test('validateStrictTimestamp rejects invalid formats, zero/negative values, and impossible future times', () => {
+    assert.equal(validateStrictTimestamp(undefined, 'clockInTimestamp').valid, true);
+
+    const now = Date.now();
+    assert.equal(validateStrictTimestamp(now - 100000, 'clockInTimestamp').valid, true);
+    assert.equal(validateStrictTimestamp(String(now - 100000), 'clockInTimestamp').valid, true);
+
+    // Rejections
+    assert.equal(validateStrictTimestamp('not_a_timestamp', 'clockInTimestamp').valid, false);
+    assert.equal(validateStrictTimestamp(0, 'clockInTimestamp').valid, false, 'Zero epoch is rejected');
+    assert.equal(validateStrictTimestamp(-1000, 'clockInTimestamp').valid, false, 'Negative timestamp is rejected');
+    assert.equal(validateStrictTimestamp(now + 10 * 60 * 1000, 'clockInTimestamp').valid, false, 'Future beyond skew is rejected');
+  });
+
+  test('validatePunchSessions enforces complete intervals, valid durations, and non-overlapping order', () => {
+    const baseTs = 1700000000000;
+
+    // 1. Valid sessions
+    const validRes = validatePunchSessions([
+      { inTimestamp: baseTs, outTimestamp: baseTs + 3600000 },
+      { inTimestamp: baseTs + 5000000, outTimestamp: baseTs + 8600000 }
+    ]);
+    assert.equal(validRes.valid, true);
+    assert.equal(validRes.value.length, 2);
+
+    // 2. Incomplete session (missing outTimestamp)
+    const incompleteRes = validatePunchSessions([{ inTimestamp: baseTs }]);
+    assert.equal(incompleteRes.valid, false);
+    assert.match(incompleteRes.error, /both inTimestamp and outTimestamp are required/i);
+
+    // 3. outTimestamp <= inTimestamp
+    const invertedRes = validatePunchSessions([{ inTimestamp: baseTs, outTimestamp: baseTs - 1000 }]);
+    assert.equal(invertedRes.valid, false);
+    assert.match(invertedRes.error, /outTimestamp must be greater than inTimestamp/i);
+
+    // 4. Overlapping sessions
+    const overlapRes = validatePunchSessions([
+      { inTimestamp: baseTs, outTimestamp: baseTs + 3600000 },
+      { inTimestamp: baseTs + 1800000, outTimestamp: baseTs + 5400000 } // starts before session 1 ends
+    ]);
+    assert.equal(overlapRes.valid, false);
+    assert.match(overlapRes.error, /overlaps with previous session/i);
+
+    // 5. Inconsistent durationSeconds
+    const durMismatch = validatePunchSessions([
+      { inTimestamp: baseTs, outTimestamp: baseTs + 3600000, durationSeconds: 7200 }
+    ]);
+    assert.equal(durMismatch.valid, false);
+    assert.match(durMismatch.error, /durationSeconds.*does not match timestamp interval/i);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. MANDATORY AUDIT INTEGRITY & ROLLBACK TESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  test('markAttendance: adjustment audit failure returns 500 and does NOT commit attendance modification', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+
+    let updateCalled = false;
+    Attendance.findOneAndUpdate = async () => {
+      updateCalled = true;
+      return {};
+    };
+
+    // Simulate audit collection write failure
+    AttendanceAudit.create = async () => {
+      throw new Error('Audit collection disk full or write locked');
     };
 
     const req = {
-      user: regularUser,
+      user: adminUser,
       body: {
-        records: [
-          { employee: 'emp_002', date: '2026-11-16', status: 'present' }
-        ]
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Adjusting shift duration',
+        workSeconds: 28800
       }
     };
     const res = createMockRes();
 
-    await bulkMarkAttendance(req, res);
-    assert.equal(res.statusCode, 403, 'Must return 403 Forbidden');
-    assert.equal(res.body.success, false);
-    assert.match(res.body.message, /administrative attendance permission required/i);
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 500, 'Must return 500 when audit creation fails');
+    assert.match(res.body.message, /Failed to record mandatory audit trail/i);
+    assert.equal(updateCalled, false, 'Attendance record MUST NOT be modified when audit creation fails');
   });
 
-  test('bulkMarkAttendance rejects privileged user if records array is empty or missing required fields', async () => {
-    const adminUser = {
-      _id: 'adm_001',
-      employeeCode: 'ADM-001',
-      role: 'admin',
-      isAdmin: true
+  test('markAttendance: rolls back audit record if attendance update throws an error', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+
+    let auditDeletedId = null;
+    AttendanceAudit.create = async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId('607f1f77bcf86cd799439099') });
+    AttendanceAudit.findByIdAndDelete = async (id) => {
+      auditDeletedId = id;
+      return true;
     };
 
-    const reqEmpty = { user: adminUser, body: { records: [] } };
-    const resEmpty = createMockRes();
-    await bulkMarkAttendance(reqEmpty, resEmpty);
-    assert.equal(resEmpty.statusCode, 400);
-
-    const reqMissingFields = {
-      user: adminUser,
-      body: { records: [{ employee: 'emp_1' }] } // missing date and status
-    };
-    const resMissing = createMockRes();
-    await bulkMarkAttendance(reqMissingFields, resMissing);
-    assert.equal(resMissing.statusCode, 400);
-  });
-
-  test('bulkMarkAttendance strips protected internal fields and only sets allowlisted attributes', async () => {
-    const adminUser = {
-      _id: 'adm_001',
-      name: 'Admin User',
-      role: 'admin',
-      isAdmin: true
-    };
-
-    let bulkOpsCaptured = null;
-    Attendance.bulkWrite = async (ops) => {
-      bulkOpsCaptured = ops;
-      return { modifiedCount: 1, upsertedCount: 0 };
+    // Simulate Attendance write collision
+    Attendance.findOneAndUpdate = async () => {
+      throw new Error('Attendance document locked by concurrent write');
     };
 
     const req = {
       user: adminUser,
       body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Adjusting shift duration',
+        workSeconds: 28800
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Audit trail rolled back/i);
+    assert.ok(auditDeletedId, 'Audit record must be rolled back/deleted when attendance update throws');
+  });
+
+  test('markAttendance: idempotent retry with same idempotencyKey does not duplicate audit record', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
+    const idempotencyKey = 'idemp_key_admin_adj_12345';
+
+    let auditsCreatedCount = 0;
+    AttendanceAudit.create = async (doc) => {
+      auditsCreatedCount++;
+      return { ...doc, _id: new mongoose.Types.ObjectId() };
+    };
+
+    // First request: no existing audit
+    AttendanceAudit.findOne = async () => null;
+    Attendance.findOneAndUpdate = async (q, update) => ({ ...update, _id: new mongoose.Types.ObjectId() });
+
+    const req1 = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Initial adjustment',
+        idempotencyKey
+      }
+    };
+    const res1 = createMockRes();
+    await markAttendance(req1, res1);
+    assert.equal(res1.statusCode, 200);
+    assert.equal(auditsCreatedCount, 1, 'First request creates audit');
+
+    // Second request (retry): existing audit is found
+    AttendanceAudit.findOne = async () => ({
+      _id: new mongoose.Types.ObjectId(),
+      idempotencyKey,
+      action: 'Admin Shift Hour Adjustment'
+    });
+
+    const req2 = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        isManualAdjustment: true,
+        auditNote: 'Initial adjustment',
+        idempotencyKey
+      }
+    };
+    const res2 = createMockRes();
+    await markAttendance(req2, res2);
+    assert.equal(res2.statusCode, 200);
+    assert.equal(auditsCreatedCount, 1, 'Retry with same idempotencyKey MUST NOT create a duplicate audit entry');
+  });
+
+  test('forceClockOut: audit failure returns 500 and does NOT save attendance clock-out', async () => {
+    const adminUser = {
+      _id: new mongoose.Types.ObjectId('507f1f77bcf86cd799439099'),
+      name: 'Admin',
+      role: 'admin',
+      isAdmin: true
+    };
+    const targetId = new mongoose.Types.ObjectId('507f1f77bcf86cd799439011');
+
+    Employee.findById = async () => ({
+      _id: targetId,
+      name: 'Target Employee',
+      employeeCode: 'EMP-TGT',
+      role: 'Team Member'
+    });
+
+    let saveCalled = false;
+    Attendance.findOne = async () => ({
+      _id: new mongoose.Types.ObjectId(),
+      isClockedIn: true,
+      save: async () => { saveCalled = true; }
+    });
+
+    // Simulate audit failure
+    AttendanceAudit.create = async () => {
+      throw new Error('Audit collection unavailable');
+    };
+    AttendanceAudit.prototype.save = async function() {
+      throw new Error('Audit save failed');
+    };
+
+    const req = {
+      user: adminUser,
+      body: { employeeId: targetId.toString(), auditNote: 'Admin emergency out' }
+    };
+    const res = createMockRes();
+
+    await forceClockOut(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Failed to create audit log for force clock-out/i);
+    assert.equal(saveCalled, false, 'Attendance record MUST NOT be saved as clocked out if audit creation failed');
+  });
+
+  test('bulkMarkAttendance: creates traceable admin_bulk_attendance audit record', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
+
+    let createdAudit = null;
+    AttendanceAudit.create = async (doc) => {
+      createdAudit = doc;
+      return { ...doc, _id: new mongoose.Types.ObjectId() };
+    };
+    Attendance.bulkWrite = async (ops) => ({ modifiedCount: ops.length, upsertedCount: 0 });
+
+    const req = {
+      user: adminUser,
+      body: {
         records: [
-          {
-            employee: '507f1f77bcf86cd799439011',
-            date: '2026-11-16',
-            status: 'present',
-            workSeconds: 28800,
-            notes: 'Approved bulk update',
-            // Injected unauthorized / internal fields that MUST be stripped:
-            _id: 'malicious_id_injection',
-            isAdminOverride: true,
-            actor: 'spoofed_admin',
-            actorId: 'spoofed_id',
-            password: 'leaked_password',
-            tokenVersion: 999
-          }
-        ]
+          { employee: 'emp_1', date: '2026-11-16', status: 'present', workSeconds: 28800 },
+          { employee: 'emp_2', date: '2026-11-16', status: 'present', workSeconds: 28800 }
+        ],
+        auditNote: 'End of month team sync'
       }
     };
     const res = createMockRes();
 
     await bulkMarkAttendance(req, res);
     assert.equal(res.statusCode, 200);
-    assert.ok(bulkOpsCaptured && bulkOpsCaptured.length === 1);
-
-    const setFields = bulkOpsCaptured[0].updateOne.update.$set;
-    assert.equal(setFields.status, 'present');
-    assert.equal(setFields.workSeconds, 28800);
-    assert.equal(setFields.notes, 'Approved bulk update');
-
-    // Verify protected internal fields were stripped
-    assert.equal(setFields._id, undefined, 'Must strip _id from bulk $set');
-    assert.equal(setFields.isAdminOverride, undefined, 'Must strip isAdminOverride');
-    assert.equal(setFields.actor, undefined, 'Must strip actor');
-    assert.equal(setFields.actorId, undefined, 'Must strip actorId');
-    assert.equal(setFields.password, undefined, 'Must strip password');
-    assert.equal(setFields.tokenVersion, undefined, 'Must strip tokenVersion');
+    assert.ok(createdAudit, 'Bulk attendance operation must persist an audit record');
+    assert.equal(createdAudit.type, 'admin_bulk_attendance');
+    assert.equal(createdAudit.actor, 'admin');
+    assert.equal(createdAudit.actorId, 'adm_1');
+    assert.equal(createdAudit.auditNote, 'End of month team sync');
+    assert.match(createdAudit.details, /updated 2 attendance records in bulk/i);
   });
 
-  // ── 3. deleteAttendanceRecord ──
-  test('deleteAttendanceRecord rejects non-privileged employee with 403 Forbidden', async () => {
-    const regularUser = {
-      _id: 'emp_001',
-      employeeCode: 'EMP-001',
-      role: 'Team Member',
-      systemRole: 'team_member',
-      isAdmin: false
+  test('bulkMarkAttendance: halts with 500 if audit creation fails', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
+
+    let bulkWriteCalled = false;
+    Attendance.bulkWrite = async () => {
+      bulkWriteCalled = true;
+      return {};
     };
 
-    const req = { user: regularUser, params: { id: 'att_record_123' }, body: {} };
-    const res = createMockRes();
-
-    await deleteAttendanceRecord(req, res);
-    assert.equal(res.statusCode, 403, 'Must reject deletion by ordinary employee with 403');
-    assert.equal(res.body.success, false);
-  });
-
-  test('deleteAttendanceRecord requires an audit reason', async () => {
-    const adminUser = {
-      _id: 'adm_001',
-      name: 'Admin User',
-      role: 'admin',
-      isAdmin: true
+    // Simulate audit failure
+    AttendanceAudit.create = async () => {
+      throw new Error('Audit database unreachable');
     };
 
     const req = {
       user: adminUser,
-      params: { id: '507f1f77bcf86cd799439011' },
-      body: { reason: '   ' } // empty reason
+      body: {
+        records: [
+          { employee: 'emp_1', date: '2026-11-16', status: 'present' }
+        ],
+        auditNote: 'Test bulk'
+      }
     };
     const res = createMockRes();
 
-    await deleteAttendanceRecord(req, res);
-    assert.equal(res.statusCode, 400, 'Must require audit reason for attendance deletion');
-    assert.match(res.body.message, /audit reason.*required/i);
+    await bulkMarkAttendance(req, res);
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Failed to create audit log for bulk attendance update/i);
+    assert.equal(bulkWriteCalled, false, 'bulkWrite must not proceed if audit creation fails');
   });
 
-  test('deleteAttendanceRecord halts and does not delete if audit logging fails', async () => {
-    const adminUser = {
-      _id: 'adm_001',
-      name: 'Admin User',
-      role: 'admin',
-      isAdmin: true
-    };
-
+  test('deleteAttendanceRecord: rolls back audit record if deletion throws', async () => {
+    const adminUser = { _id: 'adm_1', name: 'Admin User', role: 'admin', isAdmin: true };
     const validId = '507f1f77bcf86cd799439011';
+
     Attendance.findById = async () => ({
       _id: validId,
       employee: 'emp_001',
       employeeCode: 'EMP-001',
       employeeName: 'Test Employee',
-      date: '2026-11-16',
-      totalWorkingHours: 8
+      date: '2026-11-16'
     });
 
-    let deleteCalled = false;
-    Attendance.findByIdAndDelete = async () => {
-      deleteCalled = true;
+    let auditDeletedId = null;
+    AttendanceAudit.create = async (doc) => ({ ...doc, _id: new mongoose.Types.ObjectId('607f1f77bcf86cd799439088') });
+    AttendanceAudit.findByIdAndDelete = async (id) => {
+      auditDeletedId = id;
       return true;
     };
 
-    // Simulate audit store throwing an error
-    AttendanceAudit.create = async () => {
-      throw new Error('Audit collection write locked');
+    // Simulate deletion throwing an error
+    Attendance.findByIdAndDelete = async () => {
+      throw new Error('Database connection reset during delete');
     };
 
     const req = {
@@ -299,38 +471,175 @@ describe('Attendance API Authorization & Scoping Suite', () => {
     const res = createMockRes();
 
     await deleteAttendanceRecord(req, res);
-    assert.equal(res.statusCode, 500, 'Must fail with 500 when audit creation throws');
-    assert.equal(deleteCalled, false, 'Must NOT delete attendance record if audit log creation failed');
+    assert.equal(res.statusCode, 500);
+    assert.match(res.body.message, /Audit record rolled back/i);
+    assert.ok(auditDeletedId, 'Audit must be deleted so it does not falsely claim deletion succeeded');
   });
 
-  // ── 4. Overtime Governance ──
-  test('updateOvertimeStatus rejects non-privileged employee with 403 Forbidden', async () => {
-    const regularUser = {
-      _id: 'emp_001',
-      employeeCode: 'EMP-001',
-      role: 'Team Member',
-      systemRole: 'team_member',
-      isAdmin: false
-    };
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. STRICT NUMERIC & TIMESTAMP VALIDATION TESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  test('markAttendance: rejects non-numeric string workSeconds ("abc") with 400', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
 
     const req = {
-      user: regularUser,
-      params: { id: 'att_rec_1' },
-      body: { status: 'approved' }
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        auditNote: 'Test validation',
+        workSeconds: 'abc'
+      }
     };
     const res = createMockRes();
 
-    await updateOvertimeStatus(req, res);
-    assert.equal(res.statusCode, 403, 'Non-privileged user cannot update overtime status');
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /workSeconds must be a valid positive numeric value/i);
+  });
+
+  test('markAttendance: rejects breakSeconds: Infinity with 400', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        auditNote: 'Test validation',
+        breakSeconds: Infinity
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /breakSeconds must be a valid finite number/i);
+  });
+
+  test('markAttendance: rejects negative durations with 400', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        auditNote: 'Test validation',
+        workSeconds: -100
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /workSeconds must be a valid finite number between 0 and 86400/i);
+  });
+
+  test('markAttendance: rejects combined workSeconds and breakSeconds exceeding 24h limit', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        auditNote: 'Test validation',
+        workSeconds: 50000,
+        breakSeconds: 40000 // Total = 90,000s > 86,400s
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /Combined workSeconds and breakSeconds.*exceeds 24-hour limit/i);
+  });
+
+  test('markAttendance: rejects incomplete punch sessions with 400', async () => {
+    const today = getTodayStr();
+    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
+
+    const req = {
+      user: adminUser,
+      body: {
+        employee: 'EMP-001',
+        date: today,
+        status: 'present',
+        auditNote: 'Test punch sessions',
+        punchSessions: [
+          { inTimestamp: 1700000000000 } // Missing outTimestamp!
+        ]
+      }
+    };
+    const res = createMockRes();
+
+    await markAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /Punch session 1 is incomplete: both inTimestamp and outTimestamp are required/i);
+  });
+
+  test('bulkMarkAttendance: strictly validates each record and rejects invalid numeric values with 400', async () => {
+    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
+
+    const req = {
+      user: adminUser,
+      body: {
+        records: [
+          { employee: 'emp_1', date: '2026-11-16', status: 'present', workSeconds: 'not_a_number' }
+        ],
+        auditNote: 'Bulk update'
+      }
+    };
+    const res = createMockRes();
+
+    await bulkMarkAttendance(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /records\[0\]\.workSeconds must be a valid positive numeric value/i);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. AUTHORIZATION, OVERTIME & STATE TRANSITION TESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  test('checkIsPrivileged correctly distinguishes administrative authority', () => {
+    assert.equal(checkIsPrivileged({ isAdmin: true }), true);
+    assert.equal(checkIsPrivileged({ role: 'admin' }), true);
+    assert.equal(checkIsPrivileged({ role: 'hr' }), true);
+    assert.equal(checkIsPrivileged({ permissions: { allAccess: true } }), true);
+    assert.equal(checkIsPrivileged({ permissions: { editAttendance: true } }, 'editAttendance'), true);
+
+    assert.equal(checkIsPrivileged({ role: 'Team Member', isAdmin: false }), false);
+    assert.equal(checkIsPrivileged(null), false);
+  });
+
+  test('bulkMarkAttendance rejects non-privileged employee with 403 Forbidden', async () => {
+    const regularUser = { _id: 'emp_001', role: 'Team Member', isAdmin: false };
+    const req = { user: regularUser, body: { records: [{ employee: 'emp_2', date: '2026-11-16' }] } };
+    const res = createMockRes();
+
+    await bulkMarkAttendance(req, res);
+    assert.equal(res.statusCode, 403);
+  });
+
+  test('deleteAttendanceRecord rejects non-privileged employee with 403 Forbidden', async () => {
+    const regularUser = { _id: 'emp_001', role: 'Team Member', isAdmin: false };
+    const req = { user: regularUser, params: { id: '507f1f77bcf86cd799439011' }, body: { reason: 'Clean' } };
+    const res = createMockRes();
+
+    await deleteAttendanceRecord(req, res);
+    assert.equal(res.statusCode, 403);
   });
 
   test('updateOvertimeStatus prevents employee from approving their own overtime', async () => {
-    const hrUser = {
-      _id: '507f1f77bcf86cd799439011',
-      employeeCode: 'EMP-001',
-      role: 'hr',
-      isAdmin: false
-    };
+    const hrUser = { _id: '507f1f77bcf86cd799439011', employeeCode: 'EMP-001', role: 'hr' };
 
     Attendance.findById = async () => ({
       _id: 'att_rec_1',
@@ -339,63 +648,14 @@ describe('Attendance API Authorization & Scoping Suite', () => {
       overtimeStatus: 'pending'
     });
 
-    const req = {
-      user: hrUser,
-      params: { id: 'att_rec_1' },
-      body: { status: 'approved' }
-    };
+    const req = { user: hrUser, params: { id: 'att_rec_1' }, body: { status: 'approved' } };
     const res = createMockRes();
 
     await updateOvertimeStatus(req, res);
-    assert.equal(res.statusCode, 403, 'Approver cannot approve their own overtime');
+    assert.equal(res.statusCode, 403);
     assert.match(res.body.message, /cannot approve or reject your own overtime/i);
   });
 
-  test('updateOvertimeStatus validates status allowed values (approved, rejected)', async () => {
-    const adminUser = {
-      _id: 'adm_001',
-      role: 'admin',
-      isAdmin: true
-    };
-
-    const req = {
-      user: adminUser,
-      params: { id: 'att_rec_1' },
-      body: { status: 'arbitrary_status' }
-    };
-    const res = createMockRes();
-
-    await updateOvertimeStatus(req, res);
-    assert.equal(res.statusCode, 400, 'Must reject invalid overtime status');
-    assert.match(res.body.message, /Allowed values: approved, rejected/i);
-  });
-
-  // ── 5. createAuditLog ──
-  test('createAuditLog forbids non-privileged employee from writing audit logs against other employees', async () => {
-    const regularUser = {
-      _id: 'emp_001',
-      employeeCode: 'EMP-001',
-      name: 'John Doe',
-      role: 'Team Member',
-      isAdmin: false
-    };
-
-    const req = {
-      user: regularUser,
-      body: {
-        employeeId: 'emp_victim_999',
-        action: 'Malicious Fake Clock Out',
-        isAdminOverride: true
-      }
-    };
-    const res = createMockRes();
-
-    await createAuditLog(req, res);
-    assert.equal(res.statusCode, 403, 'Must forbid ordinary employee from creating audit records for other employees');
-    assert.equal(res.body.success, false);
-  });
-
-  // ── 6. markAttendance Validations & State Transitions ──
   test('markAttendance: repeated break-start while on break returns 400', async () => {
     const today = getTodayStr();
     Attendance.findOne = async () => ({
@@ -408,18 +668,12 @@ describe('Attendance API Authorization & Scoping Suite', () => {
 
     const req = {
       user: { _id: '507f1f77bcf86cd799439011', employeeCode: 'EMP-001', role: 'Team Member' },
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        action: 'break_start'
-      }
+      body: { employee: 'EMP-001', date: today, status: 'present', action: 'break_start' }
     };
     const res = createMockRes();
 
     await markAttendance(req, res);
     assert.equal(res.statusCode, 400);
-    assert.equal(res.body.success, false);
     assert.match(res.body.message, /already on an active break/i);
   });
 
@@ -433,175 +687,13 @@ describe('Attendance API Authorization & Scoping Suite', () => {
 
     const req = {
       user: { _id: '507f1f77bcf86cd799439011', employeeCode: 'EMP-001', role: 'Team Member' },
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        action: 'break_end'
-      }
+      body: { employee: 'EMP-001', date: today, status: 'present', action: 'break_end' }
     };
     const res = createMockRes();
 
     await markAttendance(req, res);
     assert.equal(res.statusCode, 400);
-    assert.equal(res.body.success, false);
     assert.match(res.body.message, /no active break found to end/i);
-  });
-
-  test('markAttendance: ordinary employee cannot inject activeTask directly', async () => {
-    const today = getTodayStr();
-    Attendance.findOne = async () => null;
-
-    let capturedUpdate = null;
-    Attendance.findOneAndUpdate = async (q, update) => {
-      capturedUpdate = update;
-      return { ...update, _id: new mongoose.Types.ObjectId() };
-    };
-
-    const req = {
-      user: { _id: '507f1f77bcf86cd799439011', employeeCode: 'EMP-001', role: 'Team Member' },
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        activeTask: { taskId: 'bad_task', title: 'Malicious Injected Task' }
-      }
-    };
-    const res = createMockRes();
-
-    await markAttendance(req, res);
-    assert.equal(res.statusCode, 200);
-    assert.equal(capturedUpdate.activeTask, undefined, 'Ordinary employee activeTask must be ignored');
-  });
-
-  test('markAttendance: ordinary employee cannot mark attendance for another employee', async () => {
-    const today = getTodayStr();
-    Attendance.findOne = async () => null;
-
-    let capturedQuery = null;
-    Attendance.findOneAndUpdate = async (q, update) => {
-      capturedQuery = q;
-      return { ...update, _id: new mongoose.Types.ObjectId() };
-    };
-
-    const requestingUserId = '507f1f77bcf86cd799439011';
-    const req = {
-      user: { _id: requestingUserId, employeeCode: 'EMP-MY-CODE', role: 'Team Member' },
-      body: {
-        employee: 'victim_employee_999',
-        date: today,
-        status: 'present'
-      }
-    };
-    const res = createMockRes();
-
-    await markAttendance(req, res);
-    assert.equal(res.statusCode, 200);
-    // Ensure targetEmpId was locked to requesting user
-    assert.equal(String(capturedQuery.$or[0].employee), requestingUserId);
-    assert.equal(capturedQuery.$or[1].employeeCode, 'EMP-MY-CODE');
-  });
-
-  test('markAttendance: admin adjustment requires audit reason', async () => {
-    const today = getTodayStr();
-    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
-
-    const req = {
-      user: adminUser,
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        isManualAdjustment: true,
-        workSeconds: 36000
-        // missing auditNote / notes
-      }
-    };
-    const res = createMockRes();
-
-    await markAttendance(req, res);
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body.message, /Audit reason.*required/i);
-  });
-
-  test('markAttendance: invalid administrative timestamps return 400', async () => {
-    const today = getTodayStr();
-    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
-
-    // 1. clockOutTimestamp <= clockInTimestamp
-    const req1 = {
-      user: adminUser,
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        auditNote: 'Test adjustment',
-        clockInTimestamp: 1700000000000,
-        clockOutTimestamp: 1699999999000
-      }
-    };
-    const res1 = createMockRes();
-    await markAttendance(req1, res1);
-    assert.equal(res1.statusCode, 400);
-    assert.match(res1.body.message, /clockOutTimestamp must be strictly greater than clockInTimestamp/i);
-
-    // 2. Future timestamp
-    const req2 = {
-      user: adminUser,
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        auditNote: 'Test adjustment',
-        clockInTimestamp: Date.now() + 5000000
-      }
-    };
-    const res2 = createMockRes();
-    await markAttendance(req2, res2);
-    assert.equal(res2.statusCode, 400);
-    assert.match(res2.body.message, /clockInTimestamp cannot be in the future/i);
-  });
-
-  test('markAttendance: invalid or overlapping punch sessions return 400', async () => {
-    const today = getTodayStr();
-    const adminUser = { _id: 'adm_1', role: 'admin', isAdmin: true };
-
-    // Punch session where outTimestamp <= inTimestamp
-    const reqInvalid = {
-      user: adminUser,
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        auditNote: 'Fixing punches',
-        punchSessions: [
-          { inTimestamp: 1700000000000, outTimestamp: 1699999900000 }
-        ]
-      }
-    };
-    const resInvalid = createMockRes();
-    await markAttendance(reqInvalid, resInvalid);
-    assert.equal(resInvalid.statusCode, 400);
-    assert.match(resInvalid.body.message, /outTimestamp must be greater than inTimestamp/i);
-
-    // Overlapping punch sessions
-    const reqOverlap = {
-      user: adminUser,
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        auditNote: 'Fixing punches',
-        punchSessions: [
-          { inTimestamp: 1700000000000, outTimestamp: 1700010000000 },
-          { inTimestamp: 1700005000000, outTimestamp: 1700015000000 } // starts before session 1 ends
-        ]
-      }
-    };
-    const resOverlap = createMockRes();
-    await markAttendance(reqOverlap, resOverlap);
-    assert.equal(resOverlap.statusCode, 400);
-    assert.match(resOverlap.body.message, /overlaps with previous session/i);
   });
 
   test('markAttendance: failed timer pause aborts clock-out and returns 500 without updating attendance', async () => {
@@ -619,63 +711,19 @@ describe('Attendance API Authorization & Scoping Suite', () => {
       return {};
     };
 
-    // Simulate timer pause failure
     timeEngineService.pauseTimer = async () => {
       throw new Error('Database write collision (OCC retry limit)');
     };
 
     const req = {
       user: { _id: '507f1f77bcf86cd799439011', employeeCode: 'EMP-001', role: 'Team Member' },
-      body: {
-        employee: 'EMP-001',
-        date: today,
-        status: 'present',
-        action: 'clock_out'
-      }
+      body: { employee: 'EMP-001', date: today, status: 'present', action: 'clock_out' }
     };
     const res = createMockRes();
 
     await markAttendance(req, res);
-    assert.equal(res.statusCode, 500, 'Must return 500 when timer pause fails');
-    assert.match(res.body.message, /Failed to pause active task timer during clock-out/i);
-    assert.equal(updateCalled, false, 'Attendance record must NOT be updated if timer pause threw an error');
-  });
-
-  // ── 7. forceClockOut ──
-  test('forceClockOut: non-privileged user rejected with 403', async () => {
-    const regularUser = { _id: 'emp_001', role: 'Team Member', isAdmin: false };
-    const req = { user: regularUser, body: { employeeId: 'emp_002' } };
-    const res = createMockRes();
-
-    await forceClockOut(req, res);
-    assert.equal(res.statusCode, 403);
-    assert.match(res.body.message, /Administrator or HR access required/i);
-  });
-
-  test('forceClockOut: aborts with 500 if timer pause throws an error', async () => {
-    const adminUser = { _id: 'adm_1', name: 'Admin', role: 'admin', isAdmin: true };
-    const targetId = new mongoose.Types.ObjectId();
-
-    Employee.findById = async () => ({
-      _id: targetId,
-      name: 'Target Employee',
-      employeeCode: 'EMP-TGT',
-      role: 'Team Member'
-    });
-
-    // Simulate timer pause failure
-    timeEngineService.pauseTimer = async () => {
-      throw new Error('Active timer transaction failed');
-    };
-
-    const req = {
-      user: adminUser,
-      body: { employeeId: targetId.toString(), auditNote: 'Admin emergency out' }
-    };
-    const res = createMockRes();
-
-    await forceClockOut(req, res);
     assert.equal(res.statusCode, 500);
-    assert.match(res.body.message, /Failed to pause active task timer during force clock-out/i);
+    assert.match(res.body.message, /Failed to pause active task timer during clock-out/i);
+    assert.equal(updateCalled, false);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * @file offlineQueue.test.js
  * @description Automated Unit & Integration Tests for Offline Timer Queue Service:
- * User-scoping, concurrent multi-user execution, execution locking, mid-flush account switch detection,
+ * User-scoping, cross-tab Web Locks & lease fallback concurrency, mid-flush account switch detection,
  * stable idempotency, and failure blocking.
  */
 
@@ -28,7 +28,7 @@ class MockLocalStorage {
   }
 }
 
-describe('Offline Timer Queue Suite', () => {
+describe('Offline Timer Queue & Cross-Tab Concurrency Suite', () => {
   let timerOfflineQueue;
   let mockStorage;
 
@@ -47,6 +47,9 @@ describe('Offline Timer Queue Suite', () => {
 
   afterEach(() => {
     mockStorage.clear();
+    if (global.navigator) {
+      delete global.navigator.locks;
+    }
   });
 
   test('User scoping isolates queued timer actions between different employees', () => {
@@ -152,73 +155,85 @@ describe('Offline Timer Queue Suite', () => {
     assert.equal(remaining[1].type, 'COMPLETE', 'Dependent COMPLETE must remain in sequence');
   });
 
-  test('Execution lock prevents concurrent flush executions for the SAME user', async () => {
-    const { enqueueTimerAction, flushTimerQueue, isUserFlushing } = timerOfflineQueue;
-    const user = 'user_concurrent';
+  test('Cross-Tab Storage Lease fallback locks same user between tabs and allows different users in parallel', () => {
+    const { acquireCrossTabStorageLease, releaseCrossTabStorageLease } = timerOfflineQueue;
+    const userA = 'user_tab_A';
+    const userB = 'user_tab_B';
+
+    const tab1 = 'tab_instance_1';
+    const tab2 = 'tab_instance_2';
+
+    // Tab 1 acquires lease for User A
+    const acq1 = acquireCrossTabStorageLease(userA, tab1);
+    assert.equal(acq1, true, 'Tab 1 acquires lease');
+
+    // Tab 2 attempts to acquire lease for User A while Tab 1 holds it
+    const acq2 = acquireCrossTabStorageLease(userA, tab2);
+    assert.equal(acq2, false, 'Tab 2 must be blocked from acquiring lease for same user');
+
+    // Tab 2 acquires lease for User B (independent user)
+    const acqB = acquireCrossTabStorageLease(userB, tab2);
+    assert.equal(acqB, true, 'Tab 2 can acquire lease for different user concurrently');
+
+    // Tab 1 releases lease for User A
+    releaseCrossTabStorageLease(userA, tab1);
+
+    // Tab 2 can now acquire lease for User A
+    const acqRetry = acquireCrossTabStorageLease(userA, tab2);
+    assert.equal(acqRetry, true, 'Tab 2 can acquire lease after Tab 1 releases it');
+
+    releaseCrossTabStorageLease(userA, tab2);
+    releaseCrossTabStorageLease(userB, tab2);
+  });
+
+  test('Cross-Tab Web Locks API integration: simultaneous flushes from separate tabs are serialized', async () => {
+    const { enqueueTimerAction, flushTimerQueue } = timerOfflineQueue;
+    const user = 'user_weblock_test';
 
     global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: user } }));
-    enqueueTimerAction('START', { taskId: 'task_conc' }, user);
+    enqueueTimerAction('START', { taskId: 'task_lock_1' }, user);
 
-    let activeFlushes = 0;
-    let maxConcurrency = 0;
-
-    const mockWorkService = {
-      startWorkSession: async () => {
-        activeFlushes++;
-        maxConcurrency = Math.max(maxConcurrency, activeFlushes);
-        await new Promise((r) => setTimeout(r, 40));
-        activeFlushes--;
+    // Mock Web Locks API on global.navigator
+    const activeLocks = new Set();
+    global.navigator = global.navigator || {};
+    global.navigator.locks = {
+      request: async (lockName, options, callback) => {
+        if (options && options.ifAvailable) {
+          if (activeLocks.has(lockName)) {
+            return await callback(null); // Lock held by another tab!
+          }
+          activeLocks.add(lockName);
+          try {
+            return await callback({ name: lockName });
+          } finally {
+            activeLocks.delete(lockName);
+          }
+        }
+        activeLocks.add(lockName);
+        try {
+          return await callback({ name: lockName });
+        } finally {
+          activeLocks.delete(lockName);
+        }
       }
     };
 
-    // Trigger two simultaneous flush executions for user_concurrent
+    let simultaneousExecuted = 0;
+    const mockWorkService = {
+      startWorkSession: async () => {
+        simultaneousExecuted++;
+        await new Promise(r => setTimeout(r, 30));
+      }
+    };
+
+    // Simulate Tab 1 and Tab 2 attempting to flush simultaneously
     const [c1, c2] = await Promise.all([
       flushTimerQueue(mockWorkService, user),
       flushTimerQueue(mockWorkService, user)
     ]);
 
-    assert.equal(maxConcurrency, 1, 'Same user cannot execute concurrent flushes');
-    assert.equal(c1 + c2, 1, 'Only one flush execution should run to completion');
-    assert.equal(isUserFlushing(user), false, 'Lock is released after flush finishes');
-  });
-
-  test('Independent user flushes execute in parallel without cross-blocking', async () => {
-    const { enqueueTimerAction, flushTimerQueue, getActiveFlushingUsers } = timerOfflineQueue;
-    const userA = 'user_alpha';
-    const userB = 'user_beta';
-
-    enqueueTimerAction('START', { taskId: 'task_alpha' }, userA);
-    enqueueTimerAction('START', { taskId: 'task_beta' }, userB);
-
-    let usersFlushed = [];
-
-    const mockWorkServiceA = {
-      startWorkSession: async () => {
-        usersFlushed.push('alpha');
-        await new Promise((r) => setTimeout(r, 20));
-      }
-    };
-
-    const mockWorkServiceB = {
-      startWorkSession: async () => {
-        usersFlushed.push('beta');
-        await new Promise((r) => setTimeout(r, 20));
-      }
-    };
-
-    // User A session for mock flush
-    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: userA } }));
-    const flushA = flushTimerQueue(mockWorkServiceA, userA);
-
-    // User B session for mock flush
-    global.localStorage.setItem('ems_auth_session', JSON.stringify({ user: { _id: userB } }));
-    const flushB = flushTimerQueue(mockWorkServiceB, userB);
-
-    await Promise.all([flushA, flushB]);
-
-    assert.ok(usersFlushed.includes('alpha'));
-    assert.ok(usersFlushed.includes('beta'));
-    assert.equal(getActiveFlushingUsers().length, 0, 'All user flush locks released');
+    assert.equal(simultaneousExecuted, 1, 'Only one tab should execute the flush');
+    assert.equal(c1 + c2, 1, 'Combined flushed count should be 1, second tab returned 0');
   });
 
   test('Cross-account security: mid-flush account switch halts execution immediately', async () => {

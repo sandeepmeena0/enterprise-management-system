@@ -84,6 +84,11 @@ const AttendanceAuditSchema = new mongoose.Schema(
     auditNote: {
       type: String,
       default: null
+    },
+    idempotencyKey: {
+      type: String,
+      default: null,
+      index: true
     }
   },
   {

@@ -29,6 +29,163 @@ const checkIsPrivileged = (user, requiredPermission = 'editAttendance') => {
   return false;
 };
 
+// ── Strict Numeric, Timestamp & Interval Validation Helpers ──────────────────
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000; // 5 minutes max clock skew allowance
+const MAX_DAY_SECONDS = 86400; // 24 hours in a single business day
+const MIN_ALLOWED_TIMESTAMP_MS = new Date('2020-01-01T00:00:00Z').getTime();
+
+/**
+ * Strictly parses and validates a duration in seconds (0 to maxAllowed).
+ * Rejects non-numeric strings ("abc"), NaN, Infinity, negative numbers, and out-of-range values.
+ * @param {any} val
+ * @param {string} fieldName
+ * @param {number} maxAllowed
+ * @returns {{ valid: boolean, value?: number, error?: string }}
+ */
+function validateStrictDurationSeconds(val, fieldName, maxAllowed = MAX_DAY_SECONDS) {
+  if (val === undefined || val === null) return { valid: true, value: undefined };
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val) || Number.isNaN(val) || val < 0 || val > maxAllowed) {
+      return { valid: false, error: `${fieldName} must be a valid finite number between 0 and ${maxAllowed}. Received: ${val}` };
+    }
+    return { valid: true, value: Math.round(val) };
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+      return { valid: false, error: `${fieldName} must be a valid positive numeric value. Received: "${val}"` };
+    }
+    const num = Number(trimmed);
+    if (!Number.isFinite(num) || num < 0 || num > maxAllowed) {
+      return { valid: false, error: `${fieldName} must be between 0 and ${maxAllowed}. Received: ${num}` };
+    }
+    return { valid: true, value: Math.round(num) };
+  }
+  return { valid: false, error: `${fieldName} must be a valid numeric duration. Received type: ${typeof val}` };
+}
+
+/**
+ * Strictly parses and validates an epoch timestamp (ms).
+ * Rejects invalid strings ("abc"), NaN, Infinity, negative values, and future timestamps beyond skew.
+ * @param {any} val
+ * @param {string} fieldName
+ * @param {number} maxFutureAllowanceMs
+ * @returns {{ valid: boolean, value?: number, error?: string }}
+ */
+function validateStrictTimestamp(val, fieldName, maxFutureAllowanceMs = MAX_CLOCK_SKEW_MS) {
+  if (val === undefined || val === null) return { valid: true, value: undefined };
+  let num;
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val) || Number.isNaN(val)) {
+      return { valid: false, error: `${fieldName} must be a finite numeric timestamp. Received: ${val}` };
+    }
+    num = val;
+  } else if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^\d{10,14}$/.test(trimmed)) {
+      num = Number(trimmed);
+    } else {
+      const parsed = Date.parse(trimmed);
+      if (Number.isNaN(parsed)) {
+        return { valid: false, error: `${fieldName} is not a valid timestamp format. Received: "${val}"` };
+      }
+      num = parsed;
+    }
+  } else if (val instanceof Date) {
+    num = val.getTime();
+    if (Number.isNaN(num)) {
+      return { valid: false, error: `${fieldName} is an invalid Date object.` };
+    }
+  } else {
+    return { valid: false, error: `${fieldName} must be a timestamp number or date string. Received type: ${typeof val}` };
+  }
+
+  if (num < MIN_ALLOWED_TIMESTAMP_MS) {
+    return { valid: false, error: `${fieldName} (${num}) is before the minimum supported system epoch.` };
+  }
+
+  const maxAllowedNow = Date.now() + maxFutureAllowanceMs;
+  if (num > maxAllowedNow) {
+    return { valid: false, error: `${fieldName} cannot be in the future (timestamp ${num} exceeds server time + 5min allowance).` };
+  }
+
+  return { valid: true, value: num };
+}
+
+/**
+ * Validates punch sessions array:
+ * - Every element must be an object
+ * - Both inTimestamp and outTimestamp are required
+ * - outTimestamp > inTimestamp
+ * - No overlapping sessions (sess[i].inTimestamp >= sess[i-1].outTimestamp)
+ * @param {any} sessions
+ * @returns {{ valid: boolean, value?: Array, error?: string }}
+ */
+function validatePunchSessions(sessions) {
+  if (!sessions) return { valid: true, value: undefined };
+  if (!Array.isArray(sessions)) {
+    return { valid: false, error: 'punchSessions must be an array.' };
+  }
+
+  const validated = [];
+  for (let i = 0; i < sessions.length; i++) {
+    const s = sessions[i];
+    if (!s || typeof s !== 'object') {
+      return { valid: false, error: `Invalid punch session at index ${i}: session must be an object.` };
+    }
+
+    if (s.inTimestamp === undefined || s.inTimestamp === null || s.outTimestamp === undefined || s.outTimestamp === null) {
+      return { valid: false, error: `Punch session ${i + 1} is incomplete: both inTimestamp and outTimestamp are required.` };
+    }
+
+    const inRes = validateStrictTimestamp(s.inTimestamp, `punchSessions[${i}].inTimestamp`);
+    if (!inRes.valid) return inRes;
+
+    const outRes = validateStrictTimestamp(s.outTimestamp, `punchSessions[${i}].outTimestamp`);
+    if (!outRes.valid) return outRes;
+
+    const inTs = inRes.value;
+    const outTs = outRes.value;
+
+    if (outTs <= inTs) {
+      return { valid: false, error: `Invalid punch session ${i + 1}: outTimestamp must be greater than inTimestamp.` };
+    }
+
+    const durationSec = Math.floor((outTs - inTs) / 1000);
+    if (durationSec > MAX_DAY_SECONDS) {
+      return { valid: false, error: `Punch session ${i + 1} duration exceeds maximum 24-hour limit.` };
+    }
+
+    if (s.durationSeconds !== undefined && s.durationSeconds !== null) {
+      const durRes = validateStrictDurationSeconds(s.durationSeconds, `punchSessions[${i}].durationSeconds`);
+      if (!durRes.valid) return durRes;
+      if (Math.abs(durRes.value - durationSec) > 5) {
+        return { valid: false, error: `Punch session ${i + 1} durationSeconds (${durRes.value}s) does not match timestamp interval (${durationSec}s).` };
+      }
+    }
+
+    if (i > 0) {
+      const prev = validated[i - 1];
+      if (inTs < prev.outTimestamp) {
+        return { valid: false, error: `Punch session ${i + 1} overlaps with previous session.` };
+      }
+      if (inTs <= prev.inTimestamp) {
+        return { valid: false, error: `Punch session ${i + 1} starts before or at the same time as previous session.` };
+      }
+    }
+
+    validated.push({
+      ...s,
+      inTimestamp: inTs,
+      outTimestamp: outTs,
+      durationSeconds: durationSec,
+      durationText: `${Math.floor(durationSec / 3600)}h ${Math.floor((durationSec % 3600) / 60)}m`
+    });
+  }
+
+  return { valid: true, value: validated };
+}
+
 // ⏱️ Auto-close past-day unclosed shifts (runs daily at midnight or upon request)
 const autoClosePastDayShifts = async () => {
   try {
@@ -269,39 +426,70 @@ const markAttendance = asyncHandler(async (req, res) => {
       });
     }
 
-    if (workSeconds !== undefined && Number(workSeconds) < 0) {
-      return res.status(400).json({ success: false, message: 'workSeconds cannot be negative.' });
+    if (workSeconds !== undefined) {
+      const v = validateStrictDurationSeconds(workSeconds, 'workSeconds');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
     }
-    if (breakSeconds !== undefined && Number(breakSeconds) < 0) {
-      return res.status(400).json({ success: false, message: 'breakSeconds cannot be negative.' });
+    if (breakSeconds !== undefined) {
+      const v = validateStrictDurationSeconds(breakSeconds, 'breakSeconds');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (req.body.totalWorkingHours !== undefined) {
+      const v = validateStrictDurationSeconds(req.body.totalWorkingHours, 'totalWorkingHours', 24);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
     }
 
-    if (clockInTimestamp && Number(clockInTimestamp) > Date.now() + 60000) {
-      return res.status(400).json({ success: false, message: 'clockInTimestamp cannot be in the future.' });
+    if (clockInTimestamp !== undefined) {
+      const v = validateStrictTimestamp(clockInTimestamp, 'clockInTimestamp');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
     }
-    if (clockOutTimestamp && Number(clockOutTimestamp) > Date.now() + 60000) {
-      return res.status(400).json({ success: false, message: 'clockOutTimestamp cannot be in the future.' });
+    if (clockOutTimestamp !== undefined) {
+      const v = validateStrictTimestamp(clockOutTimestamp, 'clockOutTimestamp');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
     }
+    if (req.body.firstClockInTimestamp !== undefined) {
+      const v = validateStrictTimestamp(req.body.firstClockInTimestamp, 'firstClockInTimestamp');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (req.body.lastClockOutTimestamp !== undefined) {
+      const v = validateStrictTimestamp(req.body.lastClockOutTimestamp, 'lastClockOutTimestamp');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (req.body.currentSessionStartTimestamp !== undefined) {
+      const v = validateStrictTimestamp(req.body.currentSessionStartTimestamp, 'currentSessionStartTimestamp');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (req.body.breakStartTimestamp !== undefined) {
+      const v = validateStrictTimestamp(req.body.breakStartTimestamp, 'breakStartTimestamp');
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+
     if (clockInTimestamp && clockOutTimestamp && Number(clockOutTimestamp) <= Number(clockInTimestamp)) {
-      return res.status(400).json({ success: false, message: 'clockOutTimestamp must be strictly greater than clockInTimestamp.' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid administrative timestamps: clockOutTimestamp must be strictly greater than clockInTimestamp.'
+      });
     }
 
-    // Validate punch sessions intervals & overlap
-    if (Array.isArray(req.body.punchSessions)) {
-      for (let i = 0; i < req.body.punchSessions.length; i++) {
-        const sess = req.body.punchSessions[i];
-        const inTs = Number(sess.inTimestamp);
-        const outTs = Number(sess.outTimestamp);
-        if (inTs && outTs && outTs <= inTs) {
-          return res.status(400).json({ success: false, message: `Invalid punch session ${i + 1}: outTimestamp must be greater than inTimestamp.` });
-        }
-        if (i > 0) {
-          const prevOut = Number(req.body.punchSessions[i - 1].outTimestamp);
-          if (prevOut && inTs && inTs < prevOut) {
-            return res.status(400).json({ success: false, message: `Punch session ${i + 1} overlaps with previous session.` });
-          }
-        }
+    if (req.body.firstClockInTimestamp && req.body.lastClockOutTimestamp && Number(req.body.lastClockOutTimestamp) <= Number(req.body.firstClockInTimestamp)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid administrative timestamps: lastClockOutTimestamp must be strictly greater than firstClockInTimestamp.'
+      });
+    }
+
+    if (workSeconds !== undefined && breakSeconds !== undefined) {
+      if (Number(workSeconds) + Number(breakSeconds) > MAX_DAY_SECONDS) {
+        return res.status(400).json({
+          success: false,
+          message: `Combined workSeconds and breakSeconds (${Number(workSeconds) + Number(breakSeconds)}s) exceeds 24-hour limit (${MAX_DAY_SECONDS}s).`
+        });
       }
+    }
+
+    if (req.body.punchSessions !== undefined) {
+      const v = validatePunchSessions(req.body.punchSessions);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
     }
   }
 
@@ -688,17 +876,129 @@ const markAttendance = asyncHandler(async (req, res) => {
     updateFields.overtimeApprovedAt = existingRecord?.overtimeApprovedAt || new Date();
   }
 
-  const record = await Attendance.findOneAndUpdate(
-    {
-      date,
-      $or: [
-        { employee: targetEmpId },
-        { employeeCode: targetEmpCode }
-      ]
-    },
-    updateFields,
-    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
-  );
+  // Mandatory Audit Trail for Admin manual modifications
+  const isMandatoryAudit = isPrivileged && (auditNote || isAdminOverride || req.body.isManualAdjustment);
+  const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
+
+  let existingAudit = null;
+  if (auditIdempotencyKey) {
+    existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+  }
+
+  const auditReasonText = (auditNote || req.body.reason || notes || 'Manual administrative attendance adjustment').trim();
+  const auditPayload = isMandatoryAudit ? {
+    employee: targetEmpId,
+    employeeId: String(targetEmpId),
+    employeeName: targetEmpName || 'Employee',
+    employeeCode: targetEmpCode || '',
+    date,
+    timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    type: 'admin_shift_adjustment',
+    action: 'Admin Shift Hour Adjustment',
+    durationSeconds: (totalWorkingHours || 0) * 3600,
+    durationText: `${totalWorkingHours || 0}h`,
+    actor: 'admin',
+    actorId: String(adminActorId),
+    actorName: adminActorName,
+    isAdminOverride: true,
+    adminId: String(adminActorId),
+    adminName: adminActorName,
+    auditNote: auditReasonText,
+    idempotencyKey: auditIdempotencyKey,
+    details: `Shift manually adjusted by Admin ${adminActorName} (ID: ${adminActorId}). Status: ${calculatedStatus}, In: ${finalClockInTime || '—'}, Out: ${finalClockOutTime || '—'}. Reason: "${auditReasonText}"`
+  } : null;
+
+  let record;
+  let auditEntry = existingAudit;
+
+  // Attempt transaction where replica sets are supported
+  let session = null;
+  let hasActiveTransaction = false;
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
+    try {
+      session = await mongoose.startSession();
+      if (session && typeof session.startTransaction === 'function') {
+        session.startTransaction();
+        hasActiveTransaction = true;
+      }
+    } catch (_) {
+      session = null;
+      hasActiveTransaction = false;
+    }
+  }
+
+  if (hasActiveTransaction && session) {
+    try {
+      if (isMandatoryAudit && !auditEntry) {
+        const created = await AttendanceAudit.create([auditPayload], { session });
+        auditEntry = created[0];
+      }
+
+      record = await Attendance.findOneAndUpdate(
+        {
+          date,
+          $or: [
+            { employee: targetEmpId },
+            { employeeCode: targetEmpCode }
+          ]
+        },
+        updateFields,
+        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true, session }
+      );
+
+      await session.commitTransaction();
+    } catch (txErr) {
+      await session.abortTransaction();
+      console.error('[attendanceController] Transaction failed during administrative adjustment:', txErr);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to commit administrative adjustment: ${txErr.message}. Operation aborted to preserve audit integrity.`
+      });
+    } finally {
+      await session.endSession();
+    }
+  } else {
+    // Non-transactional fallback with reliable rollback compensation
+    let auditCreatedHere = null;
+    if (isMandatoryAudit && !auditEntry) {
+      try {
+        auditCreatedHere = await AttendanceAudit.create(auditPayload);
+        auditEntry = auditCreatedHere;
+      } catch (auditErr) {
+        console.error('[attendanceController] Mandatory audit creation failed:', auditErr);
+        return res.status(500).json({
+          success: false,
+          message: `Failed to record mandatory audit trail for administrative adjustment: ${auditErr.message}. Attendance was not modified.`
+        });
+      }
+    }
+
+    try {
+      record = await Attendance.findOneAndUpdate(
+        {
+          date,
+          $or: [
+            { employee: targetEmpId },
+            { employeeCode: targetEmpCode }
+          ]
+        },
+        updateFields,
+        { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+      );
+    } catch (updateErr) {
+      // Rollback audit entry if attendance update failed!
+      if (auditCreatedHere && auditCreatedHere._id) {
+        try {
+          await AttendanceAudit.findByIdAndDelete(auditCreatedHere._id);
+        } catch (_) {}
+      }
+      console.error('[attendanceController] Attendance update failed after audit:', updateErr);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to update attendance record: ${updateErr.message}. Audit trail rolled back.`
+      });
+    }
+  }
 
   // Immediately update in-memory liveTelemetryCache so zero-flicker telemetry reflects clock-in/out across all devices instantly!
   try {
@@ -734,37 +1034,9 @@ const markAttendance = asyncHandler(async (req, res) => {
     }
   } catch (_) {}
 
-  // Mandatory Audit Trail for Admin manual modifications
-  if (isPrivileged && (auditNote || isAdminOverride || req.body.isManualAdjustment)) {
-    try {
-      await AttendanceAudit.create({
-        employee: targetEmpId,
-        employeeId: String(targetEmpId),
-        employeeName: record.employeeName || 'Employee',
-        employeeCode: record.employeeCode || '',
-        date,
-        timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        type: 'admin_shift_adjustment',
-        action: 'Admin Shift Hour Adjustment',
-        durationSeconds: (record.totalWorkingHours || 0) * 3600,
-        durationText: `${record.totalWorkingHours || 0}h`,
-        actor: 'admin',
-        actorId: String(adminActorId),
-        actorName: adminActorName,
-        isAdminOverride: true,
-        adminId: String(adminActorId),
-        adminName: adminActorName,
-        auditNote: auditNote || 'Manual administrative attendance adjustment',
-        details: `Shift manually adjusted by Admin ${adminActorName} (ID: ${adminActorId}). Status: ${status}, In: ${finalClockInTime || '—'}, Out: ${finalClockOutTime || '—'}. Reason: "${auditNote || 'Administrative review'}"`
-      });
-    } catch (auditErr) {
-      console.warn('Failed to record admin shift adjustment audit:', auditErr);
-    }
-  }
-
   const resObj = record.toObject ? record.toObject() : { ...record };
   resObj.employeeId = String(resObj.employee || targetEmpId);
-  res.status(200).json({ success: true, data: resObj });
+  res.status(200).json({ success: true, data: resObj, audit: auditEntry });
 });
 
 // ─── GET /api/attendance/daily ───────────────────────────────────────────────
@@ -813,6 +1085,9 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
   ];
   const ALLOWED_STATUSES = ['present', 'late', 'half_day', 'absent', 'on_leave', 'holiday', 'day_off'];
 
+  const auditReasonText = (req.body.auditNote || req.body.reason || `Bulk administrative attendance update for ${records.length} records`).trim();
+  const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
+
   const operations = [];
 
   for (let idx = 0; idx < records.length; idx++) {
@@ -822,6 +1097,30 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
     }
     if (r.status && !ALLOWED_STATUSES.includes(r.status)) {
       return res.status(400).json({ success: false, message: `Record ${idx + 1} has invalid status '${r.status}'. Allowed: ${ALLOWED_STATUSES.join(', ')}.` });
+    }
+
+    if (r.workSeconds !== undefined) {
+      const v = validateStrictDurationSeconds(r.workSeconds, `records[${idx}].workSeconds`);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (r.breakSeconds !== undefined) {
+      const v = validateStrictDurationSeconds(r.breakSeconds, `records[${idx}].breakSeconds`);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (r.totalWorkingHours !== undefined) {
+      const v = validateStrictDurationSeconds(r.totalWorkingHours, `records[${idx}].totalWorkingHours`, 24);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (r.clockInTimestamp !== undefined) {
+      const v = validateStrictTimestamp(r.clockInTimestamp, `records[${idx}].clockInTimestamp`);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (r.clockOutTimestamp !== undefined) {
+      const v = validateStrictTimestamp(r.clockOutTimestamp, `records[${idx}].clockOutTimestamp`);
+      if (!v.valid) return res.status(400).json({ success: false, message: v.error });
+    }
+    if (r.clockInTimestamp && r.clockOutTimestamp && Number(r.clockOutTimestamp) <= Number(r.clockInTimestamp)) {
+      return res.status(400).json({ success: false, message: `Record ${idx + 1} has invalid timestamps: clockOutTimestamp must be strictly greater than clockInTimestamp.` });
     }
 
     // Whitelist sanitize fields to prevent mass-assignment of protected internal fields
@@ -843,8 +1142,54 @@ const bulkMarkAttendance = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await Attendance.bulkWrite(operations);
-  res.status(200).json({ success: true, message: 'Bulk attendance recorded', data: result });
+  // Mandatory traceable audit trail for bulk modifications
+  let bulkAudit = null;
+  try {
+    bulkAudit = await AttendanceAudit.create({
+      employeeId: 'BULK_UPDATE',
+      employeeName: `Bulk Update (${records.length} records)`,
+      employeeCode: 'BULK',
+      date: records[0].date,
+      timeFormatted: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      type: 'admin_bulk_attendance',
+      action: 'Admin Bulk Attendance Update',
+      durationSeconds: 0,
+      durationText: `${records.length} records`,
+      actor: 'admin',
+      actorId: String(req.user?._id || req.user?.id || 'ADMIN'),
+      actorName: req.user?.name || 'Administrator',
+      isAdminOverride: true,
+      adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
+      adminName: req.user?.name || 'Administrator',
+      auditNote: auditReasonText,
+      idempotencyKey: auditIdempotencyKey,
+      details: `Administrator ${req.user?.name || 'Admin'} updated ${records.length} attendance records in bulk. Reason: "${auditReasonText}"`
+    });
+  } catch (auditErr) {
+    console.error('[attendanceController] Bulk attendance audit creation failed:', auditErr);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to create audit log for bulk attendance update: ${auditErr.message}. Bulk update aborted.`
+    });
+  }
+
+  let result;
+  try {
+    result = await Attendance.bulkWrite(operations);
+  } catch (bulkErr) {
+    if (bulkAudit && bulkAudit._id) {
+      try {
+        await AttendanceAudit.findByIdAndDelete(bulkAudit._id);
+      } catch (_) {}
+    }
+    console.error('[attendanceController] bulkWrite failed:', bulkErr);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to perform bulk attendance write: ${bulkErr.message}. Audit trail rolled back.`
+    });
+  }
+
+  res.status(200).json({ success: true, message: 'Bulk attendance recorded', data: result, audit: bulkAudit });
 });
 
 // ─── DELETE /api/attendance/:id ───────────────────────────────────────────────
@@ -870,8 +1215,9 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
   if (!record) return res.status(404).json({ success: false, message: 'Attendance record not found' });
 
   // 1. Audit record MUST be created and successfully persisted before deletion
+  let auditEntry = null;
   try {
-    await AttendanceAudit.create({
+    auditEntry = await AttendanceAudit.create({
       employee: record.employee,
       employeeId: String(record.employee || record.employeeCode || ''),
       employeeName: record.employeeName || 'Employee',
@@ -886,8 +1232,8 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
       isAdminOverride: true,
       adminId: String(req.user?._id || req.user?.id || 'ADMIN'),
       adminName: req.user?.name || 'Administrator',
-      auditNote: req.body?.auditNote || req.body?.reason || 'Administrative deletion of attendance record',
-      details: `Attendance record for ${record.employeeName} on ${record.date} was deleted by ${req.user?.name || 'Admin'}.`
+      auditNote: auditReason,
+      details: `Attendance record for ${record.employeeName} on ${record.date} was deleted by ${req.user?.name || 'Admin'}. Reason: "${auditReason}"`
     });
   } catch (auditErr) {
     console.error('[attendanceController] Audit creation failed before attendance deletion:', auditErr);
@@ -897,8 +1243,22 @@ const deleteAttendanceRecord = asyncHandler(async (req, res) => {
     });
   }
 
-  // 2. Only if audit succeeded, perform deletion
-  await Attendance.findByIdAndDelete(req.params.id);
+  // 2. Only if audit succeeded, perform deletion with compensatory rollback
+  try {
+    await Attendance.findByIdAndDelete(req.params.id);
+  } catch (deleteErr) {
+    if (auditEntry && auditEntry._id) {
+      try {
+        await AttendanceAudit.findByIdAndDelete(auditEntry._id);
+      } catch (_) {}
+    }
+    console.error('[attendanceController] Deletion failed after audit creation:', deleteErr);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to delete attendance record: ${deleteErr.message}. Audit record rolled back to prevent false records.`
+    });
+  }
+
   res.json({ success: true, message: 'Record deleted', data: {} });
 });
 
@@ -1161,24 +1521,82 @@ const forceClockOut = asyncHandler(async (req, res) => {
     }
     attRecord.notes = `Manual Clock-Out by Admin ${adminName}: "${noteText}"`;
     attRecord.markedBy = adminName;
-    await attRecord.save();
-  } else {
-    attRecord = await Attendance.create({
-      employee: targetEmpId || new mongoose.Types.ObjectId(),
+  }
+
+  // Create official Audit Trail record first to ensure audit integrity
+  const auditIdempotencyKey = req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null;
+  let existingAudit = null;
+  if (auditIdempotencyKey) {
+    existingAudit = await AttendanceAudit.findOne({ idempotencyKey: auditIdempotencyKey });
+  }
+
+  let auditEntry = existingAudit;
+  let auditCreatedHere = null;
+  if (!auditEntry) {
+    auditCreatedHere = new AttendanceAudit({
+      employee: targetEmpId,
+      employeeId: String(targetEmpCode || employeeId),
       employeeName: targetEmpName,
       employeeCode: targetEmpCode,
-      employeeRole: empDoc ? empDoc.role : 'Team Member',
       date: targetDate,
-      status: 'present',
-      clockInTime: nowStr,
-      workSeconds: 0,
-      totalWorkingHours: 0,
-      clockOutTime: nowStr,
-      clockOutTimestamp: Date.now(),
-      isClockedIn: false,
-      isOnBreak: false,
-      markedBy: adminName,
-      notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
+      timeFormatted: nowStr,
+      type: 'admin_force_clock_out',
+      action: 'Admin Force Clock-Out',
+      actor: 'admin',
+      actorId: String(adminId),
+      actorName: adminName,
+      isAdminOverride: true,
+      adminId: String(adminId),
+      adminName,
+      auditNote: noteText,
+      idempotencyKey: auditIdempotencyKey,
+      details: `Administrator ${adminName} [ID: ${adminId}] manually forced shift clock-out. Reason: "${noteText}"`
+    });
+
+    try {
+      await auditCreatedHere.save();
+      auditEntry = auditCreatedHere;
+    } catch (auditErr) {
+      console.error('[attendanceController] Mandatory audit creation failed in forceClockOut:', auditErr);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to create audit log for force clock-out: ${auditErr.message}. Force clock-out aborted to preserve audit integrity.`
+      });
+    }
+  }
+
+  try {
+    if (attRecord) {
+      await attRecord.save();
+    } else {
+      attRecord = await Attendance.create({
+        employee: targetEmpId || new mongoose.Types.ObjectId(),
+        employeeName: targetEmpName,
+        employeeCode: targetEmpCode,
+        employeeRole: empDoc ? empDoc.role : 'Team Member',
+        date: targetDate,
+        status: 'present',
+        clockInTime: nowStr,
+        workSeconds: 0,
+        totalWorkingHours: 0,
+        clockOutTime: nowStr,
+        clockOutTimestamp: Date.now(),
+        isClockedIn: false,
+        isOnBreak: false,
+        markedBy: adminName,
+        notes: `Manual Clock-Out by Admin ${adminName}: "${noteText}"`
+      });
+    }
+  } catch (saveErr) {
+    if (auditCreatedHere && auditCreatedHere._id) {
+      try {
+        await AttendanceAudit.findByIdAndDelete(auditCreatedHere._id);
+      } catch (_) {}
+    }
+    console.error('[attendanceController] Attendance save failed in forceClockOut:', saveErr);
+    return res.status(500).json({
+      success: false,
+      message: `Failed to save attendance record during force clock-out: ${saveErr.message}. Audit trail rolled back.`
     });
   }
 
@@ -1212,31 +1630,6 @@ const forceClockOut = asyncHandler(async (req, res) => {
       liveTelemetryCache.set(String(targetEmpId), telemOutPayload);
     }
   } catch (_) {}
-
-  // Create official Audit Trail record
-  const auditEntry = new AttendanceAudit({
-    employeeId: String(targetEmpCode || employeeId),
-    employeeName: targetEmpName,
-    employeeCode: targetEmpCode,
-    date: targetDate,
-    timeFormatted: nowStr,
-    type: 'admin_force_clock_out',
-    action: 'Admin Force Clock-Out',
-    actor: 'admin',
-    actorId: String(adminId),
-    actorName: adminName,
-    isAdminOverride: true,
-    adminId: String(adminId),
-    adminName,
-    auditNote: noteText,
-    details: `Administrator ${adminName} [ID: ${adminId}] manually forced shift clock-out. Reason: "${noteText}"`
-  });
-
-  try {
-    await auditEntry.save();
-  } catch (auditErr) {
-    console.warn('Could not save auditEntry in forceClockOut:', auditErr);
-  }
 
   res.status(200).json({
     success: true,
@@ -2022,5 +2415,11 @@ module.exports = {
   requestOvertime,
   updateOvertimeStatus,
   updateLiveHeartbeat,
-  getLiveTelemetry
+  getLiveTelemetry,
+  validateStrictDurationSeconds,
+  validateStrictTimestamp,
+  validatePunchSessions,
+  MAX_CLOCK_SKEW_MS,
+  MAX_DAY_SECONDS,
+  MIN_ALLOWED_TIMESTAMP_MS
 };

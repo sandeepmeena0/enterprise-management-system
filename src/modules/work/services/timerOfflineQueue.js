@@ -93,9 +93,115 @@ export function enqueueTimerAction(type, payload = {}, userId = null) {
   return entry;
 }
 
-// Per-user execution lock Set: Allows independent parallel flushes for different users
-// while strictly serializing and blocking concurrent flushes for the same user.
+// Per-user execution lock Set: In-memory protection against re-entrant calls within the same JavaScript context.
 const activeUserFlushes = new Set();
+
+/**
+ * Unique identifier for the current browser tab / execution context.
+ */
+export const TAB_INSTANCE_ID = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+  ? crypto.randomUUID()
+  : `tab_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
+
+const LEASE_DURATION_MS = 15000; // 15s auto-expiry for storage lease fallback
+
+/**
+ * Fallback cross-tab lock using localStorage lease with heartbeat expiration.
+ * Used when Web Locks API (navigator.locks) is unavailable or throws.
+ * @param {string} userId
+ * @param {string} tabId
+ * @returns {boolean} true if lease acquired; false if another tab holds an active lease
+ */
+export function acquireCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
+  try {
+    if (typeof localStorage === 'undefined') return true;
+    const leaseKey = `ems_flush_lease_${userId}`;
+    const now = Date.now();
+    const existing = localStorage.getItem(leaseKey);
+    if (existing) {
+      try {
+        const parsed = JSON.parse(existing);
+        if (parsed.tabId !== tabId && Number(parsed.expiresAt) > now) {
+          return false; // Another tab holds an active lease
+        }
+      } catch (_) {}
+    }
+    localStorage.setItem(leaseKey, JSON.stringify({ tabId, expiresAt: now + LEASE_DURATION_MS }));
+    return true;
+  } catch (_) {
+    return true;
+  }
+}
+
+/**
+ * Release fallback cross-tab storage lease
+ * @param {string} userId
+ * @param {string} tabId
+ */
+export function releaseCrossTabStorageLease(userId, tabId = TAB_INSTANCE_ID) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const leaseKey = `ems_flush_lease_${userId}`;
+    const existing = localStorage.getItem(leaseKey);
+    if (existing) {
+      try {
+        const parsed = JSON.parse(existing);
+        if (parsed.tabId === tabId) {
+          localStorage.removeItem(leaseKey);
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+/**
+ * Cross-tab execution lock wrapper using Web Locks API with fallback to Storage Lease.
+ * Guarantees that only ONE tab per user flushes the queue at any given time.
+ * @param {string} userId
+ * @param {() => Promise<number>} actionFn
+ * @returns {Promise<number>}
+ */
+export async function executeWithCrossTabLock(userId, actionFn) {
+  // 1. Module-level check (same-tab protection)
+  if (activeUserFlushes.has(userId)) {
+    return 0;
+  }
+
+  // 2. Web Locks API (modern standard across Chrome, Edge, Safari, Firefox)
+  if (typeof navigator !== 'undefined' && navigator.locks && typeof navigator.locks.request === 'function') {
+    const lockName = `ems_timer_flush_lock_${userId}`;
+    try {
+      return await navigator.locks.request(lockName, { ifAvailable: true }, async (lock) => {
+        if (!lock) {
+          // Another tab or worker currently holds the lock for this user
+          return 0;
+        }
+        activeUserFlushes.add(userId);
+        try {
+          return await actionFn();
+        } finally {
+          activeUserFlushes.delete(userId);
+        }
+      });
+    } catch (lockErr) {
+      console.warn('[TimerOfflineQueue] Web Locks API request failed, falling back to storage lease:', lockErr);
+    }
+  }
+
+  // 3. Fallback: Storage Lease with automatic TTL expiration
+  const acquired = acquireCrossTabStorageLease(userId);
+  if (!acquired) {
+    return 0; // Another tab holds the lease
+  }
+
+  activeUserFlushes.add(userId);
+  try {
+    return await actionFn();
+  } finally {
+    activeUserFlushes.delete(userId);
+    releaseCrossTabStorageLease(userId);
+  }
+}
 
 /**
  * Checks whether a given user queue is currently in the process of flushing
@@ -123,15 +229,11 @@ export function getActiveFlushingUsers() {
  */
 export async function flushTimerQueue(workServiceInstance, userId = null) {
   const targetUserId = getActiveUserId(userId);
-  if (activeUserFlushes.has(targetUserId)) {
-    return 0; // Same-user concurrent flush blocked
-  }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return 0;
   }
 
-  activeUserFlushes.add(targetUserId);
-  try {
+  return executeWithCrossTabLock(targetUserId, async () => {
     const queue = getOfflineTimerQueue(targetUserId);
     if (!queue || queue.length === 0) return 0;
 
@@ -185,9 +287,7 @@ export async function flushTimerQueue(workServiceInstance, userId = null) {
 
     saveOfflineTimerQueue(remaining, targetUserId);
     return flushedCount;
-  } finally {
-    activeUserFlushes.delete(targetUserId);
-  }
+  });
 }
 
 /**
