@@ -88,6 +88,10 @@ export const WorkProvider = ({ children }) => {
   const debounceTimerRef = useRef(null);
   const alertedTaskIdsRef = useRef(new Set());
 
+  // Monotonic sequence and request ID tracking to reject stale out-of-order responses
+  const latestServerVersionRef = useRef(0);
+  const inFlightRequestIdRef = useRef(0);
+
   // Derive stable userKey matching TimerContext for seamless cross-module sync
   const userKey = useMemo(() => {
     return currentUser?.employeeCode || (currentUser?._id ? String(currentUser._id) : '');
@@ -315,8 +319,14 @@ export const WorkProvider = ({ children }) => {
   // Canonical Single Source of Truth: Sync timer state directly from MongoDB ActiveTaskTimer
   const syncAuthoritativeTimerState = useCallback(async ({ force = false, source = 'manual' } = {}) => {
     if (!currentUser) return null;
+    const reqId = ++inFlightRequestIdRef.current;
     try {
       const activeSessionData = await workService.getActiveWorkSession();
+      // Out-of-order response guard: discard if a newer request was dispatched while this was in-flight
+      if (reqId < inFlightRequestIdRef.current) {
+        return null;
+      }
+
       if (!activeSessionData || !activeSessionData.success || !activeSessionData.data) {
         return null;
       }
@@ -324,6 +334,13 @@ export const WorkProvider = ({ children }) => {
       const timerState = activeSessionData.data;
       const today = getTodayStr();
       const now = Date.now();
+      const serverVersion = typeof timerState.version === 'number' ? timerState.version : 0;
+
+      // Monotonic server version guard: discard older server response unless forced
+      if (!force && serverVersion > 0 && serverVersion < latestServerVersionRef.current) {
+        return null;
+      }
+      latestServerVersionRef.current = Math.max(latestServerVersionRef.current, serverVersion);
 
       if (timerState.status === 'RUNNING' && timerState.taskId) {
         const serverTaskId = String(timerState.taskId._id || timerState.taskId.id || timerState.taskId);
@@ -343,7 +360,7 @@ export const WorkProvider = ({ children }) => {
           activeUserId: userKey,
           date: today,
           sessionDate: today,
-          serverVersion: timerState.version || 0,
+          serverVersion,
           lastUpdated: now
         };
 
@@ -382,30 +399,26 @@ export const WorkProvider = ({ children }) => {
         }));
 
         return authoritativeSnapshot;
-      } else {
-        if (timerState.status === 'PAUSED' && timerState.taskId) {
-          const serverTaskId = String(timerState.taskId._id || timerState.taskId.id || timerState.taskId);
-          const serverTaskObj = typeof timerState.taskId === 'object' ? timerState.taskId : null;
-          const pausedSnapshot = {
-            taskId: serverTaskId,
-            taskCode: serverTaskObj?.taskCode || '',
-            title: serverTaskObj?.title || 'Active Task',
-            projectName: serverTaskObj?.projectName || 'General Work',
-            timerRunning: false,
-            startedAt: null,
-            accumulatedSeconds: Number(serverTaskObj?.accumulatedSeconds || 0),
-            timerSeconds: Number(serverTaskObj?.timerSeconds || 0),
-            todayWorkSeconds: Number(serverTaskObj?.todayWorkSeconds || 0),
-            activeUserId: null,
-            date: today,
-            sessionDate: today,
-            serverVersion: timerState.version || 0,
-            lastUpdated: now
-          };
-          saveActiveTimerSnapshot(pausedSnapshot);
-        } else {
-          saveActiveTimerSnapshot(null);
-        }
+      } else if (timerState.status === 'PAUSED' && timerState.taskId) {
+        const serverTaskId = String(timerState.taskId._id || timerState.taskId.id || timerState.taskId);
+        const serverTaskObj = typeof timerState.taskId === 'object' ? timerState.taskId : null;
+        const pausedSnapshot = {
+          taskId: serverTaskId,
+          taskCode: serverTaskObj?.taskCode || '',
+          title: serverTaskObj?.title || 'Active Task',
+          projectName: serverTaskObj?.projectName || 'General Work',
+          timerRunning: false,
+          startedAt: null,
+          accumulatedSeconds: Number(serverTaskObj?.accumulatedSeconds || 0),
+          timerSeconds: Number(serverTaskObj?.timerSeconds || 0),
+          todayWorkSeconds: Number(serverTaskObj?.todayWorkSeconds || 0),
+          activeUserId: null,
+          date: today,
+          sessionDate: today,
+          serverVersion,
+          lastUpdated: now
+        };
+        saveActiveTimerSnapshot(pausedSnapshot);
 
         setTasks(prevTasks => {
           let changed = false;
@@ -428,6 +441,35 @@ export const WorkProvider = ({ children }) => {
         });
 
         window.dispatchEvent(new CustomEvent('ems_task_timer_paused', {
+          detail: { userKey, fromServerSync: true }
+        }));
+
+        return null;
+      } else {
+        // IDLE or Stopped: strictly clear active timer snapshot
+        saveActiveTimerSnapshot(null);
+
+        setTasks(prevTasks => {
+          let changed = false;
+          const updated = prevTasks.map(t => {
+            if (t.timerRunning && (isTaskAssignedToMe(t) || String(t.activeUserId) === String(userKey))) {
+              changed = true;
+              return {
+                ...t,
+                timerRunning: false,
+                startedAt: null,
+                activeUserId: null
+              };
+            }
+            return t;
+          });
+          if (changed) {
+            saveCollection(KEYS.TASKS, updated);
+          }
+          return updated;
+        });
+
+        window.dispatchEvent(new CustomEvent('ems_task_timer_stopped', {
           detail: { userKey, fromServerSync: true }
         }));
 
@@ -599,18 +641,25 @@ export const WorkProvider = ({ children }) => {
               : 0;
             const isExistingFromToday = existing && existing.sessionDate === today && Number(existing.todayWorkSeconds || 0) > 0;
             const isBackendFromToday = bt && bt.sessionDate === today && Number(bt.todayWorkSeconds || 0) > 0;
-            const resolvedTodaySecs = Math.max(
-              (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
-              Number(bt.dailySessions?.[today] || 0),
-              (isExistingFromToday ? Number(existing.todayWorkSeconds || 0) : 0),
-              Number(existing?.dailySessions?.[today] || 0),
-              activeToday
-            );
+            // Strict Single Source of Truth: When connected to authoritative server, server values govern
+            const resolvedTodaySecs = authoritativeTimer
+              ? (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : Number(bt.dailySessions?.[today] || 0))
+              : Math.max(
+                  (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
+                  Number(bt.dailySessions?.[today] || 0),
+                  (isExistingFromToday ? Number(existing.todayWorkSeconds || 0) : 0),
+                  Number(existing?.dailySessions?.[today] || 0),
+                  activeToday
+                );
             if (resolvedTodaySecs > 0) {
               mergedDailySessions[today] = Math.max(Number(mergedDailySessions[today] || 0), resolvedTodaySecs);
             } else if (mergedDailySessions[today] !== undefined && resolvedTodaySecs === 0) {
               delete mergedDailySessions[today];
             }
+
+            const resolvedAccumSecs = authoritativeTimer
+              ? Number(bt.accumulatedSeconds || resolvedTodaySecs || 0)
+              : (Number(bt.accumulatedSeconds || 0) > 0 ? Number(bt.accumulatedSeconds) : Math.max(localAccum, backendAccum, resolvedTodaySecs));
 
             taskMap.set(id, {
               ...existing,
@@ -621,7 +670,7 @@ export const WorkProvider = ({ children }) => {
               timerRunning: effectiveRunning,
               startedAt: effectiveStartedAt,
               timerSeconds: (resolvedSessionDate === today) ? resolvedTodaySecs : 0,
-              accumulatedSeconds: Number(bt.accumulatedSeconds || 0) > 0 ? Number(bt.accumulatedSeconds) : Math.max(localAccum, backendAccum, resolvedTodaySecs),
+              accumulatedSeconds: resolvedAccumSecs,
               status: finalCompleted ? 'completed' : (bt.status || existing.status),
               completedAt: bt.completedAt || existing.completedAt || (finalCompleted ? new Date().toISOString() : null),
               completedOn: bt.completedOn || existing.completedOn || (finalCompleted ? today : null)
@@ -631,11 +680,13 @@ export const WorkProvider = ({ children }) => {
               ? Math.max(0, Number(activeTimer.todayWorkSeconds || 0))
               : 0;
             const isBackendFromToday = bt && bt.sessionDate === today && Number(bt.todayWorkSeconds || 0) > 0;
-            const resolvedTodaySecs = Math.max(
-              (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
-              Number(bt.dailySessions?.[today] || 0),
-              activeToday
-            );
+            const resolvedTodaySecs = authoritativeTimer
+              ? (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : Number(bt.dailySessions?.[today] || 0))
+              : Math.max(
+                  (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
+                  Number(bt.dailySessions?.[today] || 0),
+                  activeToday
+                );
             const mergedDailySessions = {
               ...(bt.dailySessions && typeof bt.dailySessions === 'object' ? bt.dailySessions : {})
             };

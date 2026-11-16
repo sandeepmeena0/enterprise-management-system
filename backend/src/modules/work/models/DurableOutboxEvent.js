@@ -39,13 +39,26 @@ const DurableOutboxEventSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['PENDING', 'PUBLISHED', 'FAILED'],
+      enum: ['PENDING', 'PROCESSING', 'PUBLISHED', 'FAILED'],
       default: 'PENDING',
       index: true
+    },
+    leaseExpiresAt: {
+      type: Date,
+      default: null,
+      index: true
+    },
+    leaseOwner: {
+      type: String,
+      default: null
     },
     retryCount: {
       type: Number,
       default: 0
+    },
+    nextRetryAt: {
+      type: Date,
+      default: null
     },
     lastError: {
       type: String,
@@ -69,6 +82,10 @@ const DurableOutboxEventSchema = new mongoose.Schema(
 
 // Strict unique constraint guarantees monotonic sequence without gaps or duplicates per employee
 DurableOutboxEventSchema.index({ employeeId: 1, seq: 1 }, { unique: true });
+
+// Compound index for atomic lease polling and worker acquisition
+DurableOutboxEventSchema.index({ status: 1, leaseExpiresAt: 1 });
+DurableOutboxEventSchema.index({ employeeId: 1, status: 1, seq: 1 });
 
 // TTL index: Retention applies ONLY after successful publication!
 // MongoDB TTL index ignores documents where publishedAt is null (PENDING or retrying events NEVER expire)

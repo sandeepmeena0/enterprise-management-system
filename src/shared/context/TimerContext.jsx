@@ -1179,8 +1179,13 @@ export const TimerProvider = ({ children }) => {
       if (document.visibilityState === 'visible') syncLiveShiftState();
     };
 
+    const handleSocketStatus = (e) => {
+      if (e?.detail?.connected) syncLiveShiftState();
+    };
+
     window.addEventListener('focus', handleSync);
     window.addEventListener('online', handleSync);
+    window.addEventListener('ems_socket_status', handleSocketStatus);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('hrms_storage_change', handleSync);
     window.addEventListener('ems_clocked_in', handleSync);
@@ -1189,6 +1194,7 @@ export const TimerProvider = ({ children }) => {
       clearInterval(interval);
       window.removeEventListener('focus', handleSync);
       window.removeEventListener('online', handleSync);
+      window.removeEventListener('ems_socket_status', handleSocketStatus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('hrms_storage_change', handleSync);
       window.removeEventListener('ems_clocked_in', handleSync);
@@ -2422,7 +2428,15 @@ export const TimerProvider = ({ children }) => {
         }
         setHadClockedOutToday(true);
         window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { userKey } }));
+        syncLiveShiftState();
       } else if (ev.type === SYNC_EVENTS.SHIFT_CLOCKED_IN) {
+        // Monotonic guard: do not let an older clock-in event override a newer clock-out
+        const outTs = Number(localStorage.getItem(`ems_timer_${userKey}_clock_out_timestamp`)) || 0;
+        const inTs = Number(ev.payload?.clockInTimestamp) || 0;
+        if (outTs > 0 && inTs > 0 && inTs <= outTs) {
+          return;
+        }
+
         setIsClockedIn(true);
         setClockOutTime(null);
         setIsRunning(true);
@@ -2431,6 +2445,7 @@ export const TimerProvider = ({ children }) => {
         if (ev.payload?.clockInTime) {
           setLoginTime(ev.payload.clockInTime);
         }
+        syncLiveShiftState();
       } else if (ev.type === SYNC_EVENTS.SHIFT_BREAK_STARTED) {
         setIsOnBreak(true);
         if (ev.payload?.breakType) {
@@ -2449,6 +2464,7 @@ export const TimerProvider = ({ children }) => {
           if (!ev.payload.isClockedIn || ev.payload.isOnBreak) {
             window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { userKey } }));
           }
+          syncLiveShiftState();
         }
       }
     });

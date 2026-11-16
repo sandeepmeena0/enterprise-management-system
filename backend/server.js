@@ -21,10 +21,19 @@ connectDB();
 
 // Midnight & daily shift auto-close worker (cleans past unclosed shifts from MongoDB Atlas)
 const { autoClosePastDayShifts } = require('./src/modules/hr/controllers/attendanceController');
+const { startOutboxPollingWorker, stopOutboxPollingWorker } = require('./src/modules/work/services/outboxDispatcher');
+
 mongoose.connection.once('open', () => {
   autoClosePastDayShifts();
   setInterval(autoClosePastDayShifts, 30 * 60 * 1000);
+  startOutboxPollingWorker(5000);
 });
+
+const gracefulShutdown = () => {
+  stopOutboxPollingWorker();
+};
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 const app = express();
 

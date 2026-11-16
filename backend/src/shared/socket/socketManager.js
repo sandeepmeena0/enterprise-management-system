@@ -33,15 +33,16 @@ function initSocketServer(httpServer, allowedOrigins = []) {
           'http://127.0.0.1:5173',
           'http://127.0.0.1:5174',
           'https://enterprise-management-system-two.vercel.app',
-          process.env.FRONTEND_URL
+          process.env.FRONTEND_URL,
+          ...(Array.isArray(allowedOrigins) ? allowedOrigins : [])
         ].filter(Boolean);
 
-        // Allow localhost and vercel previews
-        const isAllowed = whitelist.some(w => origin === w || origin.endsWith('.vercel.app')) || origin.includes('localhost');
+        // Allow configured origins, localhost, and vercel previews
+        const isAllowed = whitelist.some(w => origin === w || origin.endsWith('.vercel.app')) || origin.includes('localhost') || origin.includes('127.0.0.1');
         if (isAllowed) {
           return callback(null, true);
         }
-        return callback(null, true); // Fallback allow to avoid dropping mobile web views
+        return callback(new Error('CORS origin not allowed'));
       },
       credentials: true,
       methods: ['GET', 'POST']
@@ -213,8 +214,21 @@ function disconnectUserSockets(userId) {
   io.in(userRoom).disconnectSockets(true);
 }
 
+/**
+ * Reset socket server instance (strictly for testing environments)
+ */
+function resetSocketServerForTesting() {
+  if (io) {
+    try {
+      io.close();
+    } catch (_) {}
+    io = null;
+  }
+}
+
 module.exports = {
   initSocketServer,
   getSocketServer,
-  disconnectUserSockets
+  disconnectUserSockets,
+  resetSocketServerForTesting
 };
