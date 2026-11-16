@@ -17,6 +17,7 @@ const SequenceCounter = require('../models/SequenceCounter');
 const IdempotencyLog = require('../models/IdempotencyLog');
 const Task = require('../models/Task');
 const Employee = require('../../hr/models/Employee');
+const { dispatchPendingOutboxEvents } = require('./outboxDispatcher');
 
 // Custom Concurrency Error
 class ConcurrencyVersionMismatchError extends Error {
@@ -67,6 +68,11 @@ async function resolveActorAndSubject(actor, requestedTargetId) {
 
   // Non-privileged users CAN NEVER target another employee
   if (actorType === 'EMPLOYEE') {
+    if (requestedTargetId && String(requestedTargetId) !== String(actorId)) {
+      const err = new Error(`Forbidden: Ordinary employees cannot access or modify target employee '${requestedTargetId}'.`);
+      err.statusCode = 403;
+      throw err;
+    }
     targetId = actorId;
   } else if (requestedTargetId && String(requestedTargetId) !== String(actorId)) {
     if (!mongoose.Types.ObjectId.isValid(requestedTargetId)) {
@@ -425,7 +431,7 @@ async function startTimer({ actor, targetEmployeeId, taskId, reason, requestId, 
   const task = await Task.findById(taskId);
   validateTaskOwnership(task, empId);
 
-  return withOCCRetry(async (session) => {
+  const result = await withOCCRetry(async (session) => {
     const serverNow = new Date();
     const businessDate = getISTDateString(serverNow);
 
@@ -649,6 +655,12 @@ async function startTimer({ actor, targetEmployeeId, taskId, reason, requestId, 
 
     return successResult;
   });
+
+  dispatchPendingOutboxEvents(empId).catch((err) => {
+    console.error('[timeEngineService] Outbox dispatch notice after startTimer:', err.message);
+  });
+
+  return result;
 }
 
 /**
@@ -657,7 +669,7 @@ async function startTimer({ actor, targetEmployeeId, taskId, reason, requestId, 
 async function pauseTimer({ actor, targetEmployeeId, taskId, reason, requestId, idempotencyKey, leaseToken, source = 'EMPLOYEE_PORTAL', clientIp, userAgent }) {
   const { actorId, actorType, targetEmployeeId: empId } = await resolveActorAndSubject(actor, targetEmployeeId);
 
-  return withOCCRetry(async (session) => {
+  const result = await withOCCRetry(async (session) => {
     const serverNow = new Date();
     const activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).session(session);
 
@@ -818,6 +830,12 @@ async function pauseTimer({ actor, targetEmployeeId, taskId, reason, requestId, 
 
     return pauseResult;
   });
+
+  dispatchPendingOutboxEvents(empId).catch((err) => {
+    console.error('[timeEngineService] Outbox dispatch notice after pauseTimer:', err.message);
+  });
+
+  return result;
 }
 
 /**
@@ -826,7 +844,7 @@ async function pauseTimer({ actor, targetEmployeeId, taskId, reason, requestId, 
 async function resumeTimer({ actor, targetEmployeeId, taskId, reason, requestId, idempotencyKey, leaseToken, source = 'EMPLOYEE_PORTAL', clientIp, userAgent }) {
   const { actorId, actorType, targetEmployeeId: empId } = await resolveActorAndSubject(actor, targetEmployeeId);
 
-  return withOCCRetry(async (session) => {
+  const result = await withOCCRetry(async (session) => {
     const serverNow = new Date();
     const businessDate = getISTDateString(serverNow);
 
@@ -1007,6 +1025,12 @@ async function resumeTimer({ actor, targetEmployeeId, taskId, reason, requestId,
 
     return resumeResult;
   });
+
+  dispatchPendingOutboxEvents(empId).catch((err) => {
+    console.error('[timeEngineService] Outbox dispatch notice after resumeTimer:', err.message);
+  });
+
+  return result;
 }
 
 /**
@@ -1017,7 +1041,7 @@ async function resumeTimer({ actor, targetEmployeeId, taskId, reason, requestId,
 async function stopTimer({ actor, targetEmployeeId, taskId, reason, requestId, idempotencyKey, leaseToken, source = 'EMPLOYEE_PORTAL', clientIp, userAgent }) {
   const { actorId, actorType, targetEmployeeId: empId } = await resolveActorAndSubject(actor, targetEmployeeId);
 
-  return withOCCRetry(async (session) => {
+  const result = await withOCCRetry(async (session) => {
     const serverNow = new Date();
     const activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).session(session);
 
@@ -1176,6 +1200,12 @@ async function stopTimer({ actor, targetEmployeeId, taskId, reason, requestId, i
 
     return stopResult;
   });
+
+  dispatchPendingOutboxEvents(empId).catch((err) => {
+    console.error('[timeEngineService] Outbox dispatch notice after stopTimer:', err.message);
+  });
+
+  return result;
 }
 
 /**
@@ -1189,7 +1219,7 @@ async function completeTask({ actor, targetEmployeeId, taskId, reason, requestId
   const task = await Task.findById(taskId);
   validateTaskOwnership(task, empId);
 
-  return withOCCRetry(async (session) => {
+  const result = await withOCCRetry(async (session) => {
     const serverNow = new Date();
     const businessDate = getISTDateString(serverNow);
 
@@ -1351,6 +1381,12 @@ async function completeTask({ actor, targetEmployeeId, taskId, reason, requestId
 
     return completeResult;
   });
+
+  dispatchPendingOutboxEvents(empId).catch((err) => {
+    console.error('[timeEngineService] Outbox dispatch notice after completeTask:', err.message);
+  });
+
+  return result;
 }
 
 /**
@@ -1359,7 +1395,7 @@ async function completeTask({ actor, targetEmployeeId, taskId, reason, requestId
 async function getActiveTimer({ actor, targetEmployeeId }) {
   const { targetEmployeeId: empId } = await resolveActorAndSubject(actor, targetEmployeeId);
 
-  const activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).populate('taskId', 'taskCode title status priority projectName');
+  const activeTimer = await ActiveTaskTimer.findOne({ employeeId: empId }).populate('taskId', 'taskCode title status priority projectName timerSeconds accumulatedSeconds todayWorkSeconds estimatedHours hoursLogged hoursLoggedText');
   if (!activeTimer) {
     return {
       success: true,
@@ -1370,7 +1406,8 @@ async function getActiveTimer({ actor, targetEmployeeId }) {
         activeSessionId: null,
         startedAt: null,
         serverTime: new Date(),
-        liveElapsedSeconds: 0
+        liveElapsedSeconds: 0,
+        version: 0
       }
     };
   }
@@ -1395,6 +1432,7 @@ async function getActiveTimer({ actor, targetEmployeeId }) {
       activeSessionId: activeTimer.activeSessionId,
       startedAt: activeTimer.startedAt,
       lastHeartbeatAt: activeTimer.lastHeartbeatAt,
+      version: activeTimer.version || 0,
       serverTime: new Date(),
       liveElapsedSeconds,
       activeSession

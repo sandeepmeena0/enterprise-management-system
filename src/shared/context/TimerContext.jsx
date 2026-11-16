@@ -16,7 +16,7 @@ import { useHR } from '../../modules/hr/context/HRContext';
 import { useAuth } from './AuthContext';
 import { hrService } from '../../modules/hr/services/hrService';
 import { getCompanySettings } from '../services/companySettingsService';
-import { broadcastSyncEvent, SYNC_EVENTS } from '../services/realtimeSyncService';
+import { broadcastSyncEvent, subscribeToSyncEvents, SYNC_EVENTS } from '../services/realtimeSyncService';
 import { getCanonicalTimerKey, getTimerMirrorKeys, parseTimeToSeconds, normalizePunchSessions, readTimerStorage, writeTimerStorage, removeTimerStorage, calculateShiftWorkSeconds, performShiftClockOut, getLocalDateStr } from '../utils/timerUtils';
 
 const defaultTimerContext = {
@@ -2395,6 +2395,68 @@ export const TimerProvider = ({ children }) => {
     window.addEventListener('ems_request_clock_in', handleRequestClockIn);
     return () => window.removeEventListener('ems_request_clock_in', handleRequestClockIn);
   }, [isClockedIn, handleClockIn]);
+
+  // ── Real-time Cross-Device Attendance Event Synchronization ──
+  useEffect(() => {
+    const unsub = subscribeToSyncEvents((ev) => {
+      if (!currentUser) return;
+      const targetEmpId = ev.payload?.employeeId;
+      const targetEmpCode = ev.payload?.employeeCode;
+      const myId = currentUser._id ? String(currentUser._id) : '';
+      const myCode = currentUser.employeeCode ? String(currentUser.employeeCode) : '';
+
+      const isForMe = !targetEmpId ||
+        targetEmpId === myId ||
+        targetEmpId === myCode ||
+        targetEmpCode === myCode ||
+        targetEmpId === userKey;
+
+      if (!isForMe) return;
+
+      if (ev.type === SYNC_EVENTS.SHIFT_CLOCKED_OUT) {
+        setIsClockedIn(false);
+        setIsRunning(false);
+        setIsOnBreak(false);
+        if (ev.payload?.clockOutTime) {
+          setClockOutTime(ev.payload.clockOutTime);
+        }
+        setHadClockedOutToday(true);
+        window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { userKey } }));
+      } else if (ev.type === SYNC_EVENTS.SHIFT_CLOCKED_IN) {
+        setIsClockedIn(true);
+        setClockOutTime(null);
+        setIsRunning(true);
+        setIsOnBreak(false);
+        setHadClockedOutToday(false);
+        if (ev.payload?.clockInTime) {
+          setLoginTime(ev.payload.clockInTime);
+        }
+      } else if (ev.type === SYNC_EVENTS.SHIFT_BREAK_STARTED) {
+        setIsOnBreak(true);
+        if (ev.payload?.breakType) {
+          setBreakType(ev.payload.breakType);
+        }
+        window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { userKey } }));
+      } else if (ev.type === SYNC_EVENTS.SHIFT_BREAK_ENDED) {
+        setIsOnBreak(false);
+        setBreakType(null);
+      } else if (ev.type === SYNC_EVENTS.ATTENDANCE_STATE_UPDATED) {
+        if (ev.payload) {
+          setIsClockedIn(Boolean(ev.payload.isClockedIn));
+          setIsOnBreak(Boolean(ev.payload.isOnBreak));
+          if (ev.payload.clockOutTime) setClockOutTime(ev.payload.clockOutTime);
+          if (ev.payload.breakType) setBreakType(ev.payload.breakType);
+          if (!ev.payload.isClockedIn || ev.payload.isOnBreak) {
+            window.dispatchEvent(new CustomEvent('ems_task_timer_paused', { detail: { userKey } }));
+          }
+        }
+      }
+    });
+
+    return () => {
+      unsub();
+    };
+  }, [currentUser, userKey]);
 
   /**
    * Clock Out Handler

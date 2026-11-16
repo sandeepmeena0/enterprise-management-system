@@ -1148,6 +1148,43 @@ const markAttendance = asyncHandler(async (req, res) => {
     }
   } catch (_) {}
 
+  // Real-time cross-device Socket.IO emission
+  try {
+    const { getSocketServer } = require('../../../shared/socket/socketManager');
+    const io = getSocketServer();
+    if (io && targetEmpId) {
+      const userRoom = `user:${String(targetEmpId)}`;
+      const attPayload = {
+        employeeId: String(targetEmpId),
+        employeeCode: String(targetEmpCode || ''),
+        date,
+        isClockedIn: Boolean(record.isClockedIn),
+        isOnBreak: Boolean(record.isOnBreak),
+        breakType: record.breakType || null,
+        clockInTime: record.firstClockInTime || record.clockInTime || null,
+        clockOutTime: record.clockOutTime || null,
+        workSeconds: Number(record.workSeconds) || 0,
+        breakSeconds: Number(record.breakSeconds) || 0,
+        status: calculatedStatus || record.status
+      };
+      io.to(userRoom).emit('attendance:state_updated', attPayload);
+
+      if (record.isClockedIn && !record.clockOutTime && !record.isOnBreak) {
+        io.to(userRoom).emit('attendance:clock_in', attPayload);
+      } else if (!record.isClockedIn && record.clockOutTime) {
+        io.to(userRoom).emit('attendance:clock_out', attPayload);
+      }
+
+      if (record.isOnBreak) {
+        io.to(userRoom).emit('attendance:break_start', attPayload);
+      } else if (existingRecord?.isOnBreak && !record.isOnBreak) {
+        io.to(userRoom).emit('attendance:break_end', attPayload);
+      }
+    }
+  } catch (socketErr) {
+    console.error('[attendanceController] Socket attendance emission notice:', socketErr.message);
+  }
+
   const resObj = record.toObject ? record.toObject() : { ...record };
   resObj.employeeId = String(resObj.employee || targetEmpId);
   res.status(200).json({ success: true, data: resObj, audit: auditEntry });
@@ -2066,6 +2103,32 @@ const forceClockOut = asyncHandler(async (req, res) => {
       liveTelemetryCache.set(String(targetEmpId), telemOutPayload);
     }
   } catch (_) {}
+
+  // Real-time cross-device Socket.IO emission for force clock out
+  try {
+    const { getSocketServer } = require('../../../shared/socket/socketManager');
+    const io = getSocketServer();
+    const resolvedTargetId = String(targetEmpId || employeeId);
+    if (io && resolvedTargetId) {
+      const userRoom = `user:${resolvedTargetId}`;
+      const attOutPayload = {
+        employeeId: resolvedTargetId,
+        employeeCode: String(targetEmpCode || ''),
+        date: targetDate,
+        isClockedIn: false,
+        isOnBreak: false,
+        clockInTime: attRecord.firstClockInTime || attRecord.clockInTime || null,
+        clockOutTime: attRecord.clockOutTime,
+        workSeconds: Number(attRecord.workSeconds) || 0,
+        breakSeconds: Number(attRecord.breakSeconds) || 0,
+        status: attRecord.status
+      };
+      io.to(userRoom).emit('attendance:state_updated', attOutPayload);
+      io.to(userRoom).emit('attendance:clock_out', attOutPayload);
+    }
+  } catch (socketErr) {
+    console.error('[attendanceController] Socket forceClockOut emission notice:', socketErr.message);
+  }
 
   res.status(200).json({
     success: true,

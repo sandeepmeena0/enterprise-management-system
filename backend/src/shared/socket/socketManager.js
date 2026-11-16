@@ -178,6 +178,14 @@ function initSocketServer(httpServer, allowedOrigins = []) {
       rooms: [userRoom, roleRoom, 'company:global']
     });
 
+    // Flush any pending durable outbox events for this user upon connection/reconnection
+    try {
+      const { dispatchPendingOutboxEvents } = require('../../modules/work/services/outboxDispatcher');
+      dispatchPendingOutboxEvents(user.id).catch((err) => {
+        console.error('[socketManager] Error dispatching pending outbox events on connection:', err.message);
+      });
+    } catch (_) {}
+
     socket.on('disconnect', (reason) => {
       // Disconnection cleanup if needed
     });

@@ -50,6 +50,7 @@ const defaultWorkContext = {
   isEmployeeOnLeave: () => false,
   isTaskOverdue: () => false,
   overdueTaskPrompt: null,
+  syncAuthoritativeTimerState: async () => {},
   extendTaskDeadline: async () => {},
   rescheduleTaskForFuture: async () => {}
 };
@@ -311,6 +312,133 @@ export const WorkProvider = ({ children }) => {
     return `${hrs}:${mins}:${secs}`;
   }, []);
 
+  // Canonical Single Source of Truth: Sync timer state directly from MongoDB ActiveTaskTimer
+  const syncAuthoritativeTimerState = useCallback(async ({ force = false, source = 'manual' } = {}) => {
+    if (!currentUser) return null;
+    try {
+      const activeSessionData = await workService.getActiveWorkSession();
+      if (!activeSessionData || !activeSessionData.success || !activeSessionData.data) {
+        return null;
+      }
+
+      const timerState = activeSessionData.data;
+      const today = getTodayStr();
+      const now = Date.now();
+
+      if (timerState.status === 'RUNNING' && timerState.taskId) {
+        const serverTaskId = String(timerState.taskId._id || timerState.taskId.id || timerState.taskId);
+        const serverTaskObj = typeof timerState.taskId === 'object' ? timerState.taskId : null;
+        const startMs = timerState.startedAt ? new Date(timerState.startedAt).getTime() : now;
+
+        const authoritativeSnapshot = {
+          taskId: serverTaskId,
+          taskCode: serverTaskObj?.taskCode || '',
+          title: serverTaskObj?.title || 'Active Task',
+          projectName: serverTaskObj?.projectName || 'General Work',
+          timerRunning: true,
+          startedAt: startMs,
+          accumulatedSeconds: Number(serverTaskObj?.accumulatedSeconds || 0),
+          timerSeconds: Number(serverTaskObj?.timerSeconds || 0),
+          todayWorkSeconds: Number(serverTaskObj?.todayWorkSeconds || 0),
+          activeUserId: userKey,
+          date: today,
+          sessionDate: today,
+          serverVersion: timerState.version || 0,
+          lastUpdated: now
+        };
+
+        saveActiveTimerSnapshot(authoritativeSnapshot);
+
+        setTasks(prevTasks => {
+          const updated = prevTasks.map(t => {
+            const tId = String(t._id || t.id);
+            if (tId === serverTaskId) {
+              return {
+                ...t,
+                ...(serverTaskObj || {}),
+                _id: t._id,
+                id: t.id,
+                timerRunning: true,
+                startedAt: startMs,
+                status: t.status === 'incomplete' ? 'in_progress' : t.status
+              };
+            }
+            if (t.timerRunning && (isTaskAssignedToMe(t) || String(t.activeUserId) === String(userKey))) {
+              return {
+                ...t,
+                timerRunning: false,
+                startedAt: null,
+                activeUserId: null
+              };
+            }
+            return t;
+          });
+          saveCollection(KEYS.TASKS, updated);
+          return updated;
+        });
+
+        window.dispatchEvent(new CustomEvent('ems_task_timer_started', {
+          detail: { taskId: serverTaskId, userKey, fromServerSync: true }
+        }));
+
+        return authoritativeSnapshot;
+      } else {
+        if (timerState.status === 'PAUSED' && timerState.taskId) {
+          const serverTaskId = String(timerState.taskId._id || timerState.taskId.id || timerState.taskId);
+          const serverTaskObj = typeof timerState.taskId === 'object' ? timerState.taskId : null;
+          const pausedSnapshot = {
+            taskId: serverTaskId,
+            taskCode: serverTaskObj?.taskCode || '',
+            title: serverTaskObj?.title || 'Active Task',
+            projectName: serverTaskObj?.projectName || 'General Work',
+            timerRunning: false,
+            startedAt: null,
+            accumulatedSeconds: Number(serverTaskObj?.accumulatedSeconds || 0),
+            timerSeconds: Number(serverTaskObj?.timerSeconds || 0),
+            todayWorkSeconds: Number(serverTaskObj?.todayWorkSeconds || 0),
+            activeUserId: null,
+            date: today,
+            sessionDate: today,
+            serverVersion: timerState.version || 0,
+            lastUpdated: now
+          };
+          saveActiveTimerSnapshot(pausedSnapshot);
+        } else {
+          saveActiveTimerSnapshot(null);
+        }
+
+        setTasks(prevTasks => {
+          let changed = false;
+          const updated = prevTasks.map(t => {
+            if (t.timerRunning && (isTaskAssignedToMe(t) || String(t.activeUserId) === String(userKey))) {
+              changed = true;
+              return {
+                ...t,
+                timerRunning: false,
+                startedAt: null,
+                activeUserId: null
+              };
+            }
+            return t;
+          });
+          if (changed) {
+            saveCollection(KEYS.TASKS, updated);
+          }
+          return updated;
+        });
+
+        window.dispatchEvent(new CustomEvent('ems_task_timer_paused', {
+          detail: { userKey, fromServerSync: true }
+        }));
+
+        return null;
+      }
+    } catch (err) {
+      console.warn('[WorkContext] Error during syncAuthoritativeTimerState:', err);
+      return null;
+    }
+  }, [currentUser, userKey, saveActiveTimerSnapshot, isTaskAssignedToMe]);
+
   // Active filter states
   const [projectFilter, setProjectFilter] = useState({ status: 'all', category: 'all', department: 'all', search: '' });
   const [taskFilter, setTaskFilter] = useState({ projectId: 'all', status: 'all', priority: 'all', assignedTo: 'all', hideCompleted: false, search: '' });
@@ -322,15 +450,68 @@ export const WorkProvider = ({ children }) => {
     try {
       isFetchingRef.current = true;
       if (!isSilent) setLoading(true);
-      const [prjs, rawTsks, times] = await Promise.all([
+      const [prjs, rawTsks, times, activeTimerRes] = await Promise.all([
         workService.getProjects(projectFilter),
         workService.getTasks(taskFilter),
-        workService.getTimesheets(timesheetFilter)
+        workService.getTimesheets(timesheetFilter),
+        workService.getActiveWorkSession()
       ]);
+
+      const authoritativeTimer = (activeTimerRes && activeTimerRes.success && activeTimerRes.data)
+        ? activeTimerRes.data
+        : null;
+      const isServerRunning = authoritativeTimer?.status === 'RUNNING';
+      const serverRunningTaskId = isServerRunning && authoritativeTimer.taskId
+        ? String(authoritativeTimer.taskId._id || authoritativeTimer.taskId.id || authoritativeTimer.taskId)
+        : null;
+      const serverRunningStartMs = isServerRunning && authoritativeTimer.startedAt
+        ? new Date(authoritativeTimer.startedAt).getTime()
+        : null;
 
       const activeTimer = getActiveTimerSnapshot();
       const localTasks = getCollection(KEYS.TASKS) || [];
       const today = getTodayStr();
+
+      // Synchronize local snapshot with server active state if response received
+      if (authoritativeTimer) {
+        if (isServerRunning && serverRunningTaskId) {
+          saveActiveTimerSnapshot({
+            taskId: serverRunningTaskId,
+            taskCode: authoritativeTimer.taskId?.taskCode || '',
+            title: authoritativeTimer.taskId?.title || '',
+            projectName: authoritativeTimer.taskId?.projectName || '',
+            timerRunning: true,
+            startedAt: serverRunningStartMs,
+            accumulatedSeconds: Number(authoritativeTimer.taskId?.accumulatedSeconds || 0),
+            timerSeconds: Number(authoritativeTimer.taskId?.timerSeconds || 0),
+            todayWorkSeconds: Number(authoritativeTimer.taskId?.todayWorkSeconds || 0),
+            activeUserId: userKey,
+            date: today,
+            sessionDate: today,
+            serverVersion: authoritativeTimer.version || 0,
+            lastUpdated: Date.now()
+          });
+        } else if (authoritativeTimer.status === 'PAUSED' && authoritativeTimer.taskId) {
+          saveActiveTimerSnapshot({
+            taskId: String(authoritativeTimer.taskId._id || authoritativeTimer.taskId.id || authoritativeTimer.taskId),
+            taskCode: authoritativeTimer.taskId?.taskCode || '',
+            title: authoritativeTimer.taskId?.title || '',
+            projectName: authoritativeTimer.taskId?.projectName || '',
+            timerRunning: false,
+            startedAt: null,
+            accumulatedSeconds: Number(authoritativeTimer.taskId?.accumulatedSeconds || 0),
+            timerSeconds: Number(authoritativeTimer.taskId?.timerSeconds || 0),
+            todayWorkSeconds: Number(authoritativeTimer.taskId?.todayWorkSeconds || 0),
+            activeUserId: null,
+            date: today,
+            sessionDate: today,
+            serverVersion: authoritativeTimer.version || 0,
+            lastUpdated: Date.now()
+          });
+        } else if (authoritativeTimer.status === 'IDLE') {
+          saveActiveTimerSnapshot(null);
+        }
+      }
 
       // Unified map to ensure no tasks created or updated locally are ever dropped on reload
       const taskMap = new Map();
@@ -377,18 +558,30 @@ export const WorkProvider = ({ children }) => {
             );
 
             // Completed tasks can NEVER run
+            // Single Source of Truth: When server authoritative timer is available, server determines running state
             let effectiveRunning = false;
             let effectiveStartedAt = null;
             if (!finalCompleted) {
-              if (isExplicitlyPausedLocally) {
-                effectiveRunning = false;
-                effectiveStartedAt = null;
-              } else if (isLocalActive) {
-                effectiveRunning = true;
-                effectiveStartedAt = existing.startedAt || activeTimer?.startedAt || Date.now();
-              } else if (isBackendActive && !isExplicitlyPausedLocally) {
-                effectiveRunning = true;
-                effectiveStartedAt = bt.startedAt;
+              if (authoritativeTimer) {
+                if (isServerRunning && serverRunningTaskId === id) {
+                  effectiveRunning = true;
+                  effectiveStartedAt = serverRunningStartMs || bt.startedAt || Date.now();
+                } else {
+                  effectiveRunning = false;
+                  effectiveStartedAt = null;
+                }
+              } else {
+                // Offline fallback
+                if (isExplicitlyPausedLocally) {
+                  effectiveRunning = false;
+                  effectiveStartedAt = null;
+                } else if (isLocalActive) {
+                  effectiveRunning = true;
+                  effectiveStartedAt = existing.startedAt || activeTimer?.startedAt || Date.now();
+                } else if (isBackendActive && !isExplicitlyPausedLocally) {
+                  effectiveRunning = true;
+                  effectiveStartedAt = bt.startedAt;
+                }
               }
             }
 
@@ -407,9 +600,9 @@ export const WorkProvider = ({ children }) => {
             const isExistingFromToday = existing && existing.sessionDate === today && Number(existing.todayWorkSeconds || 0) > 0;
             const isBackendFromToday = bt && bt.sessionDate === today && Number(bt.todayWorkSeconds || 0) > 0;
             const resolvedTodaySecs = Math.max(
-              (isExistingFromToday ? Number(existing.todayWorkSeconds || 0) : 0),
               (isBackendFromToday ? Number(bt.todayWorkSeconds || 0) : 0),
               Number(bt.dailySessions?.[today] || 0),
+              (isExistingFromToday ? Number(existing.todayWorkSeconds || 0) : 0),
               Number(existing?.dailySessions?.[today] || 0),
               activeToday
             );
@@ -428,7 +621,7 @@ export const WorkProvider = ({ children }) => {
               timerRunning: effectiveRunning,
               startedAt: effectiveStartedAt,
               timerSeconds: (resolvedSessionDate === today) ? resolvedTodaySecs : 0,
-              accumulatedSeconds: Math.max(localAccum, backendAccum, resolvedTodaySecs),
+              accumulatedSeconds: Number(bt.accumulatedSeconds || 0) > 0 ? Number(bt.accumulatedSeconds) : Math.max(localAccum, backendAccum, resolvedTodaySecs),
               status: finalCompleted ? 'completed' : (bt.status || existing.status),
               completedAt: bt.completedAt || existing.completedAt || (finalCompleted ? new Date().toISOString() : null),
               completedOn: bt.completedOn || existing.completedOn || (finalCompleted ? today : null)
@@ -452,12 +645,16 @@ export const WorkProvider = ({ children }) => {
               delete mergedDailySessions[today];
             }
 
+            const effectiveRunningNew = !finalCompleted && (authoritativeTimer ? (isServerRunning && serverRunningTaskId === id) : Boolean(bt.timerRunning));
+            const effectiveStartedNew = effectiveRunningNew ? (serverRunningStartMs || bt.startedAt || Date.now()) : null;
+
             taskMap.set(id, {
               ...bt,
               dailySessions: mergedDailySessions,
               sessionDate: bt.sessionDate || today,
               todayWorkSeconds: resolvedTodaySecs,
-              timerRunning: finalCompleted ? false : Boolean(bt.timerRunning),
+              timerRunning: effectiveRunningNew,
+              startedAt: effectiveStartedNew,
               timerSeconds: (bt.sessionDate === today) ? resolvedTodaySecs : 0,
               accumulatedSeconds: Math.max(Number(bt.accumulatedSeconds || 0), resolvedTodaySecs),
               status: finalCompleted ? 'completed' : bt.status
@@ -831,33 +1028,52 @@ export const WorkProvider = ({ children }) => {
     window.addEventListener('hrms_storage_change', handleStorageUpdate);
     window.addEventListener('storage', handleStorageUpdate);
 
-    // Cross-tab real-time event subscription for 0ms latency sync (debounced to avoid connection flooding)
+    // Cross-tab & cross-device real-time event subscription for 0ms latency sync
     const unsubscribeSync = subscribeToSyncEvents((ev) => {
       if ([
         SYNC_EVENTS.TASK_TIMER_STARTED,
         SYNC_EVENTS.TASK_TIMER_PAUSED,
         SYNC_EVENTS.TASK_TIMER_STOPPED,
         SYNC_EVENTS.TASK_COMPLETED,
+        SYNC_EVENTS.TIMER_OUTBOX_EVENT,
+        SYNC_EVENTS.ATTENDANCE_STATE_UPDATED,
+        SYNC_EVENTS.SHIFT_CLOCKED_OUT,
+        SYNC_EVENTS.SHIFT_BREAK_STARTED,
         SYNC_EVENTS.STORAGE_MUTATION
       ].includes(ev.type)) {
+        syncAuthoritativeTimerState({ force: true, source: ev.type });
         scheduleDebouncedLoad(true);
       }
     });
 
-    // Periodic synchronization from DB (every 2.0 seconds) + tab focus across devices / laptops
+    // Periodic synchronization from DB + tab focus across devices / laptops
     const syncInterval = setInterval(() => {
       if (document.visibilityState === 'visible') {
+        syncAuthoritativeTimerState({ source: 'poll' });
         scheduleDebouncedLoad(true);
       }
-    }, 2000);
+    }, 20000);
 
-    const handleFocus = () => scheduleDebouncedLoad(true);
+    const handleFocus = () => {
+      syncAuthoritativeTimerState({ force: true, source: 'focus' });
+      scheduleDebouncedLoad(true);
+    };
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') scheduleDebouncedLoad(true);
+      if (document.visibilityState === 'visible') {
+        syncAuthoritativeTimerState({ force: true, source: 'visibility' });
+        scheduleDebouncedLoad(true);
+      }
+    };
+    const handleSocketStatus = (e) => {
+      if (e?.detail?.connected) {
+        syncAuthoritativeTimerState({ force: true, source: 'socket_connect' });
+        scheduleDebouncedLoad(true);
+      }
     };
 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleFocus);
+    window.addEventListener('ems_socket_status', handleSocketStatus);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
@@ -865,12 +1081,13 @@ export const WorkProvider = ({ children }) => {
       clearInterval(syncInterval);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleFocus);
+      window.removeEventListener('ems_socket_status', handleSocketStatus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('hrms_storage_change', handleStorageUpdate);
       window.removeEventListener('storage', handleStorageUpdate);
       unsubscribeSync();
     };
-  }, [loadWorkData, activeTimerKey]);
+  }, [loadWorkData, syncAuthoritativeTimerState, activeTimerKey]);
 
   // Persistent offline action queue listener (scoped to current authenticated user)
   useEffect(() => {
@@ -2267,6 +2484,10 @@ export const WorkProvider = ({ children }) => {
         taskId,
         targetEmployeeId: isForOtherEmployee ? targetUserKey : undefined,
         reason: 'Task timer started from UI'
+      }).then((res) => {
+        if (res && res.state) {
+          syncAuthoritativeTimerState({ force: true, source: 'start_confirmed' });
+        }
       }).catch(wsErr => console.warn('Work session start notice:', wsErr.message));
 
       if (previousTaskId) {
@@ -2486,6 +2707,10 @@ export const WorkProvider = ({ children }) => {
         taskId,
         targetEmployeeId: isForOtherEmployee ? targetUserKey : undefined,
         reason: 'Task timer paused from UI'
+      }).then((res) => {
+        if (res && res.state) {
+          syncAuthoritativeTimerState({ force: true, source: 'pause_confirmed' });
+        }
       }).catch(wsErr => console.warn('Work session pause notice:', wsErr.message));
 
       workService.updateTask(taskId, {
@@ -2898,6 +3123,10 @@ export const WorkProvider = ({ children }) => {
         taskId,
         targetEmployeeId: isForOtherEmployee ? targetUserKey : undefined,
         reason: 'Task completed from UI'
+      }).then((res) => {
+        if (res && res.state) {
+          syncAuthoritativeTimerState({ force: true, source: 'complete_confirmed' });
+        }
       }).catch(wsErr => console.warn('Work session complete notice:', wsErr.message));
 
       const currentTarget = tasks.find(t => String(t._id || t.id) === String(taskId)) || targetTask;
@@ -3318,6 +3547,7 @@ export const WorkProvider = ({ children }) => {
     setTimesheetFilter,
     // Refetch
     loadWorkData,
+    syncAuthoritativeTimerState,
     formatSeconds,
     // Project Methods
     createProject,
@@ -3355,7 +3585,7 @@ export const WorkProvider = ({ children }) => {
     rescheduleTaskForFuture
   }), [
     loading, projects, tasks, timesheets, activeRunningTask,
-    projectFilter, taskFilter, timesheetFilter, loadWorkData,
+    projectFilter, taskFilter, timesheetFilter, loadWorkData, syncAuthoritativeTimerState,
     formatSeconds, createProject, updateProject, deleteProject,
     submitProjectForCompletion, approveProjectCompletion, reopenProject,
     createTask, updateTask, changeTaskStatus, completeTask,
